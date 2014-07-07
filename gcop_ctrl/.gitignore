@@ -1,0 +1,14 @@
+*.cpp.swp
+*.swp
+*.tar.gz
+*.bag
+*.bak
+*.csv
+*.dat
+*.cfgc
+*.pyc
+*.py
+build*
+bin*
+docs/
+*.vim
