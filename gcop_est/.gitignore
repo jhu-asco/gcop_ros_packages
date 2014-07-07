@@ -4,4 +4,6 @@ msg_gen*
 bin*
 lib*
 data/
+*.dat
+*.swp
 

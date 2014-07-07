@@ -53,8 +53,8 @@ namespace gcop_est {
 		// Monitor whether anyone is subscribed to the output
 		//image_transport::SubscriberStatusCallback connect_cb = boost::bind(&RectifyNodelet::connectCb, this);
 		image_transport::TransportHints hints("raw", ros::TransportHints(), private_nh);
-		sub_camera_ = it_->subscribeCamera("image", 1, &PoseEstimator1::imageCb, this, hints);
 		pub_cont_  = it_->advertise("image_cont",  1);//Contour image
+		sub_camera_ = it_->subscribeCamera("image", 1, &PoseEstimator1::imageCb, this, hints);
 	}
 
 	// Handles (un)subscribing when clients (un)subscribe
@@ -82,6 +82,7 @@ namespace gcop_est {
 		}
 		if(!initcamera)
 		{
+			cout<<"Info msg: "<<info_msg->D.size()<<endl;
 			assert(info_msg->D.size() == 5);//Ensure that there are 5 distortion coefficients
 			cam.reset(new gcop::Camera(length_object,info_msg->height,info_msg->width,&info_msg->K[0],&info_msg->D[0]));//Assuming the plum bob model for camera distortion
 			initcamera = true;//Camera class is initialized
@@ -103,7 +104,7 @@ namespace gcop_est {
 			bool ok = cam->Pose(q,image,contourImage);//Find the pose and get a contour image
 			// Allocate new contour message
 			//sensor_msgs::ImagePtr cont_msg = cv_bridge::CvImage(image_msg->header, image_msg->encoding, contourImage).toImageMsg();
-			sensor_msgs::ImagePtr cont_msg = cv_bridge::CvImage(image_msg->header, "8UC3", contourImage).toImageMsg();
+			sensor_msgs::ImagePtr cont_msg = cv_bridge::CvImage(image_msg->header, "bgr8", contourImage).toImageMsg();
 			pub_cont_.publish(cont_msg);
 			if (!ok) {
 				ROS_WARN("No Object");
