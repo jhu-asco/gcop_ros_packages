@@ -19,7 +19,7 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 #set the default path for built libraries to the "lib" directory
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
-find_package(GCOP REQUIRED)
+find_package(GCOP REQUIRED algos systems)
 include_directories(${GCOP_INCLUDE_DIRS})
 set(LIBS ${LIBS} ${GCOP_LIBRARIES})
 
@@ -45,6 +45,7 @@ set(LIBS ${LIBS} ${TINYXML_LIBRARIES})
 #rosbuild_genmsg()
 #uncomment if you have defined services
 #rosbuild_gensrv()
+message("GCOP LIBS: ${GCOP_LIBRARIES}")
 
 # dynamic reconfigure
 rosbuild_find_ros_package(dynamic_reconfigure)

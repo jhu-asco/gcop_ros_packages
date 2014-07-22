@@ -6,7 +6,9 @@
 #include <gcop/so3.h>
 #include <gcop/camera.h>
 #include <iostream>
+#include <geometry_msgs/TransformStamped.h>
 #include <tf/transform_broadcaster.h>
+#include <tf/transform_datatypes.h>
 
 /* This nodelet is a wrapper for camera library (name is a misnomer) in gcop. It finds the 6dof pose of the camera with respect to an known object.
 	 The code has mostly been copied from Rectify.cpp of image_proc ros package
@@ -25,7 +27,7 @@ namespace gcop_est {
 		//boost::mutex connect_mutex_;
 
 		image_transport::Publisher pub_cont_;
-		//ros::Publisher pose_publisher;
+		ros::Publisher pose_publisher;
 		bool initcamera;
 		int length_object;
 		boost::shared_ptr<gcop::Camera> cam;
@@ -50,6 +52,7 @@ namespace gcop_est {
 		length_object = 3.5;//Hardcoded for now
 		it_.reset(new image_transport::ImageTransport(nh));
 		//Declare ros publisher for pose or use tf
+		pose_publisher = private_nh.advertise<geometry_msgs::TransformStamped>("objpose",1);
 		// Monitor whether anyone is subscribed to the output
 		//image_transport::SubscriberStatusCallback connect_cb = boost::bind(&RectifyNodelet::connectCb, this);
 		image_transport::TransportHints hints("raw", ros::TransportHints(), private_nh);
@@ -74,7 +77,8 @@ namespace gcop_est {
 			const sensor_msgs::CameraInfoConstPtr& info_msg)
 	{
 		static tf::TransformBroadcaster br;
-		tf::Transform result_transform;
+		tf::StampedTransform result_transform;
+		geometry_msgs::TransformStamped posemsg;
 		// Verify camera is actually calibrated
 		if (info_msg->K[0] == 0.0) {
 			cout<<"Camera not calibrated"<<endl;
@@ -117,8 +121,13 @@ namespace gcop_est {
 			//cout<<"Change in posn between two frames: "<< changeinposn.x()<<"\t"<<changeinposn.y()<<"\t"<<changeinposn.z()<<"\t"<<endl;
 			result_transform.setOrigin(tf::Vector3(q(3),q(4),q(5)));
 			result_transform.setRotation(tf::Quaternion(wxyz(1),wxyz(2),wxyz(3),wxyz(0)));
+			result_transform.frame_id_ = "camera";
+			result_transform.child_frame_id_ = "object";
+			result_transform.stamp_ = ros::Time::now();
 			//br.sendTransform(tf::StampedTransform(result_transform,image_msg->header.stamp,"camera","object"));//transform from camera(parent) frame to object(child) frame
-			br.sendTransform(tf::StampedTransform(result_transform,ros::Time::now(),"camera","object"));//transform from camera(parent) frame to object(child) frame
+			br.sendTransform(result_transform);//transform from camera(parent) frame to object(child) frame
+			tf::transformStampedTFToMsg(result_transform, posemsg);
+			pose_publisher.publish(posemsg);
 			/*
 				 cout<<"Q output: "<<q.transpose()<<endl;
 

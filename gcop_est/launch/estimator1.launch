@@ -6,11 +6,15 @@
     <param name="video_mode" type="string" value="640x480_mono8"/>
     <param name="frame_rate" type="double" value="60.0"/>
     <param name="auto_shutter" type="int" value="3"/>
-    <!--param name="shutter" type="double" value="4.0"/-->
     <param name="shutter" type="double" value="60.0"/>
     <param name="auto_gain" type="int" value="3"/>
     <param name="gain" type="double" value="16.0"/>
   </node>
+    <!--param name="shutter" type="double" value="4.0"/-->
+	<!--node pkg="nodelet" type="nodelet" name="camera" args="load mv_bluefox_driver/CameraNodelet camera_nodelet_manager">
+		<param name="auto_gain" type="bool" value="false"/>
+		<param name="expose_us" type="int" value="300"/>
+	</node-->
   <node pkg="nodelet" type="nodelet" name="image_view" args="load image_view/image camera_nodelet_manager">
 		<remap from="image" to="camera/image_cont" />
 	</node>

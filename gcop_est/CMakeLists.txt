@@ -13,11 +13,11 @@ camera_calibration_parsers cv_bridge image_transport nodelet roscpp sensor_msgs 
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
-find_package(GCOP REQUIRED)
+find_package(GCOP REQUIRED est)
 find_package(OpenCV REQUIRED core highgui imgproc calib3d)
 find_package(Eigen3 REQUIRED)
-find_package(GLU REQUIRED)
-find_package(GLUT REQUIRED)
+#find_package(GLU REQUIRED)
+#find_package(GLUT REQUIRED)
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -101,18 +101,15 @@ catkin_package(
 # include_directories(include)
 #message(" Hello ---- ${EIGEN3_INCLUDE_DIR}___")
 include_directories(
-  ${catkin_INCLUDE_DIRS} ${GCOP_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${GLU_INCLUDE_DIRS} ${GLUT_INCLUDE_DIRS}
-  ${CV_BRIDGE_INCLUDE_DIRS}
+  ${catkin_INCLUDE_DIRS} ${GCOP_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${CV_BRIDGE_INCLUDE_DIRS}
 )
 
 ## Declare a cpp library
 # add_library(gcop_est
 #   src/${PROJECT_NAME}/gcop_est.cpp
 # )
-add_library(${PROJECT_NAME} src/nodelets/estimator1.cpp)
-message(" Catkin: ${catkin_LIBRARIES}")
-#message(" CV_BRIGE: INCLUDE: ${CV_BRIDGE_INCLUDE_DIRS} LIBS: ${CV_BRIDGE_LIBRARIES}")
-target_link_libraries(${PROJECT_NAME} ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${catkin_LIBRARIES} ${GLU_LIBRARIES} ${GLUT_LIBRARY})
+add_library(cam_est src/nodelets/estimator1.cpp)
+target_link_libraries(cam_est ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${catkin_LIBRARIES})
 
 ## Declare a cpp executable
 # add_executable(gcop_est_node src/gcop_est_node.cpp)

@@ -13,11 +13,22 @@ find_path(GCOP_INCLUDE_DIR
 )
 
 # Finally the library itself
-find_library(GCOP_LIBRARY
-  NAMES gcop
-#  PATHS ${GCOP_PKGCONF_LIBRARY_DIRS}
-)
+if( GCOP_FIND_COMPONENTS )# If no components specified manually specifiy all the components
+else()
+set(GCOP_FIND_COMPONENTS algos views systems est)
+endif()
 
+foreach(component ${GCOP_FIND_COMPONENTS})
+	find_library(GCOP_LIB_${component}
+	  NAMES gcop_${component}
+	)
+	set(GCOP_LIBRARY "${GCOP_LIBRARY};${GCOP_LIB_${component}}")
+endforeach(component)
+# Utils is common to all
+find_library(GCOP_LIB_utils
+  NAMES gcop_utils
+)
+set(GCOP_LIBRARY "${GCOP_LIBRARY};${GCOP_LIB_utils}")
 # Set the include dir variables and the libraries and let libfind_process do the rest.
 # NOTE: Singular variables for this library, plural for libraries this this lib depends on.
 set(GCOP_PROCESS_INCLUDES GCOP_INCLUDE_DIR)
