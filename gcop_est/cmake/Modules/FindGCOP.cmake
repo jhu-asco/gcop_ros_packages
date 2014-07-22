@@ -14,7 +14,7 @@ find_path(GCOP_INCLUDE_DIR
 
 # Finally the library itself
 find_library(GCOP_LIBRARY
-  NAMES gcop
+  NAMES gcop_algos gcop_views gcop_systems gcop_est gcop_utils
 #  PATHS ${GCOP_PKGCONF_LIBRARY_DIRS}
 )
 

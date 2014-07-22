@@ -106,7 +106,7 @@ catkin_package(
 # include_directories(include)
 message(" Hello ---- ${EIGEN3_INCLUDE_DIR}___")
 include_directories(
-  ${catkin_INCLUDE_DIRS} ${GCOP_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${GLU_INCLUDE_DIRS} ${GLUT_INCLUDE_DIRS}
+   ${GCOP_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${GLU_INCLUDE_DIRS} ${GLUT_INCLUDE_DIRS}
 )
 
 ## Declare a cpp library
@@ -114,7 +114,7 @@ include_directories(
 #   src/${PROJECT_NAME}/gcop_est.cpp
 # )
 add_library(${PROJECT_NAME} src/nodelets/estimator1.cpp)
-target_link_libraries(${PROJECT_NAME} ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${GLU_LIBRARIES} ${GLUT_LIBRARY})
+target_link_libraries(${PROJECT_NAME} ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${GLU_LIBRARIES} ${GLUT_LIBRARY} ${catkin_LIBRARIES})
 
 ## Declare a cpp executable
 # add_executable(gcop_est_node src/gcop_est_node.cpp)
