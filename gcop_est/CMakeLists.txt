@@ -9,12 +9,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  camera_calibration_parsers
-  image_transport
-  nodelet
-  roscpp
-  tf
-)
+camera_calibration_parsers cv_bridge image_transport nodelet roscpp sensor_msgs tf)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -104,9 +99,10 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 # include_directories(include)
-message(" Hello ---- ${EIGEN3_INCLUDE_DIR}___")
+#message(" Hello ---- ${EIGEN3_INCLUDE_DIR}___")
 include_directories(
   ${catkin_INCLUDE_DIRS} ${GCOP_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${GLU_INCLUDE_DIRS} ${GLUT_INCLUDE_DIRS}
+  ${CV_BRIDGE_INCLUDE_DIRS}
 )
 
 ## Declare a cpp library
@@ -114,7 +110,9 @@ include_directories(
 #   src/${PROJECT_NAME}/gcop_est.cpp
 # )
 add_library(${PROJECT_NAME} src/nodelets/estimator1.cpp)
-target_link_libraries(${PROJECT_NAME} ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${GLU_LIBRARIES} ${GLUT_LIBRARY})
+message(" Catkin: ${catkin_LIBRARIES}")
+#message(" CV_BRIGE: INCLUDE: ${CV_BRIDGE_INCLUDE_DIRS} LIBS: ${CV_BRIDGE_LIBRARIES}")
+target_link_libraries(${PROJECT_NAME} ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${catkin_LIBRARIES} ${GLU_LIBRARIES} ${GLUT_LIBRARY})
 
 ## Declare a cpp executable
 # add_executable(gcop_est_node src/gcop_est_node.cpp)
