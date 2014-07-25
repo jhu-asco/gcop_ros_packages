@@ -2,6 +2,7 @@ include(LibFindMacros)
 
 # Dependencies
 #libfind_package(gcop)
+unset(GCOP_LIBRARY CACHE)
 
 # Use pkg-config to get hints about paths
 libfind_pkg_check_modules(GCOP_PKGCONF gcop)

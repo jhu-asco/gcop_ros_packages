@@ -229,7 +229,7 @@ int main(int argc, char** argv)
 	//Initialize publisher
    trajpub = rosdmoc.advertise<gcop_comm::CtrlTraj>("ctrltraj",1);
 	//Subscribe to initial posn from tf
-	//initialposn_sub = rosdmoc.subscribe("mocap",1,initialposnCallback);
+	initialposn_sub = rosdmoc.subscribe("mocap",1,initialposnCallback);
 	
 
 	//define parameters for the system
