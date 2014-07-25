@@ -1,4 +1,4 @@
-<library path="lib/libgcop_est">
+<library path="lib/libcam_est">
 
   <class name="gcop_est/estimator1"
 	 type="gcop_est::PoseEstimator1"

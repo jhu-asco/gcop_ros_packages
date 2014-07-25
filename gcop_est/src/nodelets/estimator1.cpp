@@ -111,7 +111,7 @@ namespace gcop_est {
 			sensor_msgs::ImagePtr cont_msg = cv_bridge::CvImage(image_msg->header, "bgr8", contourImage).toImageMsg();
 			pub_cont_.publish(cont_msg);
 			if (!ok) {
-				ROS_WARN("No Object");
+				//ROS_WARN("No Object");
 				return;
 			}
 			//xyz =q.tail<3>();//First three are posn
@@ -123,7 +123,7 @@ namespace gcop_est {
 			result_transform.setRotation(tf::Quaternion(wxyz(1),wxyz(2),wxyz(3),wxyz(0)));
 			result_transform.frame_id_ = "camera";
 			result_transform.child_frame_id_ = "object";
-			result_transform.stamp_ = ros::Time::now();
+			result_transform.stamp_ = image_msg->header.stamp;
 			//br.sendTransform(tf::StampedTransform(result_transform,image_msg->header.stamp,"camera","object"));//transform from camera(parent) frame to object(child) frame
 			br.sendTransform(result_transform);//transform from camera(parent) frame to object(child) frame
 			tf::transformStampedTFToMsg(result_transform, posemsg);
