@@ -1,4 +1,5 @@
 include(LibFindMacros)
+unset(GCOP_LIBRARY CACHE)
 
 # Dependencies
 #libfind_package(gcop)
