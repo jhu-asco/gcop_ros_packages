@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package>
-  <name>gcop_est</name>
+  <name>gcop_ros_est</name>
   <version>0.0.0</version>
   <description>The gcop_est package</description>
 

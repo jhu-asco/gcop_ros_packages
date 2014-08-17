@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(gcop_est)
+project(gcop_ros_est)
 
 add_definitions(-g -std=c++0x -pthread)
 
@@ -14,6 +14,7 @@ camera_calibration_parsers cv_bridge image_transport nodelet roscpp sensor_msgs 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 find_package(GCOP REQUIRED est)
+message("GCOP LIBS: ${GCOP_LIBRARIES}")
 find_package(OpenCV REQUIRED core highgui imgproc calib3d)
 find_package(Eigen3 REQUIRED)
 #find_package(GLU REQUIRED)
