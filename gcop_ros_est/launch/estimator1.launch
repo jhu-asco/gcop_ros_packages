@@ -1,6 +1,8 @@
 <?xml version="1.0"?>
 <launch>
-  <node pkg="nodelet" type="nodelet" name="camera_nodelet_manager" args="manager" output="screen"/>
+  <node pkg="nodelet" type="nodelet" name="camera_nodelet_manager" args="manager" output="screen">
+		<param name="num_worker_threads" type="int" value="2"/>
+	</node>
   <node pkg="nodelet" type="nodelet" name="camera_driver" args="load camera1394/driver camera_nodelet_manager">
     <param name="guid" type="string" value="00b09d0100bc512e"/>
     <param name="video_mode" type="string" value="640x480_mono8"/>

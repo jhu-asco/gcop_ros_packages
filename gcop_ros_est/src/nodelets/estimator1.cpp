@@ -105,7 +105,16 @@ namespace gcop_est {
 		if(cam)//If cam is initialized
 		{
 			//Use the camera library to process for pose
-			bool ok = cam->Pose(q,image,contourImage);//Find the pose and get a contour image
+			bool ok = false;
+			if(pub_cont_.getNumSubscribers() > 0)
+			{
+//				cout<<"Recording image"<<endl;
+			 ok = cam->Pose(q,image,contourImage);//Find the pose and get a contour image
+			}
+			else
+			{
+				ok = cam->Pose(q,image);
+			}
 			// Allocate new contour message
 			//sensor_msgs::ImagePtr cont_msg = cv_bridge::CvImage(image_msg->header, image_msg->encoding, contourImage).toImageMsg();
 			sensor_msgs::ImagePtr cont_msg = cv_bridge::CvImage(image_msg->header, "bgr8", contourImage).toImageMsg();
