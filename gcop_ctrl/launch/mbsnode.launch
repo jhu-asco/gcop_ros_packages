@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<launch>	
+	<arg name="parameters" default="$(find gcop_ctrl)/params/airbot5.yaml"/>
+
+	<include file="$(find gcop_urdf)/launch/display_chain.launch">
+		<arg name="model" default="$(find gcop_ctrl)/params/airbot5.urdf"/>
+	</include>
+
+  <rosparam command="load" file="$(arg parameters)" />
+	<node name="dmoc_mbsnode" pkg="gcop_ctrl" type="mbsnode" output="screen"/>
+	<!--node name="mbsreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" /-->
+</launch>

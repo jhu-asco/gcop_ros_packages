@@ -1,0 +1,5 @@
+State x0 #Initial State
+State xf #Final State
+uint32 N #Number of segments to return
+---
+CtrlTraj traj

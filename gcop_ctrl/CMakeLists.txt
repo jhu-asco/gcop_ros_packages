@@ -10,6 +10,7 @@ find_package(catkin REQUIRED COMPONENTS
   dynamic_reconfigure
   gcop_comm
   geometry_msgs
+	visualization_msgs
   roscpp
   rospy
   tf
@@ -87,6 +88,7 @@ generate_dynamic_reconfigure_options(
 	cfg/mbsparamedit.cfg
 	cfg/mbssim.cfg
 	cfg/paramedit.cfg
+	cfg/mbsnode.cfg
 )
 ###################################
 ## catkin specific configuration ##
@@ -125,19 +127,23 @@ include_directories(
 
 add_executable(chainload src/chainload.cc)
 target_link_libraries(chainload ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(chainload ${PROJECT_NAME}_gencfg)
+add_dependencies(chainload ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
 add_executable(mbstest src/mbstest.cc)
 target_link_libraries(mbstest ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(mbstest ${PROJECT_NAME}_gencfg)
+add_dependencies(mbstest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+
+add_executable(mbsnode src/mbsnode.cc)
+target_link_libraries(mbsnode ${LIBS} ${catkin_LIBRARIES})
+add_dependencies(mbsnode ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
 add_executable(mbssim src/mbssim.cc)
 target_link_libraries(mbssim ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(mbssim ${PROJECT_NAME}_gencfg)
+add_dependencies(mbssim ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
 add_executable(rcctrl src/rccartest.cc)
 target_link_libraries(rcctrl ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(rcctrl ${PROJECT_NAME}_gencfg)
+add_dependencies(rcctrl ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
