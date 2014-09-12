@@ -69,6 +69,7 @@ void xml2vec(VectorXd &vec, XmlRpc::XmlRpcValue &my_list)
 }
 void simtraj(const ros::TimerEvent &event) //N is the number of segments
 {
+	cout<<"Sim Traj called"<<endl;
 	int N = us.size();
 	double h = tfinal/N; // time-step
 	//cout<<"N: "<<N<<endl;
@@ -190,7 +191,7 @@ void paramreqcallback(gcop_ctrl::MbsSimInterfaceConfig &config, uint32_t level)
 int main(int argc, char** argv)
 {
 	ros::init(argc, argv, "chainload");
-	ros::NodeHandle n("mbsdmoc");
+	ros::NodeHandle n("mbsddp");
 	//Initialize publisher
 	trajpub = n.advertise<gcop_comm::CtrlTraj>("ctrltraj",1);
 	//get parameter for xml_string:
@@ -206,14 +207,10 @@ int main(int argc, char** argv)
 	Matrix4d gposei_root; //inital inertial frame wrt the joint frame
 	//Create Mbs system
 	mbsmodel = gcop_urdf::mbsgenerator(xml_string,gposei_root, mbstype);
-	cout<<"gposei_root: "<<endl<<gposei_root<<endl;
+	mbsmodel->U.bnd = false;
 	gcop::SE3::Instance().inv(gposeroot_i,gposei_root);
-	//getchar();
-	//mbsmodel->debug = true;
-	//mbsmodel->method = 1;
-	//mbsmodel->iters = 4;
 	cout<<"Mbstype: "<<mbstype<<endl;
-	mbsmodel->ag << 0, 0, -0.05;//default
+	mbsmodel->ag << 0, 0, -0.05;
 	//get ag from parameters
 	XmlRpc::XmlRpcValue ag_list;
 	if(n.getParam("ag", ag_list))
@@ -313,7 +310,7 @@ int main(int argc, char** argv)
 	mbsmodel->Rec(x, h);
 
 	//Compute Mass matrix:
-  MatrixXd M(nb-1 + 6*(!mbsmodel->fixed), nb-1 + 6*(!mbsmodel->fixed));
+ /* MatrixXd M(nb-1 + 6*(!mbsmodel->fixed), nb-1 + 6*(!mbsmodel->fixed));
 	mbsmodel->Mass(M,x);
 	cout<<"Mass Matrix: "<<endl<<M<<endl;
 	//Printing parent indices and joint names and link names:
@@ -332,15 +329,17 @@ int main(int argc, char** argv)
 		cout<<"x.gs["<<count+1<<"]"<<endl<<x.gs[count+1].topLeftCorner(3,3)<<endl;
 		cout<<"mbsmodel->joints["<<count<<"]"<<endl<<mbsmodel->joints[count].gc<<endl;
 		cout<<"Joint wrt visual axis["<<(count+1)<<"] "<<(x.gs[count+1].topLeftCorner(3,3)*(mbsmodel->joints[count].gc.topLeftCorner(3,3))*mbsmodel->joints[count].a.head(3)).transpose()<<endl;
-	  getchar();
+	  //getchar();
 		//cout<<" Dot product: "<<mbsmodel->ag.transpose()*mbsmodel->joints[count].S.head(3)<<endl;
 
 		//cout<<"Joint body axis wrt the visual frame: "<< (rposeroot_i*mbsmodel->joints[count].S.head(3)).transpose()<<endl;
 	}
+	*/
 
 	// initial controls (e.g. hover at one place)
 	VectorXd u(mbsmodel->U.n);
 	u.setZero();
+	/*
 	if(mbstype == "AIRBASE")
 	{
 		for(int count = 0;count < nb;count++)
@@ -353,6 +352,33 @@ int main(int argc, char** argv)
 			u[5] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
 		cout<<"u[5]: "<<u[5]<<endl;
 	}
+	*/
+	cout<<"Finding Biases"<<endl;
+	int n11 = mbsmodel->nb -1 + 6*(!mbsmodel->fixed);
+	VectorXd forces(n11);
+	mbsmodel->Bias(forces,0,x);
+	cout<<"Bias computed: "<<forces.transpose()<<endl;
+
+	//forces = -1*forces;//Controls should be negative of the forces
+
+
+	//Set Controls to cancel the forces:
+	if(mbstype == "FLOATBASE")
+	{
+		assert(6 + mbsmodel->nb - 1 == forces.size());
+		u.head(6) = forces.head(6);
+	}
+	else if(mbstype == "AIRBASE")
+	{
+		u[0] = forces[0];
+		u[1] = forces[1];
+		u[2] = forces[2];
+		u[3] = forces[5];	
+	}
+	//Joint Torques:
+	u.tail(nb-1) = forces.tail(nb-1);
+
+
 
 	//Create states and controls
 	xs.resize(N+1,x);
@@ -381,7 +407,7 @@ int main(int argc, char** argv)
 	//getchar();
 	
 	// Create timer for iterating	and publishing data
-	iteratetimer = n.createTimer(ros::Duration(0.1), simtraj);
+	iteratetimer = n.createTimer(ros::Duration(0.1), simtraj, true);
 	iteratetimer.start();
 	//	Dynamic Reconfigure setup Callback ! immediately gets called with default values	
 	dynamic_reconfigure::Server<gcop_ctrl::MbsSimInterfaceConfig> server;

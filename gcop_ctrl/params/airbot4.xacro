@@ -22,8 +22,8 @@
     <visual>
 			<origin rpy="0 0 0" xyz="0.0 0.0 0.05"/>
       <geometry>
-				 <mesh filename="package://gcop_urdf/meshes/pelican1.dae" scale="0.025 0.025 0.025"/>
-        <!--box size="0.3 ${l1} 0.5"/-->
+				 <!--mesh filename="package://gcop_urdf/meshes/pelican1.dae" scale="0.025 0.025 0.025"/-->
+        <box size="0.3 ${l1} 0.5"/>
       </geometry>
       <material name="blue">
         <color rgba="0 0 0.8 1"/>

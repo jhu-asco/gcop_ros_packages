@@ -2,7 +2,7 @@
 #include <iomanip>
 #include <iostream>
 #include <dynamic_reconfigure/server.h>
-#include "gcop/dmoc.h" //gcop dmoc header
+#include "gcop/ddp.h" //gcop ddp header
 #include "gcop/rnlqcost.h" //gcop lqr header
 #include "gcop/rccar.h"
 #include "gcop_comm/CtrlTraj.h"//msg for publishing ctrl trajectory
@@ -20,7 +20,7 @@ using namespace std;
 using namespace Eigen;
 using namespace gcop;
 
-typedef Dmoc<Vector4d, 4, 2> RccarDmoc;
+typedef Ddp<Vector4d, 4, 2> RccarDdp;
 
 //ros messages
 gcop_comm::CtrlTraj trajectory;
@@ -39,7 +39,7 @@ ros::Subscriber initialposn_sub;
 Rccar sys;
 
 //Optimal Controller
-	RccarDmoc *dmoc;
+	RccarDdp *ddp;
 
 //Cost class
 RnLqCost<4, 2>*cost;
@@ -49,7 +49,7 @@ RnLqCost<4, 2>*cost;
   vector<Vector4d> xs;
   vector<Vector2d> us;
   Vector4d xf = Vector4d::Zero();// final state initialization passed by reference so needs to be global to be changed
-	int Nit = 30;//number of iterations for dmoc
+	int Nit = 30;//number of iterations for ddp
 bool usemocap = false;
 
 double tprev = 0;
@@ -95,7 +95,7 @@ struct timeval timer;
 timer_start(timer);
 	for (int count = 1;count <= Nit;count++){
 		 
-		dmoc->Iterate();//Updates us and xs after one iteration
+		ddp->Iterate();//Updates us and xs after one iteration
 	}//double te = 1e6*(ros::Time::now() - startime).toSec();
  long te = timer_us(timer);
 	cout << "Time taken " << te << " us." << endl;
@@ -206,30 +206,30 @@ void paramreqcallback(gcop_ctrl::DMocInterfaceConfig &config, uint32_t level)
 		us[N/2+i] = Vector2d(-.01, .0);
 	}
 	*/
-	//change parameters in dmoc:
-	dmoc->ts = ts;
-//	dmoc->xs = xs;
-	//dmoc->us = us;
-	dmoc->mu = config.mu;
+	//change parameters in ddp:
+	ddp->ts = ts;
+//	ddp->xs = xs;
+	//ddp->us = us;
+	ddp->mu = config.mu;
 
 
 
 	//dont know what to do with the cost
 
 
-	//destroy previous dmoc:
-	//delete(dmoc);
-	//dmoc = new RccarDmoc(sys, cost, ts, xs, us);  
+	//destroy previous ddp:
+	//delete(ddp);
+	//ddp = new RccarDdp(sys, cost, ts, xs, us);  
 }
 
 int main(int argc, char** argv)
 {
 	ros::init(argc, argv, "rccarctrl");
-	ros::NodeHandle rosdmoc("/dmoc");
+	ros::NodeHandle rosddp("/ddp");
 	//Initialize publisher
-   trajpub = rosdmoc.advertise<gcop_comm::CtrlTraj>("ctrltraj",1);
+   trajpub = rosddp.advertise<gcop_comm::CtrlTraj>("ctrltraj",1);
 	//Subscribe to initial posn from tf
-	initialposn_sub = rosdmoc.subscribe("mocap",1,initialposnCallback);
+	initialposn_sub = rosddp.subscribe("mocap",1,initialposnCallback);
 	
 
 	//define parameters for the system
@@ -246,35 +246,35 @@ int main(int argc, char** argv)
 	Qf(0) = 10;Qf(1) = 10;Qf(2)=10;Qf(3) = 1;*/ 
 
 		//get parameters from ros:
-	ros::param::get("/dmoc/tf", tf);
-	ros::param::get("/dmoc/N", N);
+	ros::param::get("/ddp/tf", tf);
+	ros::param::get("/ddp/N", N);
 
-	ros::param::get("/dmoc/x0", x0(0));
-	ros::param::get("/dmoc/y0", x0(1));
-	ros::param::get("/dmoc/vx0", x0(2));
-	ros::param::get("/dmoc/vy0", x0(3));
+	ros::param::get("/ddp/x0", x0(0));
+	ros::param::get("/ddp/y0", x0(1));
+	ros::param::get("/ddp/vx0", x0(2));
+	ros::param::get("/ddp/vy0", x0(3));
 
-	ros::param::get("/dmoc/xN", xf(0));
-	ros::param::get("/dmoc/xN", xf(1));
-	ros::param::get("/dmoc/vy0", xf(2));
-	ros::param::get("/dmoc/vyN", xf(3));
+	ros::param::get("/ddp/xN", xf(0));
+	ros::param::get("/ddp/xN", xf(1));
+	ros::param::get("/ddp/vy0", xf(2));
+	ros::param::get("/ddp/vyN", xf(3));
 
-	ros::param::get("/dmoc/Qf1", Qf(0));
-	ros::param::get("/dmoc/Qf2", Qf(1));
-	ros::param::get("/dmoc/Qf3", Qf(2));
-	ros::param::get("/dmoc/Qf4", Qf(3));
+	ros::param::get("/ddp/Qf1", Qf(0));
+	ros::param::get("/ddp/Qf2", Qf(1));
+	ros::param::get("/ddp/Qf3", Qf(2));
+	ros::param::get("/ddp/Qf4", Qf(3));
 
-	ros::param::get("/dmoc/Q1", Q(0));
-	ros::param::get("/dmoc/Q2", Q(1));
-	ros::param::get("/dmoc/Q3", Q(2));
-	ros::param::get("/dmoc/Q4", Q(3));
+	ros::param::get("/ddp/Q1", Q(0));
+	ros::param::get("/ddp/Q2", Q(1));
+	ros::param::get("/ddp/Q3", Q(2));
+	ros::param::get("/ddp/Q4", Q(3));
 
-	ros::param::get("/dmoc/R1", R(0));
-	ros::param::get("/dmoc/R2", R(1));
+	ros::param::get("/ddp/R1", R(0));
+	ros::param::get("/ddp/R2", R(1));
 
-	ros::param::get("/dmoc/mu", mu);
+	ros::param::get("/ddp/mu", mu);
 	
-	ros::param::get("/dmoc/Nit", Nit);
+	ros::param::get("/ddp/Nit", Nit);
 
 	
 	//resize the states and controls
@@ -285,7 +285,7 @@ int main(int argc, char** argv)
 	  //conversions:
   double h = tf/N;   // time step
 
-	cost = new RnLqCost<4, 2>(tf,xf);
+	cost = new RnLqCost<4, 2>(sys,tf,xf);
 
 	cost->Q = Q.asDiagonal();
   cost->R = R.asDiagonal();
@@ -303,8 +303,8 @@ int main(int argc, char** argv)
   }
  
  
-  dmoc = new RccarDmoc(sys, *cost, ts, xs, us);  
-  dmoc->mu = mu;
+  ddp = new RccarDdp(sys, *cost, ts, xs, us);  
+  ddp->mu = mu;
 
 
   //Trajectory message initialization
@@ -324,7 +324,7 @@ int main(int argc, char** argv)
 
 //  iterateCallback(event);
 	//create timer for iteration
-  iteratetimer = rosdmoc.createTimer(ros::Duration(0.01), iterateCallback);
+  iteratetimer = rosddp.createTimer(ros::Duration(0.01), iterateCallback);
 	iteratetimer.start();
 	ros::spin();
   return 0;

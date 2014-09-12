@@ -6,6 +6,9 @@
 
 <!-- 
 Provide an overview of your package.
+Useful Commands:
+roslaunch gcop_urdf display_gen.launch model:=$PWD/params/airbot5.urdf gui:=True
+
 -->
 
 -->

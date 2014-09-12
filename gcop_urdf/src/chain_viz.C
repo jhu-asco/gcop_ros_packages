@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
 	//initializing joint msg
 	
 
-	traj_sub = n.subscribe("/mbsdmoc/ctrltraj",1, joint_publish);
+	traj_sub = n.subscribe("/mbsddp/ctrltraj",1, joint_publish);
 
 	joint_pub = n.advertise<sensor_msgs::JointState>("/movingrobot/joint_states", 1);
 	finaljoint_pub = n.advertise<sensor_msgs::JointState>("/goalrobot/joint_states", 1);

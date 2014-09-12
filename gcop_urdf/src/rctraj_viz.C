@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
 	finaljoint_state.name[2] = "base_to_backwheel1";
 
 
-	traj_sub = n.subscribe("/dmoc/ctrltraj",1, joint_publish);
+	traj_sub = n.subscribe("/ddp/ctrltraj",1, joint_publish);
 
 	joint_pub = n.advertise<sensor_msgs::JointState>("/movingcar/joint_states", 1);
 	finaljoint_pub = n.advertise<sensor_msgs::JointState>("/goalcar/joint_states", 1);

@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(gcop_urdf)
 
+#set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
@@ -13,8 +14,12 @@ find_package(catkin REQUIRED COMPONENTS
   urdf
 )
 
+
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
+find_package(GLUT REQUIRED)
+find_package(OpenGL REQUIRED)
+find_package(plplot REQUIRED)
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -96,9 +101,17 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 # include_directories(include)
+#set(MGL2_INCLUDE_DIR /usr/local/include/mgl2)
+message( "plplot : ${plplot_DIR} ; ${plplot_LIBRARIES}")
+
+#set(plplot_INCLUDE_DIR /usr/local/include/plplot)
+
 include_directories(
   ${catkin_INCLUDE_DIRS}
+  ${GLUT_INCLUDE_DIR}
+	${OPENGL_INCLUDE_DIR}
 )
+#  ${plplot_INCLUDE_DIR}
 
 ## Declare a cpp library
 # add_library(gcop_urdf
@@ -108,7 +121,10 @@ include_directories(
 ## Declare a cpp executable
 # add_executable(gcop_urdf_node src/gcop_urdf_node.cpp)
 add_executable(rctraj_viz src/rctraj_viz.C)
+
 add_executable(chain_viz src/chain_viz.C)
+
+add_executable(plotter src/plot_trajectories.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
@@ -121,6 +137,12 @@ target_link_libraries(rctraj_viz
 target_link_libraries(chain_viz
    ${catkin_LIBRARIES}
 )
+
+target_link_libraries(plotter
+	plplotcxx
+	${catkin_LIBRARIES}
+	)
+
 #############
 ## Install ##
 #############

@@ -6,19 +6,20 @@
 #include <gcop/urdf_parser.h>
 #include "tf/transform_datatypes.h"
 #include <gcop/se3.h>
-#include "gcop/dmoc.h" //gcop dmoc header
+#include "gcop/ddp.h" //gcop ddp header
 #include "gcop/lqcost.h" //gcop lqr header
 #include "gcop/rn.h"
 #include "gcop/mbscontroller.h"
 #include "gcop_ctrl/MbsDMocInterfaceConfig.h"
 #include <tf/transform_listener.h>
 #include <XmlRpcValue.h>
+//#include <signal.h>
 
 using namespace std;
 using namespace Eigen;
 using namespace gcop;
 
-typedef Dmoc<MbsState> MbsDmoc;//defining chaindmoc
+typedef Ddp<MbsState> MbsDdp;//defining chainddp
 
 
 //ros messages
@@ -37,7 +38,7 @@ ros::Timer iteratetimer;
 boost::shared_ptr<Mbs> mbsmodel;
 
 //Pointer for Optimal Controller
-boost::shared_ptr<MbsDmoc> mbsdmoc;
+boost::shared_ptr<MbsDdp> mbsddp;
 
 //MbsState final state
 boost::shared_ptr<MbsState> xf;
@@ -46,10 +47,29 @@ boost::shared_ptr<MbsState> xf;
 boost::shared_ptr<LqCost<MbsState>> cost;
 
 boost::shared_ptr<MbsController> ctrl;
-int Nit = 1;//number of iterations for dmoc
+int Nit = 1;//number of iterations for ddp
 int N = 100;      // discrete trajectory segments
 string mbstype; // Type of system
 Matrix4d gposeroot_i; //inital inertial frame wrt the joint frame
+/*void mySigintHandler(int sig)
+{
+	// Do some custom action.
+	// For example, publish a stop message to some other nodes.
+	cout<<"SigInt Detected"<<endl;
+	mbsddp.reset();
+	cout<<"Reset mbsddp Done"<<endl;
+	cost.reset();
+	cout<<"Reset cost Done"<<endl;
+	xf.reset();
+	cout<<"Reset xf Done"<<endl;
+	ctrl.reset();
+	cout<<"Reset ctrl Done"<<endl;
+	mbsmodel.reset();
+	cout<<"Reset mbsmodel Done"<<endl;
+	// All the default sigint handler does is call shutdown()
+	ros::shutdown();
+}
+*/
 
 void q2transform(geometry_msgs::Transform &transformmsg, Vector6d &bpose)
 {
@@ -78,7 +98,9 @@ void xml2vec(VectorXd &vec, XmlRpc::XmlRpcValue &my_list)
 }
 void pubtraj() //N is the number of segments
 {
-	int N = mbsdmoc->us.size();
+	if(!mbsddp)
+		return;
+	int N = mbsddp->us.size();
 	cout<<"N: "<<N<<endl;
 	int csize = mbsmodel->U.n;
 	cout<<"csize: "<<csize<<endl;
@@ -86,28 +108,28 @@ void pubtraj() //N is the number of segments
 	cout<<"nb: "<<nb<<endl;
 	Vector6d bpose;
 
-	//gcop::SE3::Instance().g2q(bpose, mbsdmoc->xs[0].gs[0]);
-	gcop::SE3::Instance().g2q(bpose,gposeroot_i*mbsdmoc->xs[0].gs[0]);
+	//gcop::SE3::Instance().g2q(bpose, mbsddp->xs[0].gs[0]);
+	gcop::SE3::Instance().g2q(bpose,gposeroot_i*mbsddp->xs[0].gs[0]);
 	q2transform(trajectory.statemsg[0].basepose,bpose);
 
 	for(int count1 = 0;count1 < nb-1;count1++)
 	{
-		trajectory.statemsg[0].statevector[count1] = mbsdmoc->xs[0].r[count1];
+		trajectory.statemsg[0].statevector[count1] = mbsddp->xs[0].r[count1];
 		trajectory.statemsg[0].names[count1] = mbsmodel->joints[count1].name;
 	}
 
 	for (int i = 0; i < N; ++i) 
 	{
-		gcop::SE3::Instance().g2q(bpose, gposeroot_i*mbsdmoc->xs[i+1].gs[0]);
+		gcop::SE3::Instance().g2q(bpose, gposeroot_i*mbsddp->xs[i+1].gs[0]);
 		q2transform(trajectory.statemsg[i+1].basepose,bpose);
 		for(int count1 = 0;count1 < nb-1;count1++)
 		{
-			trajectory.statemsg[i+1].statevector[count1] = mbsdmoc->xs[i+1].r[count1];
+			trajectory.statemsg[i+1].statevector[count1] = mbsddp->xs[i+1].r[count1];
 			trajectory.statemsg[i+1].names[count1] = mbsmodel->joints[count1].name;
 		}
 		for(int count1 = 0;count1 < csize;count1++)
 		{
-			trajectory.ctrl[i].ctrlvec[count1] = mbsdmoc->us[i](count1);
+			trajectory.ctrl[i].ctrlvec[count1] = mbsddp->us[i](count1);
 		}
 	}
 	//final goal:
@@ -120,17 +142,19 @@ void pubtraj() //N is the number of segments
 		trajectory.finalgoal.names[count1] = mbsmodel->joints[count1].name;
 	}
 
-	trajectory.time = mbsdmoc->ts;
+	trajectory.time = mbsddp->ts;
 	trajpub.publish(trajectory);
 
 }
 void iterateCallback(const ros::TimerEvent & event)
 {
+	if(!mbsddp)
+		return;
 	//getchar();
 	ros::Time startime = ros::Time::now(); 
 	for (int count = 1;count <= Nit;count++)
 	{
-		mbsdmoc->Iterate();//Updates us and xs after one iteration
+		mbsddp->Iterate();//Updates us and xs after one iteration
 	}
 	double te = 1e6*(ros::Time::now() - startime).toSec();
 	cout << "Time taken " << te << " us." << endl;
@@ -161,6 +185,8 @@ void initialposnCallback(const geometry_msgs::TransformStamped::ConstPtr &currfr
 */
 void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level) 
 {
+	if(!mbsddp)
+		return;
 	int nb = mbsmodel->nb;
 	Nit = config.Nit; 
 	//int N = config.N;
@@ -219,14 +245,14 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 			if(mbstype != "FIXEDBASE")
 			{
 				// overwrite the config with values from initial state
-				config.vroll = mbsdmoc->xs[0].vs[0](0);
-				config.vpitch = mbsdmoc->xs[0].vs[0](1);
-				config.vyaw = mbsdmoc->xs[0].vs[0](2);
-				config.vx = mbsdmoc->xs[0].vs[0](3);
-				config.vy = mbsdmoc->xs[0].vs[0](4);
-				config.vz = mbsdmoc->xs[0].vs[0](5);
+				config.vroll = mbsddp->xs[0].vs[0](0);
+				config.vpitch = mbsddp->xs[0].vs[0](1);
+				config.vyaw = mbsddp->xs[0].vs[0](2);
+				config.vx = mbsddp->xs[0].vs[0](3);
+				config.vy = mbsddp->xs[0].vs[0](4);
+				config.vz = mbsddp->xs[0].vs[0](5);
 
-				gcop::SE3::Instance().g2rpyxyz(rpy,xyz,mbsdmoc->xs[0].gs[0]);
+				gcop::SE3::Instance().g2rpyxyz(rpy,xyz,mbsddp->xs[0].gs[0]);
 				config.roll = rpy(0);
 				config.pitch = rpy(1);
 				config.yaw = rpy(2);
@@ -240,10 +266,10 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 			else if(config.i_J < 1)
 				config.i_J = 1;
 
-			config.Ji = mbsdmoc->xs[0].r[config.i_J-1];     
-			config.Jvi = mbsdmoc->xs[0].dr[config.i_J-1];     
+			config.Ji = mbsddp->xs[0].r[config.i_J-1];     
+			config.Jvi = mbsddp->xs[0].dr[config.i_J-1];     
 		}
-		config.mu = mbsdmoc->mu;
+		config.mu = mbsddp->mu;
 		config.tf = cost->tf;
 		if(config.iterate)
 		{
@@ -282,8 +308,8 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 	{
 		if(mbstype != "FIXEDBASE")
 		{
-			gcop::SE3::Instance().rpyxyz2g(mbsdmoc->xs[0].gs[0], Vector3d(config.roll,config.pitch,config.yaw), Vector3d(config.x,config.y,config.z));
-			mbsdmoc->xs[0].vs[0]<<config.vroll, config.vpitch, config.vyaw, config.vx, config.vy, config.vz;
+			gcop::SE3::Instance().rpyxyz2g(mbsddp->xs[0].gs[0], Vector3d(config.roll,config.pitch,config.yaw), Vector3d(config.x,config.y,config.z));
+			mbsddp->xs[0].vs[0]<<config.vroll, config.vpitch, config.vyaw, config.vx, config.vy, config.vz;
 		}
 
 		if(config.i_J > nb-1)
@@ -291,11 +317,11 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 		else if(config.i_J <= 0)
 			config.i_J = 1;
 
-		mbsdmoc->xs[0].r[config.i_J -1] = config.Ji;
-		mbsdmoc->xs[0].dr[config.i_J -1] = config.Jvi;
-		mbsmodel->Rec(mbsdmoc->xs[0], h);
+		mbsddp->xs[0].r[config.i_J -1] = config.Ji;
+		mbsddp->xs[0].dr[config.i_J -1] = config.Jvi;
+		mbsmodel->Rec(mbsddp->xs[0], h);
 		//return;
-		//mbsdmoc->xs[size] = mbsdmoc->xs[0];
+		//mbsddp->xs[size] = mbsddp->xs[0];
 	}
 	if(config.ureset)
 	{
@@ -314,15 +340,15 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 				u[5] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
 			cout<<"u[5]: "<<u[5]<<endl;
 		}
-		int size = mbsdmoc->us.size();
+		int size = mbsddp->us.size();
 		double t1;
 		/*if((mbstype == "FLOATBASE")||(mbstype == "FIXEDBASE"))
 		{
 			cout<<"Using Controller"<<endl;
 			for (int i = 0; i < size; ++i) {
 				t1 = i*h;
-				ctrl->Set(mbsdmoc->us[i], t1, mbsdmoc->xs[i]); 
-				mbsmodel->Step(mbsdmoc->xs[i+1], t1, mbsdmoc->xs[i], mbsdmoc->us[i], h);
+				ctrl->Set(mbsddp->us[i], t1, mbsddp->xs[i]); 
+				mbsmodel->Step(mbsddp->xs[i+1], t1, mbsddp->xs[i], mbsddp->us[i], h);
 			}
 		}
 		else
@@ -330,9 +356,9 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 			*/
 			for(int count = 0;count < size;count++)
 			{
-				mbsdmoc->us[count] = u;
-				mbsmodel->Step(mbsdmoc->xs[count+1], count*h, mbsdmoc->xs[count], mbsdmoc->us[count], h);
-				//mbsdmoc->xs[count] = mbsdmoc->xs[0];
+				mbsddp->us[count] = u;
+				mbsmodel->Step(mbsddp->xs[count+1], count*h, mbsddp->xs[count], mbsddp->us[count], h);
+				//mbsddp->xs[count] = mbsddp->xs[0];
 			}
 		//}
 	}
@@ -354,16 +380,16 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 	cost->R(config.i_R -1,config.i_R -1) = config.Ri;
 
 	//resize
-	//mbsdmoc->xs.resize(N+1);
-	//mbsdmoc->us.resize(N);
-	//mbsdmoc->ts.resize(N+1);
+	//mbsddp->xs.resize(N+1);
+	//mbsddp->us.resize(N);
+	//mbsddp->ts.resize(N+1);
 	//trajectory.N = N;
 	//trajectory.statemsg.resize(N+1);
 	//trajectory.ctrl.resize(N);
 
 	//Setting Values
 	for (int k = 0; k <=N; ++k)
-	mbsdmoc->ts[k] = k*h;
+	mbsddp->ts[k] = k*h;
 
 	cost->tf = config.tf;
 
@@ -373,15 +399,15 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 		u[5] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
 	 */
 
-	/*	for (int i = 0; i < mbsdmoc->xs.size()-1; ++i) 
+	/*	for (int i = 0; i < mbsddp->xs.size()-1; ++i) 
 			{
 			double t = i*h;
-			ctrl->Set(mbsdmoc->us[i], t, mbsdmoc->xs[i]);
-			mbsmodel->Step(mbsdmoc->xs[i+1], i*h, mbsdmoc->xs[i], mbsdmoc->us[i], h);
+			ctrl->Set(mbsddp->us[i], t, mbsddp->xs[i]);
+			mbsmodel->Step(mbsddp->xs[i+1], i*h, mbsddp->xs[i], mbsddp->us[i], h);
 			}
 	 */
 
-	mbsdmoc->mu = config.mu;
+	//mbsddp->mu = config.mu;[ONLY SET IN BEGINNING]
 	
 }
 
@@ -389,11 +415,12 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 int main(int argc, char** argv)
 {
 	ros::init(argc, argv, "chainload");
-	ros::NodeHandle n("mbsdmoc");
+	ros::NodeHandle n("mbsddp");
+//	signal(SIGINT, mySigintHandler);
 	//Initialize publisher
 	trajpub = n.advertise<gcop_comm::CtrlTraj>("ctrltraj",1);
 	//Subscribe to initial posn from tf
-	//initialposn_sub = rosdmoc.subscribe("mocap",1,initialposnCallback);
+	//initialposn_sub = rosddp.subscribe("mocap",1,initialposnCallback);
 	//get parameter for xml_string:
 	string xml_string, xml_filename;
 	if(!ros::param::get("/robot_description", xml_string))
@@ -407,7 +434,7 @@ int main(int argc, char** argv)
 	Matrix4d gposei_root;
 	//Create Mbs system
 	mbsmodel = gcop_urdf::mbsgenerator(xml_string,gposei_root, mbstype);
-	mbsmodel->U.bnd = false;
+	//[NOTE]mbsmodel->U.bnd = false;
 	gcop::SE3::Instance().inv(gposeroot_i,gposei_root);
 	cout<<"Mbstype: "<<mbstype<<endl;
 	mbsmodel->ag << 0, 0, -0.05;
@@ -472,7 +499,7 @@ int main(int argc, char** argv)
 
 	double h = tf/N; // time-step
 
-	
+
 
 	//times
 	vector<double> ts(N+1);
@@ -497,7 +524,7 @@ int main(int argc, char** argv)
 		gcop::SE3::Instance().rpyxyz2g(xf->gs[0],xmlconversion.head<3>(),xmlconversion.segment<3>(3)); 
 	}
 	xf->gs[0] = gposei_root*xf->gs[0];//new stuff with transformations
-  //list of joint angles:
+	//list of joint angles:
 	XmlRpc::XmlRpcValue xfj_list;
 	if(n.getParam("JN", xfj_list))
 		xml2vec(xf->r,xfj_list);
@@ -509,14 +536,14 @@ int main(int argc, char** argv)
 
 
 	//Define Lqr Cost
-	cost.reset(new LqCost<MbsState>(mbsmodel->X, (Rn<>&)mbsmodel->U, tf, *xf));
+	cost.reset(new LqCost<MbsState>(*mbsmodel, tf, *xf));
 	cost->Qf.setIdentity();
-/*	if(mbstype != "FIXEDBASE")
-	{
-		cost->Qf(0,0) = 2; cost->Qf(1,1) = 2; cost->Qf(2,2) = 2;
-		cost->Qf(3,3) = 20; cost->Qf(4,4) = 20; cost->Qf(5,5) = 20;
-	}
-	*/
+	/*	if(mbstype != "FIXEDBASE")
+			{
+			cost->Qf(0,0) = 2; cost->Qf(1,1) = 2; cost->Qf(2,2) = 2;
+			cost->Qf(3,3) = 20; cost->Qf(4,4) = 20; cost->Qf(5,5) = 20;
+			}
+	 */
 	//cost.Qf(9,9) = 20; cost.Qf(10,10) = 20; cost.Qf(11,11) = 20;
 	//list of final cost :
 	XmlRpc::XmlRpcValue finalcost_list;
@@ -529,7 +556,7 @@ int main(int argc, char** argv)
 		cost->Qf = xmlconversion.asDiagonal();
 		cout<<"Cost.Qf"<<endl<<cost->Qf<<endl;
 	}
-//
+	//
 	XmlRpc::XmlRpcValue statecost_list;
 	if(n.getParam("Q", statecost_list))
 	{
@@ -549,8 +576,8 @@ int main(int argc, char** argv)
 		cout<<"conversion"<<endl<<xmlconversion<<endl;
 		cost->R = xmlconversion.asDiagonal();
 	}
-		cout<<"Cost.R"<<endl<<cost->R<<endl;
-//
+	cout<<"Cost.R"<<endl<<cost->R<<endl;
+	//
 
 
 	//Define the initial state mbs
@@ -570,7 +597,7 @@ int main(int argc, char** argv)
 		gcop::SE3::Instance().rpyxyz2g(x0.gs[0],xmlconversion.head<3>(),xmlconversion.segment<3>(3)); 
 	}
 	x0.gs[0] = gposei_root*x0.gs[0];//new stuff with transformations
-  //list of joint angles:
+	//list of joint angles:
 	XmlRpc::XmlRpcValue j_list;
 	if(n.getParam("J0", j_list))
 		xml2vec(x0.r,j_list);
@@ -583,11 +610,16 @@ int main(int argc, char** argv)
 	// initial controls (e.g. hover at one place)
 	VectorXd u(mbsmodel->U.n);
 	u.setZero();
+	/* We wont need this any more since we are computing ext forces to stabilize automatically
 	if(mbstype == "AIRBASE")
 	{
 		for(int count = 0;count < nb;count++)
 			u[3] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
 		cout<<"u[3]: "<<u[3]<<endl;
+		double u1;
+		n.getParam("Torque_init",u1);
+		u[1] = u1;//Torque in y dirxn to stop rotation
+		cout<<"u[1]: "<<u[1]<<endl;
 	}
 	else if(mbstype == "FLOATBASE")
 	{
@@ -595,13 +627,43 @@ int main(int argc, char** argv)
 			u[5] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
 		cout<<"u[5]: "<<u[5]<<endl;
 	}
+	*/
 
 	//States and controls for system
+
+	cout<<"Finding Biases"<<endl;
+	int n11 = mbsmodel->nb -1 + 6*(!mbsmodel->fixed);
+	VectorXd forces(n11);
+	mbsmodel->Bias(forces,0,x0);
+	cout<<"Bias computed: "<<forces.transpose()<<endl;
+
+	//forces = -1*forces;//Controls should be negative of the forces
+
+
+	//Set Controls to cancel the forces:
+	if(mbstype == "FLOATBASE")
+	{
+		assert(6 + mbsmodel->nb - 1 == forces.size());
+		u.head(6) = forces.head(6);
+	}
+	else if(mbstype == "AIRBASE")
+	{
+		u[0] = forces[0];
+		u[1] = forces[1];
+		u[2] = forces[2];
+		u[3] = forces[5];	
+	}
+	//Add more types when they are here
+	cout<<"Nb: "<<nb<<endl;
+
+	//Joint Torques:
+	u.tail(nb-1) = forces.tail(nb-1);
+
 	vector<VectorXd> us(N,u);
 	vector<MbsState> xs(N+1,x0);
-	bool usectrl = true;
+	//bool usectrl = true;
 
-	// @MK: this is the new part, initialize trajectory using a controller
+	/* @MK: this is the new part, initialize trajectory using a controller [Replacing this with Direct computation of ext forces to stabilize]
 	if((mbstype == "FLOATBASE")||(mbstype == "FIXEDBASE"))
 	{
 		ctrl.reset(new MbsController(*mbsmodel, xf.get()));
@@ -631,16 +693,17 @@ int main(int argc, char** argv)
 			}
 		}
 	}
+	*/
 	//cout<<"us"<<endl<<us<<endl;
 
-  // see the result before running optimization
-  //getchar();
+	// see the result before running optimization
+	//getchar();
 
 
-	mbsdmoc.reset(new MbsDmoc(*mbsmodel, *cost, ts, xs, us));
+	mbsddp.reset(new MbsDdp(*mbsmodel, *cost, ts, xs, us));
 
-	mbsdmoc->mu = 10.0;
-	n.getParam("mu",mbsdmoc->mu);
+	mbsddp->mu = 10.0;
+	n.getParam("mu",mbsddp->mu);
 
 	//Trajectory message initialization
 	trajectory.N = N;
@@ -663,9 +726,9 @@ int main(int argc, char** argv)
 	}
 	//Debug true for mbs
 
-  //mbsmodel->debug = true;
+	//mbsmodel->debug = true;
 
-	
+
 	// Get number of iterations
 	n.getParam("Nit",Nit);
 	// Create timer for iterating	
@@ -677,7 +740,7 @@ int main(int argc, char** argv)
 		iteratetimer.start();
 	else
 		iteratetimer.stop();
-//	Dynamic Reconfigure setup Callback ! immediately gets called with default values	
+	//	Dynamic Reconfigure setup Callback ! immediately gets called with default values	
 	dynamic_reconfigure::Server<gcop_ctrl::MbsDMocInterfaceConfig> server;
 	dynamic_reconfigure::Server<gcop_ctrl::MbsDMocInterfaceConfig>::CallbackType f;
 	f = boost::bind(&paramreqcallback, _1, _2);
