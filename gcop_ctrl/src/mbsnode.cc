@@ -155,7 +155,6 @@ void filltraj(gcop_comm::CtrlTraj &trajectory, int N1) //N1 is the number of seg
 		trajectory.statemsg[i+1].names.resize(nb-1);
 		trajectory.ctrl[i].ctrlvec.resize(mbsmodel->U.n);
 	}
-	traj_size = N1;
 
 	gcop::SE3::Instance().g2q(bpose,gposeroot_i*mbsddp->xs[0].gs[0]);
 	q2transform(trajectory.statemsg[0].basepose,bpose);
