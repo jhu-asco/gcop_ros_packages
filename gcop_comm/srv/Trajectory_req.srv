@@ -1,5 +1,3 @@
-State x0 #Initial State
-State xf #Final State
-uint32 N #Number of segments to return
+Iteration_req itreq #Gives information needed to run an optimal control iteration
 ---
-CtrlTraj traj
+CtrlTraj traj #Response from Optimal Control Iteration

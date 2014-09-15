@@ -13,12 +13,16 @@
 #include "gcop_ctrl/MbsNodeInterfaceConfig.h"
 
 #include "tf/transform_datatypes.h"
-#include <tf/transform_listener.h>
+//#include <tf/transform_listener.h>
+#include "tf2_ros/static_transform_broadcaster.h"
 #include <dynamic_reconfigure/server.h>
 #include <XmlRpcValue.h>//To access xml arrays in parameters 
 
 #include <visualization_msgs/Marker.h>
+#include <gcop_comm/Iteration_req.h>
+#include <gcop_comm/CtrlTraj.h>
 #include <gcop_comm/Trajectory_req.h>
+#include <sensor_msgs/JointState.h>
 
 //#include <signal.h>
 
@@ -30,6 +34,9 @@ typedef Ddp<MbsState> MbsDdp;//defining chainddp
 
 
 //ros messages
+visualization_msgs::Marker trajectory_marker;
+std::vector<sensor_msgs::JointState> jointstate_vec;
+std::vector<geometry_msgs::TransformStamped> basetransform_msg;
 
 //Server
 ros::ServiceServer trajectory_service;
@@ -37,7 +44,12 @@ ros::ServiceServer trajectory_service;
 //Timer
 
 //Subscriber
-//ros::Subscriber initialposn_sub;
+ros::Subscriber iterationreq_sub;
+
+//Publisher
+ros::Publisher trajectory_pub;
+ros::Publisher visualize_trajectory_pub;
+std::vector<ros::Publisher> jointpub_vec;
 
 //Pointer for mbs system
 boost::shared_ptr<Mbs> mbsmodel;
@@ -52,13 +64,15 @@ boost::shared_ptr<MbsState> xf;
 boost::shared_ptr<LqCost<MbsState>> cost;
 
 int Nit = 1;//number of iterations for ddp
-int N = 100;      // discrete trajectory segments
+int Nrobotstovisualize = 3;//Number of robots to visualize other than the moving robot
 string mbstype; // Type of system
 Matrix4d gposeroot_i; //inital inertial frame wrt the joint frame
 Matrix4d gposei_root; //joint frame wrt inital inertial frame
+gcop_comm::CtrlTraj current_traj;
 //int traj_size = 0;
 
 
+//Helper Functions
 void q2transform(geometry_msgs::Transform &transformmsg, Vector6d &bpose)
 {
 	tf::Quaternion q;
@@ -82,34 +96,35 @@ void xml2vec(VectorXd &vec, XmlRpc::XmlRpcValue &my_list)
 			  vec[i] =  (double)(my_list[i]);
 	}
 }
+
+inline void msgtogcoptwist(const geometry_msgs::Twist &in, Vector6d &out)
+{
+	out<<(in.angular.x),(in.angular.y),(in.angular.z),(in.linear.x),(in.linear.y),(in.linear.z);
+}
+
+inline void gcoptwisttomsg(const Vector6d &in, geometry_msgs::Twist &out)
+{
+	out.angular.x = in[0]; out.angular.y = in[1]; out.angular.z = in[2];
+	out.linear.x = in[3]; out.linear.y = in[4]; out.linear.z = in[5];
+}
+
 void fill_mbsstate(MbsState &mbs_state,const gcop_comm::State &mbs_statemsg)
 {
 	int nb = mbsmodel->nb;
 	//Joint Angles
-	if(mbs_statemsg.statevector.size() == (nb-1))//Number of joint angles check
+	if(mbs_statemsg.statevector.size() == 2*(nb-1))//Number of joint angles and velocities check
 	{
 		for(int count1 = 0;count1 < nb-1;count1++)
 		{
 			mbs_state.r[count1] = mbs_statemsg.statevector[count1];
+			mbs_state.dr[count1] = mbs_statemsg.statevector[nb-1 + count1];//Can also do finite diff here instead of asking for it
 		}
 	}
 	else
 	{
-		ROS_INFO("Wrong size of joint angles provided");
+		ROS_INFO("Wrong size of joint angles and vel provided");
 	}
 
-	//Joint Velocities
-	if(mbs_statemsg.statevelvector.size() == (nb-1))//Number of joint angles check
-	{
-		for(int count1 = 0;count1 < nb-1;count1++)
-		{
-			mbs_state.dr[count1] = mbs_statemsg.statevelvector[count1];//Can also do finite diff here instead of asking for it
-		}
-	}
-	else
-	{
-		ROS_INFO("Wrong size of joint vel provided");
-	}
 	//Pose
 	Vector7d wquatxyz;
 	wquatxyz<<(mbs_statemsg.basepose.rotation.w),(mbs_statemsg.basepose.rotation.x),(mbs_statemsg.basepose.rotation.y),(mbs_statemsg.basepose.rotation.z),(mbs_statemsg.basepose.translation.x),(mbs_statemsg.basepose.translation.y),(mbs_statemsg.basepose.translation.z);
@@ -117,48 +132,50 @@ void fill_mbsstate(MbsState &mbs_state,const gcop_comm::State &mbs_statemsg)
 	mbs_state.gs[0] = gposei_root*mbs_state.gs[0];//To move towards the inertial posn of the base
 
 	//Body Fixed Velocities Have to use adjoint to transform this to inertial Frame TODO (For now no problem for quadcopter)
-	mbs_state.vs[0]<<(mbs_statemsg.basetwist.angular.x),(mbs_statemsg.basetwist.angular.y),(mbs_statemsg.basetwist.angular.z),(mbs_statemsg.basetwist.linear.x),(mbs_statemsg.basetwist.linear.y),(mbs_statemsg.basetwist.linear.z);
-
+	msgtogcoptwist(mbs_statemsg.basetwist,mbs_state.vs[0]);
 }
 
-void filltraj(gcop_comm::CtrlTraj &trajectory, int N1) //N1 is the number of segments requested
+void filltraj(gcop_comm::CtrlTraj &trajectory, int N1, bool resize=true) //N1 is the number of segments requested
 {
 	if(!mbsddp)
 		return;
 	cout<<"N1: "<<N1<<endl;
+	cout<<"Existing Traj_size: "<<trajectory.ctrl.size()<<endl;
 	int csize = mbsmodel->U.n;
 	cout<<"csize: "<<csize<<endl;
 	int nb = mbsmodel->nb;
 	cout<<"nb: "<<nb<<endl;
-	Vector6d bpose;
+	Vector6d bpose;//Temp variable
 
 	//Prepare trajectory msg:
 	//Will not be needed if we use nodelets and somehow pass it by pointer
 	//Or create a library to be used directly
-	trajectory.N = N1;
-	trajectory.statemsg.resize(N1+1);
-	trajectory.ctrl.resize(N1);
-	for(int count1 = 0;count1 <=N1;count1++)
-		trajectory.time.push_back(mbsddp->ts[count1]);
-	trajectory.rootname = mbsmodel->links[0].name;
-
-	trajectory.finalgoal.statevector.resize(nb-1);
-	trajectory.finalgoal.names.resize(nb-1);
-
-	trajectory.statemsg[0].statevector.resize(nb-1);
-	trajectory.statemsg[0].names.resize(nb-1);
-
-	for (int i = 0; i < N1; ++i) 
+	if(resize && (N1 != trajectory.ctrl.size()))//Can add more checks for if resize is needed or not
 	{
-		trajectory.statemsg[i+1].statevector.resize(nb-1);
-		trajectory.statemsg[i+1].statevelvector.resize(nb-1);
-		trajectory.statemsg[i+1].names.resize(nb-1);
-		trajectory.ctrl[i].ctrlvec.resize(mbsmodel->U.n);
+		trajectory.N = N1;
+		trajectory.statemsg.resize(N1+1);
+		trajectory.ctrl.resize(N1);
+		for(int count1 = 0;count1 <=N1;count1++)
+			trajectory.time.push_back(mbsddp->ts[count1]);
+		trajectory.rootname = mbsmodel->links[0].name;
+
+		trajectory.finalgoal.statevector.resize(nb-1);
+		trajectory.finalgoal.names.resize(nb-1);
+
+		trajectory.statemsg[0].statevector.resize(nb-1);
+		trajectory.statemsg[0].names.resize(nb-1);
+
+		for (int i = 0; i < N1; ++i) 
+		{
+			trajectory.statemsg[i+1].statevector.resize(2*(nb-1));
+			trajectory.statemsg[i+1].names.resize(nb-1);
+			trajectory.ctrl[i].ctrlvec.resize(mbsmodel->U.n);
+		}
 	}
 
-	gcop::SE3::Instance().g2q(bpose,gposeroot_i*mbsddp->xs[0].gs[0]);
-	q2transform(trajectory.statemsg[0].basepose,bpose);
-	//Can also fill the twists but may not be needed as of now
+	gcop::SE3::Instance().g2q(bpose,gposeroot_i*mbsddp->xs[0].gs[0]);//Can convert to 7dof instead of 6dof to avoid singularities TODO
+	q2transform(trajectory.statemsg[0].basepose , bpose);
+	gcoptwisttomsg(mbsddp->xs[0].vs[0],trajectory.statemsg[0].basetwist);//No conversion from inertial frame to the visual frame 
 
 	for(int count1 = 0;count1 < nb-1;count1++)
 	{
@@ -172,11 +189,12 @@ void filltraj(gcop_comm::CtrlTraj &trajectory, int N1) //N1 is the number of seg
 	{
 		gcop::SE3::Instance().g2q(bpose, gposeroot_i*mbsddp->xs[i+1].gs[0]);
 		q2transform(trajectory.statemsg[i+1].basepose,bpose);
-		//Can also fill the twists but may not be needed as of now
+		gcoptwisttomsg(mbsddp->xs[i+1].vs[0],trajectory.statemsg[i+1].basetwist);//No conversion from inertial frame to the visual frame 
+
 		for(int count1 = 0;count1 < nb-1;count1++)
 		{
 			trajectory.statemsg[i+1].statevector[count1] = mbsddp->xs[i+1].r[count1];
-			trajectory.statemsg[i+1].statevelvector[count1] = mbsddp->xs[i+1].dr[count1];
+			trajectory.statemsg[i+1].statevector[nb-1 + count1] = mbsddp->xs[i+1].dr[count1];
 			trajectory.statemsg[i+1].names[count1] = mbsmodel->joints[count1].name;
 		}
 		for(int count1 = 0;count1 < csize;count1++)
@@ -196,6 +214,102 @@ void filltraj(gcop_comm::CtrlTraj &trajectory, int N1) //N1 is the number of seg
 	}
 }
 
+void visualize_publish_traj()
+{
+	int N = mbsddp->us.size();
+	int nb = mbsmodel->nb;
+	Vector6d bpose;//Temp variable
+	static tf2_ros::StaticTransformBroadcaster broadcaster;
+
+	//publish the trajectory
+	trajectory_marker.header.stamp  = ros::Time::now();
+
+	for(int i =0;i<(N+1); i++)
+	{
+		gcop::SE3::Instance().g2q(bpose, gposeroot_i*mbsddp->xs[i].gs[0]);
+		trajectory_marker.points[i].x = bpose[3];
+		trajectory_marker.points[i].y = bpose[4];
+		trajectory_marker.points[i].z = bpose[5];
+	}
+	visualize_trajectory_pub.publish(trajectory_marker);
+
+	//Publish joint states:
+	//Publish Static Transform to visualize the intermediate robots:
+	for(int i = 0; i < Nrobotstovisualize;i++)
+	{
+		jointstate_vec[i].header.stamp = ros::Time::now();
+		basetransform_msg[i].header.stamp = ros::Time::now();
+
+		int indextoshow = (N*(i+1))/(Nrobotstovisualize);
+
+		for(int count1 = 0; count1 < (nb-1); count1++)
+		{
+			jointstate_vec[i].position[count1] = mbsddp->xs[indextoshow].r[count1];
+		}
+
+		gcop::SE3::Instance().g2q(bpose, gposeroot_i*mbsddp->xs[indextoshow].gs[0]);
+		q2transform(basetransform_msg[i].transform,bpose);
+
+		jointpub_vec[i].publish(jointstate_vec[i]);
+		broadcaster.sendTransform(basetransform_msg[i]);
+	}
+
+	for(int count1 = 0; count1 < (nb-1); count1++)
+		jointstate_vec[Nrobotstovisualize].position[count1] = xf->r[count1];
+
+	basetransform_msg[Nrobotstovisualize].header.stamp = ros::Time::now();
+	jointstate_vec[Nrobotstovisualize].header.stamp = ros::Time::now();
+
+	gcop::SE3::Instance().g2q(bpose, gposeroot_i*xf->gs[0]);
+	q2transform(basetransform_msg[Nrobotstovisualize].transform,bpose);
+
+	jointpub_vec[Nrobotstovisualize].publish(jointstate_vec[Nrobotstovisualize]);//Final Goal
+	broadcaster.sendTransform(basetransform_msg[Nrobotstovisualize]);
+}
+
+
+//Actual Callback Functions
+void iteration_request(const gcop_comm::Iteration_req &req)
+{
+	if(!mbsddp)
+		return;
+	int N = mbsddp->us.size();
+
+	//Fill the initial state mbs
+	fill_mbsstate(mbsddp->xs[0], req.x0);
+	//Also need to generate a trajectory which is consistent with the initial conditions and the controls
+
+	//Fill the final state mbs
+	fill_mbsstate(*xf, req.xf);
+
+	cost->tf = (req.tf < 0.01)?0.01:req.tf;
+	cout<<"tf: "<<(cost->tf)<<endl;
+	double h = (cost->tf)/N;   // time step
+	for (int k = 0; k <=N; ++k)
+		mbsddp->ts[k] = k*h;
+
+	mbsmodel->Rec(mbsddp->xs[0], h);//To fill the transformation matrices
+
+	//Iterating:
+	ros::Time startime = ros::Time::now(); 
+	for (int count = 1;count <= Nit;count++)
+	{
+		mbsddp->Iterate();//Updates us and xs after one iteration
+	}
+	double te = 1e6*(ros::Time::now() - startime).toSec();
+	cout << "Time taken " << te << " us." << endl;
+
+	int N1 = (req.N == 0 || req.N > N)?N:req.N;
+	filltraj(current_traj, N1);
+
+	visualize_publish_traj();//Publish to rviz
+
+	//Publish Trajectory
+	trajectory_pub.publish(current_traj);
+
+	return;
+}
+
 bool trajectory_request(gcop_comm::Trajectory_req::Request &req, gcop_comm::Trajectory_req::Response &resp)
 {
 	if(!mbsddp)
@@ -203,9 +317,19 @@ bool trajectory_request(gcop_comm::Trajectory_req::Request &req, gcop_comm::Traj
 	int N = mbsddp->us.size();
 
 	//Fill the initial state mbs
-	fill_mbsstate(mbsddp->xs[0], req.x0);
+	fill_mbsstate(mbsddp->xs[0], req.itreq.x0);
+	//Also need to generate a trajectory which is consistent with the initial conditions and the controls
+
 	//Fill the final state mbs
-	fill_mbsstate(*xf, req.xf);
+	fill_mbsstate(*xf, req.itreq.xf);
+
+	cost->tf = (req.itreq.tf < 0.01)?0.01:req.itreq.tf;
+	cout<<"tf: "<<(cost->tf)<<endl;
+	double h = (cost->tf)/N;   // time step
+	for (int k = 0; k <=N; ++k)
+		mbsddp->ts[k] = k*h;
+
+	mbsmodel->Rec(mbsddp->xs[0], h);//To fill the transformation matrices
 
 	//Iterating:
 	ros::Time startime = ros::Time::now(); 
@@ -217,10 +341,10 @@ bool trajectory_request(gcop_comm::Trajectory_req::Request &req, gcop_comm::Traj
 	cout << "Time taken " << te << " us." << endl;
 
 	//Fill Trajectory
-	if(req.N == 0 || req.N > N)//Check the requested number of segments is less than or equal to existing no of seg
-		req.N = N;//Overwrite the request
-	cout<<"Req_N: "<<req.N<<endl;
-	filltraj(resp.traj, req.N);
+	if(req.itreq.N == 0 || req.itreq.N > N)//Check the requested number of segments is less than or equal to existing no of seg
+		req.itreq.N = N;//Overwrite the request
+	cout<<"Req_N: "<<req.itreq.N<<endl;
+	filltraj(resp.traj, req.itreq.N);
 	return true;
 }
 
@@ -232,21 +356,12 @@ void paramreqcallback(gcop_ctrl::MbsNodeInterfaceConfig &config, uint32_t level)
 	if(level == 0xFFFFFFFF)
 	{
 		//Initialization:
-		config.tf = cost->tf;
 		config.Nit = Nit;
 	}
 	//Setting Values
 	if(level & 0x00000002)
 	{
 		Nit = config.Nit; 
-	}
-	else if(level & 0x00000004)
-	{
-		double h = config.tf/N;   // time step
-		cout<<"Config.tf: "<<config.tf<<endl;
-		cost->tf = config.tf;
-		for (int k = 0; k <=N; ++k)
-			mbsddp->ts[k] = k*h;
 	}
 	//mbsddp->mu = config.mu;[ONLY SET IN BEGINNING]
 }
@@ -300,7 +415,6 @@ int main(int argc, char** argv)
 	cout<<"ctrlveclength "<<ctrlveclength<<endl;
 	//set bounds on basebody controls
 	XmlRpc::XmlRpcValue ub_list;
-
 	if(n.getParam("ulb", ub_list))
 	{
 		xml2vec(xmlconversion,ub_list);
@@ -328,6 +442,7 @@ int main(int argc, char** argv)
 	//define parameters for the system
 	int nb = mbsmodel->nb;
 	double tf = 20;   // time-horizon
+	int N = 100;      // discrete trajectory segments
 
 	n.getParam("tf",tf);
 	n.getParam("N",N);
@@ -475,7 +590,7 @@ int main(int argc, char** argv)
 	vector<MbsState> xs(N+1,x0);
 	//bool usectrl = true;
 
-  //Creating Optimal Control Problem
+	//Creating Optimal Control Problem
 	mbsddp.reset(new MbsDdp(*mbsmodel, *cost, ts, xs, us));
 
 	mbsddp->mu = 10.0;
@@ -496,15 +611,58 @@ int main(int argc, char** argv)
 	f = boost::bind(&paramreqcallback, _1, _2);
 	server.setCallback(f);
 
+	//Setup the trajectory marker:
+	trajectory_marker.header.frame_id = "/optitrack";
+	trajectory_marker.ns = "traj";
+	trajectory_marker.action = visualization_msgs::Marker::ADD;
+	trajectory_marker.pose.orientation.w = 1.0;
+	trajectory_marker.id = 1;
+	trajectory_marker.type = visualization_msgs::Marker::LINE_STRIP;
+	trajectory_marker.scale.x = 0.05;
+	trajectory_marker.scale.y = 0.05;
+	trajectory_marker.scale.z = 0.05;
+	trajectory_marker.color.b = 1.0;
+	trajectory_marker.color.a = 1.0;
+	trajectory_marker.points.resize(N + 1);
+
+//Joint State Variable 	
+	sensor_msgs::JointState tempjoint;
+	tempjoint.position.resize(nb-1);
+	for(int count2 = 0;count2 < (nb-1); count2++)
+		tempjoint.name.push_back(mbsmodel->joints[count2].name);
+
+//base transform variable
+	geometry_msgs::TransformStamped temp_trans;
+	temp_trans.header.frame_id = "/optitrack";
+
 	//Setup ros server for accepting trajectory requests:
-	trajectory_service = n.advertiseService("traj_req", trajectory_request);
+	trajectory_service = n.advertiseService("traj_srv", trajectory_request);
+	trajectory_pub = n.advertise<gcop_comm::CtrlTraj>("traj_resp",1);
+	visualize_trajectory_pub = n.advertise<visualization_msgs::Marker>("desired_traj",1);
+
+	for(int count1 = 1;count1 < Nrobotstovisualize+1; count1++)
+	{
+		string robotname = "/vizrobot"+ to_string(count1);
+		jointpub_vec.push_back(n.advertise<sensor_msgs::JointState>(string(robotname+"/joint_states"),1));
+
+		tempjoint.header.frame_id = robotname;
+		jointstate_vec.push_back(tempjoint);
+
+		temp_trans.child_frame_id = robotname + "/" + mbsmodel->links[0].name;
+		basetransform_msg.push_back(temp_trans);
+	}
+
+	//Add one more joint state publisher  and variabl for goal state
+	jointpub_vec.push_back(n.advertise<sensor_msgs::JointState>("/goalrobot/joint_states",1));
+
+	tempjoint.header.frame_id = "goalrobot";
+	jointstate_vec.push_back(tempjoint);
+
+	iterationreq_sub = n.subscribe("iteration_req", 1, iteration_request);
+
+	temp_trans.child_frame_id = "/goalrobot/" + mbsmodel->links[0].name;
+	basetransform_msg.push_back(temp_trans);
+
 	ros::spin();
 	return 0;
 }
-
-
-	
-
-
-
-

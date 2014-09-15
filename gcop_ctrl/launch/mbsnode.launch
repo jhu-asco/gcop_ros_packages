@@ -1,12 +1,36 @@
 <?xml version="1.0"?>
-<launch>	
-	<arg name="parameters" default="$(find gcop_ctrl)/params/airbot5.yaml"/>
-
-	<include file="$(find gcop_urdf)/launch/display_chain.launch">
-		<arg name="model" default="$(find gcop_ctrl)/params/airbot5.urdf"/>
-	</include>
-
-  <rosparam command="load" file="$(arg parameters)" />
-	<node name="dmoc_mbsnode" pkg="gcop_ctrl" type="mbsnode" output="screen"/>
-	<!--node name="mbsreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" /-->
+<launch>
+  <arg name="parameters" default="$(find gcop_ctrl)/params/airbot5.yaml"/>
+  <arg name="model" default="$(find gcop_ctrl)/params/airbot5.urdf"/>
+  <param name="/robot_description" textfile="$(arg model)"/>
+  <group ns="movingrobot">
+    <param name="tf_prefix" value="movingrobot"/>
+    <param name="rate" value="20"/>
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher"/>
+  </group>
+  <group ns="vizrobot1">
+    <param name="tf_prefix" value="vizrobot1"/>
+    <param name="rate" value="20"/>
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher"/>
+  </group>
+  <group ns="vizrobot2">
+    <param name="tf_prefix" value="vizrobot2"/>
+    <param name="rate" value="20"/>
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher"/>
+  </group>
+  <group ns="vizrobot3">
+    <param name="tf_prefix" value="vizrobot3"/>
+    <param name="rate" value="20"/>
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher"/>
+  </group>
+  <group ns="goalrobot">
+    <param name="tf_prefix" value="goalrobot"/>
+    <param name="rate" value="20"/>
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher"/>
+  </group>
+  <!--node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher"/-->
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find gcop_ctrl)/chain_mbsnode.rviz"/>
+  <rosparam command="load" file="$(arg parameters)"/>
+  <node name="dmoc_mbsnode" pkg="gcop_ctrl" type="mbsnode" output="screen"/>
+  <!--node name="mbsreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" /-->
 </launch>
