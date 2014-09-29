@@ -7,7 +7,9 @@ Panels:
         - /Global Options1
         - /Status1
         - /Grid1
-        - /RobotModel1
+        - /TF1
+        - /TF1/Frames1
+        - /RobotModel1/Links1
         - /Axes1
       Splitter Ratio: 0.5
     Tree Height: 746
@@ -52,34 +54,118 @@ Visualization Manager:
       Reference Frame: <Fixed Frame>
       Value: true
     - Class: rviz/TF
-      Enabled: false
+      Enabled: true
       Frame Timeout: 15
       Frames:
-        All Enabled: true
+        All Enabled: false
+        camera:
+          Value: false
+        desiredframe:
+          Value: true
+        goalrobot/airbase:
+          Value: false
+        goalrobot/baselink:
+          Value: false
+        goalrobot/link2:
+          Value: false
+        goalrobot/link3:
+          Value: false
+        movingrobot/airbase:
+          Value: false
+        movingrobot/baselink:
+          Value: false
+        movingrobot/link2:
+          Value: false
+        movingrobot/link3:
+          Value: false
+        object:
+          Value: true
+        object_mod:
+          Value: false
+        optitrak:
+          Value: false
+        pixhawk:
+          Value: true
+        vizrobot1/airbase:
+          Value: false
+        vizrobot1/baselink:
+          Value: false
+        vizrobot1/link2:
+          Value: false
+        vizrobot1/link3:
+          Value: false
+        vizrobot2/airbase:
+          Value: false
+        vizrobot2/baselink:
+          Value: false
+        vizrobot2/link2:
+          Value: false
+        vizrobot2/link3:
+          Value: false
+        vizrobot3/airbase:
+          Value: false
+        vizrobot3/baselink:
+          Value: false
+        vizrobot3/link2:
+          Value: false
+        vizrobot3/link3:
+          Value: false
       Marker Scale: 1
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
       Tree:
-        {}
+        optitrak:
+          desiredframe:
+            {}
+          pixhawk:
+            camera:
+              {}
+            movingrobot/baselink:
+              movingrobot/airbase:
+                {}
       Update Interval: 0
-      Value: false
+      Value: true
     - Alpha: 1
       Class: rviz/RobotModel
       Collision Enabled: false
-      Enabled: false
+      Enabled: true
       Links:
         All Links Enabled: true
         Expand Joint Details: false
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
+        airbase:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        baselink:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        link1:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        link2:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        link3:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
       Name: RobotModel
       Robot Description: robot_description
       TF Prefix: movingrobot
       Update Interval: 0
-      Value: false
+      Value: true
       Visual Enabled: true
     - Alpha: 0.5
       Class: rviz/RobotModel
@@ -256,10 +342,18 @@ Visualization Manager:
       Radius: 0.01
       Reference Frame: <Fixed Frame>
       Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /rqt_quadcoptergui/armtarget
+      Name: Marker
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: optitrack
+    Fixed Frame: optitrak
     Frame Rate: 30
   Name: root
   Tools:
@@ -280,22 +374,22 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 4.09997
+      Distance: 9.30761
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.06
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 1.03098
-        Y: -0.291071
-        Z: 0.155672
+        X: 1.36513
+        Y: 1.7135
+        Z: 2.53317
       Name: Current View
       Near Clip Distance: 0.01
-      Pitch: 0.874797
+      Pitch: 0.384798
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.09771
+      Yaw: 6.08954
     Saved: ~
 Window Geometry:
   Displays:
@@ -313,5 +407,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1920
-  X: -5
+  X: 0
   Y: 0

@@ -96,6 +96,16 @@ void xml2vec(VectorXd &vec, XmlRpc::XmlRpcValue &my_list)
 			  vec[i] =  (double)(my_list[i]);
 	}
 }
+inline void msgtogcoptwist(const geometry_msgs::Twist &in, Vector6d &out)
+{
+	out<<(in.angular.x),(in.angular.y),(in.angular.z),(in.linear.x),(in.linear.y),(in.linear.z);
+}
+
+inline void gcoptwisttomsg(const Vector6d &in, geometry_msgs::Twist &out)
+{
+	out.angular.x = in[0]; out.angular.y = in[1]; out.angular.z = in[2];
+	out.linear.x = in[3]; out.linear.y = in[4]; out.linear.z = in[5];
+}
 void pubtraj() //N is the number of segments
 {
 	if(!mbsddp)
@@ -122,6 +132,7 @@ void pubtraj() //N is the number of segments
 	{
 		gcop::SE3::Instance().g2q(bpose, gposeroot_i*mbsddp->xs[i+1].gs[0]);
 		q2transform(trajectory.statemsg[i+1].basepose,bpose);
+		gcoptwisttomsg(mbsddp->xs[i+1].vs[0],trajectory.statemsg[i+1].basetwist);//No conversion from inertial frame to the visual frame 
 		for(int count1 = 0;count1 < nb-1;count1++)
 		{
 			trajectory.statemsg[i+1].statevector[count1] = mbsddp->xs[i+1].r[count1];

@@ -284,11 +284,50 @@ void iteration_request(const gcop_comm::Iteration_req &req)
 
 	cost->tf = (req.tf < 0.01)?0.01:req.tf;
 	cout<<"tf: "<<(cost->tf)<<endl;
+
 	double h = (cost->tf)/N;   // time step
 	for (int k = 0; k <=N; ++k)
 		mbsddp->ts[k] = k*h;
 
 	mbsmodel->Rec(mbsddp->xs[0], h);//To fill the transformation matrices
+
+	//Until we figure out how to give the right controls which will not make the system go crazy, we give the controls
+	// that cancel the external forces and make system not move at all.
+	// This is fine for open loop with lots of iterations in the beginning
+	VectorXd u(mbsmodel->U.n);
+	u.setZero();
+
+	//States and controls for system
+	cout<<"Finding Biases"<<endl;
+	int n11 = mbsmodel->nb -1 + 6*(!mbsmodel->fixed);
+	VectorXd forces(n11);
+	mbsmodel->Bias(forces,0,mbsddp->xs[0]);
+	cout<<"Bias computed: "<<forces.transpose()<<endl;
+
+	//Set Controls to cancel the ext forces:
+	if(mbstype == "FLOATBASE")
+	{
+		assert(6 + mbsmodel->nb - 1 == forces.size());
+		u.head(6) = forces.head(6);
+	}
+	else if(mbstype == "AIRBASE")
+	{
+		u[0] = forces[0];
+		u[1] = forces[1];
+		u[2] = forces[2];
+		u[3] = forces[5];	
+	}
+	//Add more types when they are here
+
+	//Joint Torques:
+	u.tail((mbsmodel->nb)-1) = forces.tail((mbsmodel->nb)-1);
+
+	//Setup the trajectory using the above controls:
+	for(int i = 0; i < N;i ++)
+	{
+		mbsddp->us[i] = u;
+		mbsmodel->Step(mbsddp->xs[i+1], i*h, mbsddp->xs[i], u, h);
+	}
 
 	//Iterating:
 	ros::Time startime = ros::Time::now(); 
@@ -612,7 +651,7 @@ int main(int argc, char** argv)
 	server.setCallback(f);
 
 	//Setup the trajectory marker:
-	trajectory_marker.header.frame_id = "/optitrack";
+	trajectory_marker.header.frame_id = "/optitrak";
 	trajectory_marker.ns = "traj";
 	trajectory_marker.action = visualization_msgs::Marker::ADD;
 	trajectory_marker.pose.orientation.w = 1.0;
@@ -633,7 +672,7 @@ int main(int argc, char** argv)
 
 //base transform variable
 	geometry_msgs::TransformStamped temp_trans;
-	temp_trans.header.frame_id = "/optitrack";
+	temp_trans.header.frame_id = "/optitrak";
 
 	//Setup ros server for accepting trajectory requests:
 	trajectory_service = n.advertiseService("traj_srv", trajectory_request);

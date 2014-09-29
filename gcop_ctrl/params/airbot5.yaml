@@ -1,5 +1,5 @@
 ## Controller Params
-mbsddp/tf: 3 # Final Time
+mbsddp/tf: 5 # Final Time
 mbsddp/N:  50 # Number of segments
 
                  #rpy                  #xyz            #vrpy            #vxyz
@@ -7,19 +7,20 @@ mbsddp/X0:   [0.0,0.0,0.0,   0.0,0.0,1.5,      0.0,0.0,0.0,      0.0,0.0,0.0]
 mbsddp/XN:   [0.0,0.0,0.0,   1.0,0.2,1.6,       0.0,0.0,0.0,   0.0,0.0,0.0]
 
                   #rpy                   #xyz               #r        #w0                      #v0             #dr
-mbsddp/Qf:   [100.0,100.0,100.0,         100.0,100.0,100.0,      100.0,100.0,      5.0,5.0,5.0,               2.0,2.0,2.0,      1.0,1.0]   #   Final   Cost
-mbsddp/Q:   [0.0,0.0,0.0,            0.0,0.0,0.0,            0.0,0.0,      5.0,5.0,5.0,            5.0,5.0,5.0,      5.0,5.0]   #   Final   Cost
+mbsddp/Qf:   [40.0,40.0,40.0,         40.0,40.0,40.0,      40.0,40.0,      5.0,5.0,5.0,               40.0,40.0,40.0,      1.0,1.0]   #   Final   Cost
+mbsddp/Q:   [0.0,0.0,0.0,            0.0,0.0,0.0,            0.0,0.0,      2.0,2.0,2.0,            1.0,1.0,1.0,      5.0,5.0]   #   Final   Cost
 
-mbsddp/R:    [0.1, 0.1, 0.1, 0.0,   0.1,0.1] #Control Cost
+mbsddp/R:    [0.05, 0.05, 0.05, 0.0,   0.1,0.1] #Control Cost
 
 mbsddp/ag: [0.0, 0.0, -9.81] # Gravity
 
 #mbsddp/Kp:   [.2,.2,.2,         2.0,2.0,2.0,   2.0,2.0]
 #mbsddp/Kd:   [1.0,1.0,1.0,      2.0,2.0,2.0,   2.0,2.0]
 
-mbsddp/J0: [1.54,-3.14]
+#mbsddp/J0: [1.59,3.125]
+mbsddp/J0: [1.59,0.0]
 #mbsddp/J0: [0.01,0.0]
-mbsddp/JN: [1.0,1.0] # Joint angles
+mbsddp/JN: [1.8,-1.0] # Joint angles
 
 
 mbsddp/ulb: [-5.0, -5.0, -5.0, 0.0] # lower bound on base body controls
@@ -29,10 +30,9 @@ mbsddp/basetype: "AIRBASE"
 
 mbsddp/mu: 0.0001
 
-mbsddp/Nit: 1 
+mbsddp/Nit: 5
 
 mbsddp/mode: "user"
 
 #mbsddp/Torque_init: 0
 #mbsddp/Torque_init: -0.16125
-

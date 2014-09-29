@@ -12,3 +12,6 @@ build*
 bin*
 docs/
 *.vim
+log*
+data*
+*.log

@@ -40,7 +40,7 @@
   </link>
   <link name="link1">
     <visual>
-      <origin rpy="0 0 0" xyz="0.0 0.0 ${-l1/2}"/>
+      <origin rpy="0 0 0" xyz="0.0 0.0 ${l1/2}"/>
       <material name="blue">
         <color rgba="0 0 0.8 1"/>
       </material>
@@ -49,13 +49,13 @@
       </geometry>
     </visual>
     <inertial>
-      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/><!-- Since motors are heavy they constitute most weight-->
       <xacro:compute_inertia_cuboid mass="${m1}" x="0.05" y="0.05" z="0.05"/>
     </inertial>
   </link>
   <link name="link2">
     <visual>
-      <origin rpy="0 0 0" xyz="0.0 0.0 ${-l2/2}"/>
+      <origin rpy="0 0 0" xyz="0.0 0.0 ${l2/2}"/>
       <geometry>
         <box size="0.02 0.02 ${l2}"/>
       </geometry>
@@ -70,7 +70,7 @@
   </link>
   <link name="link3">
     <visual>
-      <origin rpy="0 0 0" xyz="0.0 0.0 ${-l3/2}"/>
+      <origin rpy="0 0 0" xyz="0.0 0.0 ${l3/2}"/>
       <geometry>
         <box size="0.02 0.1 ${l3}"/>
       </geometry>
@@ -79,7 +79,7 @@
       </material>
     </visual>
     <inertial>
-      <origin rpy="0 0 0" xyz="0.0 0.0 ${-l3/2}"/>
+      <origin rpy="0 0 0" xyz="0.0 0.0 ${l3/2}"/>
       <xacro:compute_inertia_cuboid mass="${m3}" x="0.02" y="0.02" z="${l3}"/>
     </inertial>
   </link>
@@ -93,19 +93,21 @@
     <parent link="airbase"/>
     <child link="link1"/>
     <origin rpy="0 0 0" xyz="${x0} 0 ${-z0}"/>
-    <axis xyz="0 -1 0"/>
-    <limit effort="30" velocity="10.0" lower="${-15*degtorad}" upper="${105*degtorad}"/>
+    <axis xyz="0 1 0"/>
+    <!--limit effort="30" velocity="10.0" lower="-${360*degtorad}" upper="${360*degtorad}"/-->
+    <limit effort="30" velocity="10.0" lower="${75*degtorad}" upper="${165*degtorad}"/>
   </joint>
   <joint name="link1tolink2" type="revolute">
     <parent link="link1"/>
     <child link="link2"/>
-    <origin rpy="0 0 0" xyz="${-x1} 0 ${-l1}"/>
-    <axis xyz="0 -1 0"/>
-    <limit effort="30" velocity="10.0" lower="-${180*degtorad}" upper="${90*degtorad}"/>
+    <origin rpy="0 0 0" xyz="${x1} 0 ${l1}"/>
+    <axis xyz="0 1 0"/>
+    <!--limit effort="30" velocity="10.0" lower="-${360*degtorad}" upper="${360*degtorad}"/-->
+    <limit effort="30" velocity="10.0" lower="-${90*degtorad}" upper="${180*degtorad}"/>
   </joint>
   <joint name="link2tolink3" type="fixed">
     <parent link="link2"/>
     <child link="link3"/>
-    <origin rpy="0 0 0" xyz="0 0 ${-l2}"/>
+    <origin rpy="0 0 0" xyz="0 0 ${l2}"/>
   </joint>
 </robot>
