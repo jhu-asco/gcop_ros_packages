@@ -10,6 +10,7 @@
 #include <gcop/rnlqcost.h>
 #include <gcop/bulletrccar.h>
 #include <gcop/bulletworld.h>
+#include <gcop/controltparam.h>
 //#include "utils.h"
 //#include "controltparam.h"
 
@@ -147,7 +148,10 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
 
     config.iterate = false;
   }
-
+  if(config.send_traj)
+  {
+    gcoptraj_pub.publish(trajectory);
+  }
   if(config.animate)
   {
     //Run the system:
@@ -212,6 +216,13 @@ int main(int argc, char** argv)
   zs.resize(N+1);//<Resize the height vector and pass it to the rccar system
   sys.reset(new Bulletrccar(world, &zs));
   sys->initialz = 0.12;
+  sys->gain_cmdvelocity = 1;
+  sys->kp_steer = 0.0125;
+  sys->kp_torque = 15;
+  sys->steeringClamp = 15.0*(M_PI/180.0);
+  sys->U.lb[0] = -(sys->steeringClamp);
+  sys->U.ub[1] = (sys->steeringClamp);
+  sys->U.bnd = true;
 
   sys->offsettrans.setIdentity();
   sys->offsettransinv.setIdentity();
@@ -278,6 +289,8 @@ int main(int argc, char** argv)
 
     cost.R = temp.asDiagonal();
 
+    cost.UpdateGains();//#TODO Make this somehow implicit in the cost function otherwise becomes a coder's burden !
+
     cout<<"x0: "<<x0.transpose()<<endl;
     cout<<"xf: "<<xf.transpose()<<endl;
     cout<<"Q: "<<endl<<cost.Q<<endl;
@@ -317,7 +330,19 @@ int main(int argc, char** argv)
   vector<Vector2d> dus(N, du);
   vector<Vector2d> es(N, e);
 
-  ce.reset(new RccarCe(*sys, cost, ts, xs, us, 0, dus, es));
+  //Create Parametrization:
+  int Nk = 10;
+  nh.getParam("Nk", Nk);
+
+  vector<double> tks(Nk+1);
+  for (int k = 0; k <=Nk; ++k)
+  {
+    tks[k] = k*(tf/Nk);
+  }
+
+  ControlTparam<Vector4d, 4, 2> ctp(*sys, tks);// Create Linear Parametrization of controls
+
+  ce.reset(new RccarCe(*sys, cost, ctp, ts, xs, us, 0, dus, es));//Can pass custom parameters here too
   ce->ce.mras = false;///<#TODO Find out what these are
   ce->ce.inc = false;///<#TODO Find out what these are
   ce->external_render = &render_trajectory;

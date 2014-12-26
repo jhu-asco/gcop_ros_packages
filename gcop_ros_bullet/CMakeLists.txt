@@ -148,6 +148,11 @@ add_dependencies(cebulletcartest ${PROJECT_NAME}_gencfg gcop_comm_generate_messa
 add_executable(gnbulletcartest src/gnbulletcartest.cc)
 target_link_libraries(gnbulletcartest ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(gnbulletcartest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+
+add_executable(hybrid_ceandgn_bulletcartest src/hybrid_ceandgn_bulletcartest.cc)
+target_link_libraries(hybrid_ceandgn_bulletcartest ${LIBS} ${catkin_LIBRARIES})
+add_dependencies(hybrid_ceandgn_bulletcartest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(gcop_ros_bullet_node gcop_ros_bullet_generate_messages_cpp)
