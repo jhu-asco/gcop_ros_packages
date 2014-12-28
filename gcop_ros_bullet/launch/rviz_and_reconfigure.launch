@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<launch>
+
+  <node name="rcreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure"/>
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find gcop_ros_bullet)/launch/rccar.rviz" />
+
+</launch>
