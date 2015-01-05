@@ -43,7 +43,6 @@ vector<Vector4d> xs;///< State trajectory of the system
 vector<Vector2d> us;///< Controls for the trajectory of the system
 vector<double> ts;///< Times for trajectory
 vector<double> zs;///< Height of the car along the trajectory (same as xs) only used for visualization
-bool sendtrajectory;///< Send the gcop trajectory 
 int Nreq;///< Number of segments requested for gcop trajectory
 
 //ros publisher and subscribers:
@@ -168,17 +167,12 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     }//#DEBUG
 
     //Publish control trajectory when parameter is set:
-    if(sendtrajectory)
+    for (int count = 0;count<Nreq;count++)
     {
-      for (int count = 0;count<Nreq;count++)
-      {
-        for(int count1 = 0;count1 < 2;count1++)
-        {
-          trajectory.ctrl[count].ctrlvec[count1] = us[count](count1);
-        }
-      }
-      ROS_INFO("Publishing Trajectory");
-      gcoptraj_pub.publish(trajectory);
+	    for(int count1 = 0;count1 < 2;count1++)
+	    {
+		    trajectory.ctrl[count].ctrlvec[count1] = us[count](count1);
+	    }
     }
 
     config.iterate = false;
@@ -186,8 +180,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
   if(config.send_traj)
   {
     ROS_INFO("Publishing Trajectory");
-    if(sendtrajectory)
-      gcoptraj_pub.publish(trajectory);
+    gcoptraj_pub.publish(trajectory);
     config.send_traj = false;
   }
   if(config.animate)
@@ -255,8 +248,10 @@ int main(int argc, char** argv)
   sys.reset(new Bulletrccar(world, &zs));
   sys->initialz = 0.12;
   sys->gain_cmdvelocity = 1;
-  sys->kp_steer = 0.0125;
-  sys->kp_torque = 15;
+  sys->kp_steer = 0.2;
+  sys->kp_torque = 100;
+  sys->gain_cmdvelocity = 1.04;
+  //sys->kp_torque = 25;
   sys->steeringClamp = 15.0*(M_PI/180.0);
   sys->U.lb[0] = -(sys->steeringClamp);
   sys->U.ub[1] = (sys->steeringClamp);
@@ -349,8 +344,10 @@ int main(int argc, char** argv)
   us.resize(N);
 
   for (int i = 0; i < N/2; ++i) {
-    us[i] = Vector2d(1, -.1);
-    us[N/2+i] = Vector2d(1, -.1);    
+    us[i] = Vector2d(0.4, -.1);
+    us[N/2+i] = Vector2d(0.4, -.1);    
+    //us[i] = Vector2d(1, -.1);
+    //us[N/2+i] = Vector2d(1, -.1);    
   }
   //Set initial state:
   xs[0] = x0;
@@ -437,21 +434,17 @@ int main(int argc, char** argv)
 	joint_state.name[1] = "base_to_frontwheel2";
 	joint_state.name[2] = "base_to_backwheel1";
   // Initialize control trajectory for publishing:
-  sendtrajectory = false;
-  nh.getParam("sendtrajectory",sendtrajectory);
-  if(sendtrajectory)
+
+  cout<<"Send Trajectory SET "<<endl;
+  Nreq = N;
+  nh.getParam("Nreq",Nreq);
+  assert((Nreq <= N) && (Nreq >0));
+  trajectory.N = Nreq;
+  trajectory.ctrl.resize(Nreq);
+  trajectory.time.assign(ts.begin(), ts.begin()+Nreq+1);
+  for(int count1 = 0;count1 < Nreq; count1++)
   {
-    cout<<"Send Trajectory SET "<<endl;
-    Nreq = N;
-    nh.getParam("Nreq",Nreq);
-    assert((Nreq <= N) && (Nreq >0));
-    trajectory.N = Nreq;
-    trajectory.ctrl.resize(Nreq);
-    trajectory.time.assign(ts.begin(), ts.begin()+Nreq+1);
-    for(int count1 = 0;count1 < Nreq; count1++)
-    {
-      trajectory.ctrl[count1].ctrlvec.resize(2);//2 controls
-    }
+	  trajectory.ctrl[count1].ctrlvec.resize(2);//2 controls
   }
 
   while(ros::ok())
