@@ -149,6 +149,10 @@ add_executable(gnbulletcartest src/gnbulletcartest.cc)
 target_link_libraries(gnbulletcartest ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(gnbulletcartest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
+add_executable(spsabulletcartest src/spsabulletcartest.cc)
+target_link_libraries(spsabulletcartest ${LIBS} ${catkin_LIBRARIES})
+add_dependencies(spsabulletcartest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+
 add_executable(hybrid_ceandgn_bulletcartest src/hybrid_ceandgn_bulletcartest.cc)
 target_link_libraries(hybrid_ceandgn_bulletcartest ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(hybrid_ceandgn_bulletcartest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
