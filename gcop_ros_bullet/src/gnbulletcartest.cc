@@ -24,6 +24,7 @@
 #include <tf/transform_broadcaster.h>
 #include <std_msgs/Float64MultiArray.h>
 #include "gcop_comm/CtrlTraj.h"//msg for publishing ctrl trajectory
+#include <std_msgs/Float64.h>
 
 
 using namespace std;
@@ -41,16 +42,20 @@ vector<double> ts;///< Times for trajectory
 vector<double> zs;///< Height of the car along the trajectory (same as xs) only used for visualization
 bool sendtrajectory;///< Send the gcop trajectory 
 int Nreq;///< Number of segments requested for gcop trajectory
+Vector4d xf(0,0,0,0);///< final state
+double marker_height;///< Height of the final arrow
 
 //ros publisher and subscribers:
 ros::Publisher joint_pub;///<Rccar model joint publisher for animation
 ros::Publisher traj_pub;///<Rviz best trajectory publisher
 ros::Publisher sampletraj_pub;///<Rviz sample trajectories publisher
 ros::Publisher gcoptraj_pub;///<Publisher for gcop trajectory (States, times, Controls)
+ros::Publisher costlog_pub;///<Publish the cost after every iteration for logging
 
 //Messages:
 visualization_msgs::Marker line_strip;///<Best trajectory message
 visualization_msgs::Marker sampleline_strip;///<Sample trajectory message
+visualization_msgs::Marker goal_arrow;///<Best trajectory message
 sensor_msgs::JointState joint_state;///< Joint states for wheels in animation
 gcop_comm::CtrlTraj trajectory;
 
@@ -88,6 +93,44 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
   if(config.iterate)
   {
     ros::Time currtime;
+
+    //Set rviz goal model also
+    goal_arrow.pose.position.x = xf(0);
+    goal_arrow.pose.position.y = xf(1);
+    goal_arrow.pose.position.z = marker_height;
+    tf::quaternionTFToMsg(tf::createQuaternionFromYaw(xf(2)+M_PI/2), goal_arrow.pose.orientation);
+    traj_pub.publish(goal_arrow);
+
+    //Publishing initial trajectory:
+    line_strip.header.stamp  = ros::Time::now();
+    for(int i =0;i<xs.size(); i++)
+    {
+      //geometry_msgs::Point p;
+      line_strip.points[i].x = xs[i][0];
+      line_strip.points[i].y = xs[i][1];
+      line_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
+    }
+    traj_pub.publish(line_strip);
+
+    //Publish initial trajectory cost:
+    //Publish the cost of the initial trajectory:
+    {
+      double cost1 = 0;
+      int N = us.size();
+      int count_cost = 0;
+      for(count_cost = 0;count_cost < N;count_cost++)
+      {
+        double h = (ts[count_cost+1] - ts[count_cost]);
+        cost1 += (gn->cost).L(ts[count_cost], xs[count_cost], us[count_cost], h, 0);
+      }
+      cost1 += (gn->cost).L(ts[count_cost], xs[count_cost], us[count_cost-1], 0, 0);
+      cout<<"Initial cost: "<<cost1<<endl;
+
+      std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
+      costmsg.data = cost1;
+      costlog_pub.publish(costmsg);
+    }
+
     cout<<"Iterating: "<<endl;
     for (int i = 0; i < config.Nit; ++i) {
       currtime = ros::Time::now();
@@ -95,6 +138,12 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       cout << "Iteration #" << i << " took: " << (ros::Time::now() - currtime).toSec()*1e3 << " ms." << endl;
       //cout << "Cost=" << gn->J << endl;#TODO Add this to docp very important
       //cout<<"xsN: "<<xs.back().transpose()<<endl;
+
+      std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
+      costmsg.data = gn->J;
+      costlog_pub.publish(costmsg);
+      costmsg.data = gn->nofevaluations;
+      costlog_pub.publish(costmsg);
 
       //Publish rviz Trajectory for visualization:
       line_strip.header.stamp  = ros::Time::now();
@@ -127,7 +176,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       }
       gcoptraj_pub.publish(trajectory);
     }
-
+ 
     config.iterate = false;
   }
 
@@ -176,6 +225,7 @@ int main(int argc, char** argv)
 	sampletraj_pub = nh.advertise<visualization_msgs::Marker>("sample_traj", 100);
 	joint_pub = nh.advertise<sensor_msgs::JointState>("/joint_states", 1);
   gcoptraj_pub = nh.advertise<gcop_comm::CtrlTraj>("ctrltraj",1);
+  costlog_pub = nh.advertise<std_msgs::Float64>("cost",1);
 
   /* Parametersf for solver */
   int N = 32;        // number of segments
@@ -184,8 +234,11 @@ int main(int argc, char** argv)
   nh.getParam("N",N);
   ROS_ASSERT(2*int(N/2) == N);//May not be really necessary #CHECK
   nh.getParam("tf",tf);
+  if(!nh.getParam("marker_height",marker_height))
+    marker_height = 1.0;
   cout<<"N: "<<N<<endl;
   cout<<"tf: "<<tf<<endl;
+  cout<<"marker_height: "<<marker_height<<endl;
 
   double h = tf/N;   // time step
 
@@ -195,9 +248,9 @@ int main(int argc, char** argv)
   zs.resize(N+1);//<Resize the height vector and pass it to the rccar system
   sys.reset(new Bulletrccar(world, &zs));
   sys->initialz = 0.12;
-  sys->gain_cmdvelocity = 1;
-  sys->kp_steer = 0.0125;
-  sys->kp_torque = 15;
+  sys->gain_cmdvelocity = 1.04;
+  sys->kp_steer = 0.2;
+  sys->kp_torque = 100;
   sys->steeringClamp = 15.0*(M_PI/180.0);
   sys->U.lb[0] = -(sys->steeringClamp);
   sys->U.ub[1] = (sys->steeringClamp);
@@ -226,8 +279,6 @@ int main(int argc, char** argv)
   // initial state
   Vector4d x0(1,1,0,0);
 
-  // final state
-  Vector4d xf(0,0,0,0);
 
   // cost
   RnLqCost<4, 2,Dynamic, 6> cost(*sys, tf, xf);
@@ -290,8 +341,8 @@ int main(int argc, char** argv)
   us.resize(N);
 
   for (int i = 0; i < N/2; ++i) {
-    us[i] = Vector2d(2, -.2);
-    us[N/2+i] = Vector2d(2, -.2);    
+    us[i] = Vector2d(0.5, 0);
+    us[N/2+i] = Vector2d(0.5, 0);    
   }
   //Set initial state:
   xs[0] = x0;
@@ -314,7 +365,7 @@ int main(int argc, char** argv)
   //Set up dynamic reconfigure:
 	dynamic_reconfigure::Server<gcop_ros_bullet::CEInterfaceConfig> server;
 	dynamic_reconfigure::Server<gcop_ros_bullet::CEInterfaceConfig>::CallbackType f = boost::bind(&ParamreqCallback, _1, _2);
-	server.setCallback(f);
+	server.setCallback(f); 
 
   //Print the current trajectory :
   cout<<"us_size"<<us.size()<<endl;
@@ -346,6 +397,20 @@ int main(int argc, char** argv)
 	sampleline_strip.color.b = 1.0;
 	sampleline_strip.color.a = 1.0;
   sampleline_strip.points.resize(xs.size());
+
+  //Create a cylinder marker:
+  goal_arrow.header.frame_id="/world";
+  goal_arrow.ns = "goalmarker";
+  goal_arrow.action = visualization_msgs::Marker::ADD;
+  goal_arrow.id = 1000;//Some big number which should not match wit others
+  goal_arrow.type = visualization_msgs::Marker::ARROW;
+  goal_arrow.pose.orientation.w = 1.0;
+  goal_arrow.scale.x = 1.5;
+  goal_arrow.scale.y = 0.1;
+  goal_arrow.scale.z = 0.1;
+  goal_arrow.color.r = 1.0;
+  goal_arrow.color.a = 1.0;
+
 
   //initializing joint msg for animation
 	joint_state.name.resize(3);

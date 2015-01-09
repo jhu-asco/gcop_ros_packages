@@ -6,10 +6,12 @@
 
   <!--node name="rccar_opt" pkg="gcop_ros_bullet" type="cebulletcartest" output="screen" launch-prefix="valgrind"-->
   <node name="rccar_opt" pkg="gcop_ros_bullet" type="gnbulletcartest" output="screen">
-    <param name="mesh" type="str" value="plane"/>
-    <!--param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/carterrain_goodquality.stl"/-->
-    <param name="sendtrajectory" type="bool" value="true"/>
-    <rosparam command="load" file="$(find gcop_ros_bullet)/params/gnrccar.yaml"/>
+    <!--param name="mesh" type="str" value="plane"/>
+    <param name="marker_height" type="double" value="0"/-->
+    <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/carterrain_goodquality.stl"/>
+    <param name="marker_height" type="double" value="0.4"/>
+    <!--param name="sendtrajectory" type="bool" value="true"/-->
+    <rosparam command="load" file="$(find gcop_ros_bullet)/params/gnterrain_rccar.yaml"/>
     <!--param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/car_terrain_lowresmesh.dae"/-->
   </node>
 

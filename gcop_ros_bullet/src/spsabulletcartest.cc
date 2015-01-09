@@ -292,8 +292,8 @@ int main(int argc, char** argv)
   us.resize(N);
 
   for (int i = 0; i < N/2; ++i) {
-    us[i] = Vector2d(2, -.2);
-    us[N/2+i] = Vector2d(2, -.2);    
+    us[i] = Vector2d(0.5, 0);
+    us[N/2+i] = Vector2d(0.5, 0);    
   }
   //Set initial state:
   xs[0] = x0;

@@ -1,13 +1,14 @@
 <?xml version="1.0"?>
 <launch>
 
+  <param name="mesh_description" textfile="$(find gcop_ros_bullet)/urdf/mesh.urdf"/>
   <param name="robot_description" textfile="$(find gcop_ros_bullet)/urdf/rccar.urdf"/>
 
   <!--node name="rccar_opt" pkg="gcop_ros_bullet" type="cebulletcartest" output="screen" launch-prefix="valgrind"-->
-  <node name="rccar_opt" pkg="gcop_ros_bullet" type="hybrid_ceandgn_bulletcartest" output="screen">
-    <param name="mesh" type="str" value="plane"/>
-    <param name="marker_height" type="double" value="0"/>
-    <rosparam command="load" file="$(find gcop_ros_bullet)/params/cerccar.yaml"/>
+  <node name="rccar_opt" pkg="gcop_ros_bullet" type="hybrid_ceandgn_bulletcartest2" output="screen">
+    <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/carterrain_goodquality.stl"/>
+    <rosparam command="load" file="$(find gcop_ros_bullet)/params/ceterrain_rccar.yaml"/>
+    <param name="marker_height" type="double" value="0.4"/>
   </node>
 
   <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
@@ -20,13 +21,5 @@
   <node name="rcreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure"/>
 
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find gcop_ros_bullet)/launch/rccar.rviz" />
-
-  <include file="$(find rampage_logger)/launch/rampage_rosserial.launch">
-	<arg name="serial_number" value="1"/>
-  </include>
-
-  <include file="$(find rampage_logger)/launch/rampage_rosserial.launch">
-	<arg name="serial_number" value="5"/>
-  </include>
 
 </launch>

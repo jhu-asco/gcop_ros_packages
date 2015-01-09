@@ -12,6 +12,7 @@
 #include <gcop/bulletrccar.h>
 #include <gcop/bulletworld.h>
 #include <gcop/controltparam.h>
+#include <gcop/tparam.h>
 //#include "utils.h"
 //#include "controltparam.h"
 
@@ -46,7 +47,14 @@ vector<double> ts;///< Times for trajectory
 vector<double> zs;///< Height of the car along the trajectory (same as xs) only used for visualization
 int Nreq;///< Number of segments requested for gcop trajectory
 Vector4d xf(0,0,0,0);///< final state
+Vector4d x0bar(1,1,0,0);///< perturbed initial state
 double marker_height;///< Height of the final arrow
+double tf_gn = 2.0;///< Time horizon for gauss newton shooting
+
+vector<Vector4d> xs_gn;///< State trajectory of the system (For feedback)
+vector<Vector2d> us_gn;///< Controls for the trajectory of the system
+vector<double> ts_gn;///< Times for trajectory
+Vector4d xf_gn(0,0,0,0);///< final state
 
 //ros publisher and subscribers:
 ros::Publisher joint_pub;///<Rccar model joint publisher for animation
@@ -57,6 +65,7 @@ ros::Publisher costlog_pub;///<Publish the cost after every iteration for loggin
 
 //Messages:
 visualization_msgs::Marker line_strip;///<Best trajectory message
+visualization_msgs::Marker gnline_strip;///<Best gn trajectory message
 visualization_msgs::Marker sampleline_strip;///<Sample trajectory message
 visualization_msgs::Marker goal_arrow;///<Best trajectory message
 sensor_msgs::JointState joint_state;///< Joint states for wheels in animation
@@ -164,67 +173,26 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       costlog_pub.publish(costmsg);
       costmsg.data = ce->nofevaluations;
       costlog_pub.publish(costmsg);
+      //Publish rviz Trajectory for visualization:
+      line_strip.header.stamp  = ros::Time::now();
 
-      //Set the Gn guess to be the ce guess:
-      if(abs(ce->ce.Jmin - ce->J)<1e-3)
-        gn->s = ce->ce.zmin;//Current mean
-      
-      for(int count_gn = 0;count_gn < 2;count_gn++)
+      for(int i =0;i<xs.size(); i++)
       {
-        //Publish rviz Trajectory for visualization:
-        line_strip.header.stamp  = ros::Time::now();
-
-        for(int i =0;i<xs.size(); i++)
-        {
-          //geometry_msgs::Point p;
-          line_strip.points[i].x = xs[i][0];
-          line_strip.points[i].y = xs[i][1];
-          line_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
-        }
-        traj_pub.publish(line_strip);
-        
-        //cout<<"Current Param guess: "<<(gn->s).transpose()<<endl;
-        gn->Iterate();//Iterate Gauss newton 2 times for every ce
-        cout << "Cost=" << gn->J << endl;
-
-        std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
-        costmsg.data = gn->J;
-        costlog_pub.publish(costmsg);
-        costmsg.data = gn->nofevaluations;
-        costlog_pub.publish(costmsg);
-        //getchar();
+        //geometry_msgs::Point p;
+        line_strip.points[i].x = xs[i][0];
+        line_strip.points[i].y = xs[i][1];
+        line_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
       }
-      //Set the ce mu to the one from gauss newton optimization:
-      ce->ce.gmm.ns[0].mu = gn->s;
-      ce->ce.zmin = gn->s;
-      ce->J = gn->J;
-      /*{
-        double cost1 = 0;
-        int N = us.size();
-        Vector6d g;
-        int count_cost = 0;
-        for(count_cost = 0;count_cost < N;count_cost++)
-        {
-          double h = (ts[count_cost+1] - ts[count_cost]);
-          cost1 += (ce->cost).L(ts[count_cost], xs[count_cost], us[count_cost], h, 0);
-          //gn->cost.Res(g, ts[count_cost], xs[count_cost], us[count_cost], h, 0);
-          //cost2 += 0.5*(g.transpose()*g);
-        }
-        cost1 += (ce->cost).L(ts[count_cost], xs[count_cost], us[count_cost-1], 0, 0);
+      traj_pub.publish(line_strip);
 
-        ce->J =  cost1;
-      }
-      */
-      //cout<<"xsN: "<<xs.back().transpose()<<endl;
+
     }
     
-    /*for(int i =0;i < us.size();i++)
+    for(int i =0;i < us.size();i++)
     {
       cout<<"us["<<i<<"]: "<<us[i].transpose()<<endl;
       cout<<"xs["<<i+1<<"]: "<<xs[i+1].transpose()<<endl;
     }//#DEBUG
-    */
-
     //Publish control trajectory when parameter is set:
     for (int count = 0;count<Nreq;count++)
     {
@@ -245,31 +213,151 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
   if(config.animate)
   {
     //Run the system:
-    sys->reset(xs[0],ts[0]);
-    for(int count1 = 0;count1 < us.size();count1++)
+    sys->reset(x0bar, ts[0]);
+    
+    int count_gn = 0;
+    double h = (ce->cost.tf)/us.size();//h for the original problem
+    int N_gn = round(tf_gn/h);
+    cout<<"ce->cost.tf: "<<(ce->cost.tf)<<endl;
+    cout<<"N_gn: "<<(N_gn)<<endl;
+
+    while(count_gn*tf_gn < (ce->cost.tf))
     {
-      sys->Step2(us[count1], ts[count1+1]-ts[count1]);
-      //Set the car joint stuff:
-      joint_state.header.stamp = ros::Time::now();
-      //Back wheel
-			joint_state.position[2] = 0;
-			//steering angle
-			joint_state.position[0] = sys->gVehicleSteering;
-			joint_state.position[1] = sys->gVehicleSteering;
-			//send joint state
-			joint_pub.publish(joint_state);
-      //Set the pose for the car:
-      btTransform chassistransform = (sys->m_carChassis)->getWorldTransform();
-      btQuaternion chassisquat = chassistransform.getRotation();
-      btVector3 chassisorig = chassistransform.getOrigin();
-      tf::Transform tf_chassistransform;
-      tf_chassistransform.setRotation(tf::Quaternion(chassisquat.x(), chassisquat.y(), chassisquat.z(), chassisquat.w()));
-      tf_chassistransform.setOrigin(tf::Vector3(chassisorig.x(), chassisorig.y(), chassisorig.z()));
-      broadcaster->sendTransform(tf::StampedTransform(tf_chassistransform, ros::Time::now(), "world", "base_link"));
-      cout<<"ce->sys.x" <<ts[count1+1]<<"\txs: "<<(sys->x).transpose()<<endl;//#DEBUG
-      usleep((ts[count1+1] - ts[count1])*1e6);//microseconds
+      //set x0 for gn based on current car state
+      sys->setinitialstate(xs_gn[0]);
+      //set the gn controls from ce trajectory:
+      //us_gn from us
+      //  int index_start = round((count_gn*tf_gn)/h);
+      // int index_end = round((count_gn+1)*tf_gn/h);
+      //index_end  = index_end < us.size()?index_end:(us.size()-1);//Bind the final index 
+      int us_index = 0;
+      for(int count_us = 0; count_us < N_gn; count_us++)
+      {
+        us_index = (count_gn*N_gn + count_us);
+        if(us_index < us.size())
+          us_gn[count_us] = us[us_index];
+        else
+          us_gn[count_us] = Vector2d::Zero();
+        cout<<"us_gn["<<count_us<<"]: "<<us_gn[count_us].transpose()<<endl;
+      }
+      gn->tparam.To(gn->s, ts_gn, xs_gn, us_gn, 0);//Convert the controls into a single vector for gn
+      /*
+      if(gn->lm)
+      {
+        int info = (gn->lm)->minimizeInit(gn->s);//Reinitialize the gn everytime
+        cout<<"info: "<<info<<endl;
+      }
+      */
+      if(gn->lm)
+      {
+        delete (gn->lm);
+        gn->lm = 0;
+      }
+      //getchar();
+
+      //set the xf_gn from ce trajectory
+      int xf_index = (count_gn+1)*N_gn;
+      if(xf_index < xs.size()-1)
+        xf_gn = xs[xf_index];
+      else
+        xf_gn = xf;//For last time use the actual final goal instead of the trajectory
+      //#DEBUG:
+      cout<<"xf_gn: "<<xf_gn.transpose()<<endl;
+      //getchar();
+
+
+      //verify update xs_gn and corresponding xs in CE
+      gn->Update(false);//Update xs_gn from us_gn
+
+      //#DEBUG:
+      for(int count_xs = 0;count_xs <= N_gn; count_xs++)
+      {
+        int xs_index = (count_gn*N_gn + count_xs);
+        cout<<"xs_gn["<<count_xs<<"]: "<<xs_gn[count_xs].transpose()<<endl;
+        if(xs_index < xs.size())
+        {
+          cout<<"xsdiff["<<xs_index<<"]: "<<(xs[xs_index].transpose() - xs_gn[count_xs].transpose())<<endl;
+        }
+      }
+      //getchar();
+      //Print initial cost:
+      //Publish the cost of the initial trajectory:
+      {
+        double cost1 = 0;
+        int count_cost = 0;
+        for(count_cost = 0;count_cost < N_gn;count_cost++)
+        {
+          double h = (ts_gn[count_cost+1] - ts_gn[count_cost]);
+          cost1 += (gn->cost).L(ts_gn[count_cost], xs_gn[count_cost], us_gn[count_cost], h, 0);
+        }
+        cost1 += (gn->cost).L(ts_gn[count_cost], xs_gn[count_cost], us_gn[count_cost-1], 0, 0);
+        cout<<"Initial cost: "<<cost1<<endl;
+      }
+      //getchar();
+      //iterate gn and check gn cost. 
+      for(int count = 0;count < 5;count++)
+      {
+        gn->Iterate();
+        cout<<"Optimal Cost: "<<(gn->J)<<endl;
+      }
+      for(int count =0;count < us_gn.size();count++)
+      {
+        cout<<"us_gn["<<count<<"]: "<<us_gn[count].transpose()<<endl;
+        cout<<"xs_gn["<<count+1<<"]: "<<xs_gn[count+1].transpose()<<endl;
+      }//#DEBUG
+
+      //getchar();
+
+      //reset car state and update the trajectory with new controls.
+      sys->reset(xs_gn[0],ts_gn[0]);
+      for(int count1 = 0;count1 < N_gn;count1++)
+      {
+        sys->Step2(us_gn[count1], ts_gn[count1+1]-ts_gn[count1]);
+        //Set the car joint stuff:
+        joint_state.header.stamp = ros::Time::now();
+        //Back wheel
+        joint_state.position[2] = 0;
+        //steering angle
+        joint_state.position[0] = sys->gVehicleSteering;
+        joint_state.position[1] = sys->gVehicleSteering;
+        //send joint state
+        joint_pub.publish(joint_state);
+        //Set the pose for the car:
+        btTransform chassistransform = (sys->m_carChassis)->getWorldTransform();
+        btQuaternion chassisquat = chassistransform.getRotation();
+        btVector3 chassisorig = chassistransform.getOrigin();
+        tf::Transform tf_chassistransform;
+        tf_chassistransform.setRotation(tf::Quaternion(chassisquat.x(), chassisquat.y(), chassisquat.z(), chassisquat.w()));
+        tf_chassistransform.setOrigin(tf::Vector3(chassisorig.x(), chassisorig.y(), chassisorig.z()));
+        broadcaster->sendTransform(tf::StampedTransform(tf_chassistransform, ros::Time::now(), "world", "base_link"));
+        cout<<"xsdiff["<<count1+1<<"]: "<<((sys->x)-xs_gn[count1+1]).transpose()<<endl;
+        cout<<"us_opt["<<count1<<"]: "<<us_gn[count1].transpose()<<endl;
+        cout<<"xs_gn["<<count1+1<<"]: "<<xs_gn[count1+1].transpose()<<endl;
+        usleep((ts[count1+1] - ts[count1])*1e6);//microseconds
+      }
+      //set x0 for gn based on current car state
+      //sys->setinitialstate(xs_gn[0]);
+      //publish the small trajectory #TODO
+      //Publish rviz Trajectory for visualization:
+      gnline_strip.header.stamp  = ros::Time::now();
+      gnline_strip.id = 10+count_gn;//Same namespace everything just a separate id
+
+      for(int i =0;i<xs_gn.size(); i++)
+      {
+        //geometry_msgs::Point p;
+        gnline_strip.points[i].x = xs_gn[i][0];
+        gnline_strip.points[i].y = xs_gn[i][1];
+        gnline_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
+      }
+      traj_pub.publish(gnline_strip);
+
+
+      //getchar();
+
+      count_gn++;
     }
-      config.animate = false;
+    sys->initialstate = 0;
+    config.animate = false;
   }
 }
 
@@ -296,6 +384,7 @@ int main(int argc, char** argv)
   nh.getParam("N",N);
   ROS_ASSERT(2*int(N/2) == N);
   nh.getParam("tf",tf);
+  nh.getParam("tf_gn",tf_gn);
 
   if(!nh.getParam("marker_height",marker_height))
     marker_height = 1.0;
@@ -345,8 +434,17 @@ int main(int argc, char** argv)
   // initial state
   Vector4d x0(1,1,0,0);
 
+
   // cost
   RnLqCost<4, 2, Dynamic, 6> cost(*sys, tf, xf);
+
+  //Gn cost:
+  int N_gn = round(tf_gn/h);
+  for(int count = 0; count <= N_gn; count++)
+    ts_gn.push_back(count*h);
+  us_gn.resize(N_gn);
+  xs_gn.resize(N_gn+1);
+  RnLqCost<4, 2, Dynamic, 6> cost_gn(*sys, tf_gn, xf_gn);
 
   {
     VectorXd temp;
@@ -358,6 +456,17 @@ int main(int argc, char** argv)
     ROS_ASSERT(temp.size() == 4);
 
     x0 = temp;
+
+    if(nh.getParam("x0bar", list))
+    {
+      xml2vec(temp,list);
+      ROS_ASSERT(temp.size() == 4);
+      x0bar = temp;
+    }
+    else
+    {
+      x0bar = x0;
+    }
 
     if(nh.getParam("xf", list))
       xml2vec(temp,list);
@@ -391,6 +500,11 @@ int main(int argc, char** argv)
     cout<<"Q: "<<endl<<cost.Q<<endl;
     cout<<"Qf: "<<endl<<cost.Qf<<endl;
     cout<<"R: "<<endl<<cost.R<<endl;
+
+    cost_gn.Qf = cost.Qf;
+    cost_gn.Q.setZero();
+    cost_gn.R = cost.R;
+    cost_gn.UpdateGains();//#TODO Make this somehow implicit in the cost function otherwise becomes a coder's burden !
   }
 
   // times
@@ -439,8 +553,10 @@ int main(int argc, char** argv)
 
   ControlTparam<Vector4d, 4, 2> ctp(*sys, tks);// Create Linear Parametrization of controls
 
-  gn.reset(new RccarGn(*sys, cost, ctp, ts, xs, us));  
-  gn->debug = false;
+  Tparam<Vector4d, 4, 2> tp_gn(*sys, N_gn*2);// default/no parametrization for GN
+
+  gn.reset(new RccarGn(*sys, cost_gn, tp_gn, ts_gn, xs_gn, us_gn));  
+  gn->debug = true;
 
   ce.reset(new RccarCe(*sys, cost, ctp, ts, xs, us, 0, dus, es));//Can pass custom parameters here too
   ce->ce.mras = false;///<#TODO Find out what these are (This is a different type of CE sampling method which uses all the samples instead of only the elite samples)
@@ -476,6 +592,12 @@ int main(int argc, char** argv)
 	line_strip.color.r = 1.0;
 	line_strip.color.a = 1.0;
   line_strip.points.resize(xs.size());
+  // gn line setup:
+  gnline_strip = line_strip;//copy from above
+  gnline_strip.id = 10;//Same namespace everything just a separate id
+  gnline_strip.color.g = 1.0;
+  gnline_strip.color.r = 0.0;
+  gnline_strip.points.resize(xs_gn.size());
   //Setup sample trajectory
   sampleline_strip.header.frame_id = "/world";
 	sampleline_strip.ns = "sampletraj";
