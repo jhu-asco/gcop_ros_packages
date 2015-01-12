@@ -225,7 +225,24 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     while(count_gn*N_gn < us.size())
     {
       //set x0 for gn based on current car state
-      sys->setinitialstate(xs_gn[0]);
+      sys->setinitialstate(xs_gn[0]);//For Feedback this is not needed. It is used here to find the current car state
+      //verify new setinitialstate:
+      //modify initialstate:
+      btVector3 &carorigin = (sys->initialstate)->cartransform.getOrigin();
+      carorigin[2] += 0.3;//set the car 0.3 m high and check where it settles down:
+      /*if(count_gn%2 == 0)
+      {
+        carorigin[0] += 0.1;//noise in feedback
+        carorigin[1] += 0.1;//noise in feedback
+      }
+      else
+      {
+        carorigin[0] -= 0.1;
+        carorigin[1] -= 0.1;
+      }
+      */
+      sys->setinitialstate(*(sys->initialstate), xs_gn[0]);//This should be called by Feedback loop to set the current car state. Carstate: cartransform, carvel, carangularvel
+      //getchar();
       //set the gn controls from ce trajectory:
       //us_gn from us
       //  int index_start = round((count_gn*tf_gn)/h);
