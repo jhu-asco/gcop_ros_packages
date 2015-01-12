@@ -221,7 +221,8 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     cout<<"ce->cost.tf: "<<(ce->cost.tf)<<endl;
     cout<<"N_gn: "<<(N_gn)<<endl;
 
-    while(count_gn*tf_gn < (ce->cost.tf))
+    //while(count_gn*tf_gn < (ce->cost.tf))
+    while(count_gn*N_gn < us.size())
     {
       //set x0 for gn based on current car state
       sys->setinitialstate(xs_gn[0]);
@@ -260,7 +261,10 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       if(xf_index < xs.size()-1)
         xf_gn = xs[xf_index];
       else
+      {
+        cout<<"Final Segment!"<<endl;//#DEBUG
         xf_gn = xf;//For last time use the actual final goal instead of the trajectory
+      }
       //#DEBUG:
       cout<<"xf_gn: "<<xf_gn.transpose()<<endl;
       //getchar();
@@ -442,6 +446,7 @@ int main(int argc, char** argv)
   int N_gn = round(tf_gn/h);
   for(int count = 0; count <= N_gn; count++)
     ts_gn.push_back(count*h);
+  ts_gn[N_gn] = tf_gn;//Set the last time to tf_gn 
   us_gn.resize(N_gn);
   xs_gn.resize(N_gn+1);
   RnLqCost<4, 2, Dynamic, 6> cost_gn(*sys, tf_gn, xf_gn);

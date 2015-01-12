@@ -4,6 +4,7 @@
   <param name="robot_description" textfile="$(find gcop_ros_bullet)/urdf/rccar.urdf"/>
 
   <!--node name="rccar_opt" pkg="gcop_ros_bullet" type="hybrid_ceandgn_bulletcartest2" output="screen" launch-prefix="valgrind"-->
+# launch-prefix="gdb --args"
   <node name="rccar_opt" pkg="gcop_ros_bullet" type="hybrid_ceandgn_bulletcartest2" output="screen">
     <param name="mesh" type="str" value="plane"/>
     <param name="marker_height" type="double" value="0"/>
