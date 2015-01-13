@@ -74,7 +74,6 @@ visualization_msgs::Marker sampleline_strip;///<Sample trajectory message
 visualization_msgs::Marker goal_arrow;///<Best trajectory message
 sensor_msgs::JointState joint_state;///< Joint states for wheels in animation
 gcop_comm::CtrlTraj trajectory;
-gcop_comm::CtrlTraj gn_trajectory;
 
 //tf
 tf::TransformBroadcaster *broadcaster;
@@ -382,7 +381,11 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
 
       count_gn++;
     }
-    sys->initialstate = 0;
+
+    {
+      delete (sys->initialstate);
+      sys->initialstate = 0;
+    }
     config.animate = false;
   }
 }
@@ -531,12 +534,19 @@ bool feedback_optimize(gcop_comm::Trajectory_req::Request &req, gcop_comm::Traje
     ctrl.ctrlvec.resize(2);
 
     //Send the response back:
-    for (int count = 0;count<req.itreq.N;count++)
+    int Nreq = req.itreq.N<(us_gn.size())?req.itreq.N:(us_gn.size());
+    if(Nreq == 0)
+      Nreq = us_gn.size();
+    for (int count = 0;count< Nreq;count++)
     {
       ctrl.ctrlvec[0] = us_gn[count](0);
       ctrl.ctrlvec[1] = us_gn[count](1);
 		  resp.traj.ctrl.push_back(ctrl);
+      resp.traj.time.push_back(ts_gn[count]);
     }
+    resp.traj.time.push_back(ts_gn[Nreq]);
+
+    resp.traj.N = Nreq;
 
     //Publish rviz Trajectory for visualization:
     gnline_strip.header.stamp  = ros::Time::now();
@@ -553,6 +563,10 @@ bool feedback_optimize(gcop_comm::Trajectory_req::Request &req, gcop_comm::Traje
 
     //getchar();
 
+  }
+  {
+    delete (sys->initialstate);
+    sys->initialstate = 0;//reset initial state to null
   }
   return true;
 }
@@ -843,14 +857,6 @@ int main(int argc, char** argv)
   for(int count1 = 0;count1 < Nreq; count1++)
   {
 	  trajectory.ctrl[count1].ctrlvec.resize(2);//2 controls
-  }
-
-  gn_trajectory.N = N_gn;
-  gn_trajectory.ctrl.resize(N_gn);
-  gn_trajectory.time.assign(ts_gn.begin(), ts_gn.begin()+N_gn+1);
-  for(int count1 = 0;count1 < N_gn; count1++)
-  {
-	  gn_trajectory.ctrl[count1].ctrlvec.resize(2);//2 controls
   }
 
   while(ros::ok())
