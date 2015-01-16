@@ -9,7 +9,7 @@
     <!--param name="mesh" type="str" value="plane"/>
     <param name="marker_height" type="double" value="0"/-->
     <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/carterrain_goodquality.stl"/>
-    <param name="marker_height" type="double" value="0.4"/>
+    <param name="marker_height" type="double" value="0.5"/>
     <!--param name="sendtrajectory" type="bool" value="true"/-->
     <rosparam command="load" file="$(find gcop_ros_bullet)/params/gnterrain_rccar.yaml"/>
     <!--param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/car_terrain_lowresmesh.dae"/-->
