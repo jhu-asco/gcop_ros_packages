@@ -19,3 +19,4 @@ R:    [0.01, 0.5] #Control Cost
 # GN Based feedback params
 x0bar: [0.0, 2.2, -1.57, 0.0]   #Initial State
 tf_gn: 1 # Final Time in GN
+initialz: 0.12

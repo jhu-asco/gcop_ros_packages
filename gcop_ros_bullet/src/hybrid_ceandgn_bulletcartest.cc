@@ -168,8 +168,13 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       //Set the Gn guess to be the ce guess:
       if(abs(ce->ce.Jmin - ce->J)<1e-3)
         gn->s = ce->ce.zmin;//Current mean
-      
-      for(int count_gn = 0;count_gn < 2;count_gn++)
+
+      if(gn->lm)
+      {
+        delete (gn->lm);
+        gn->lm = 0;
+      }
+      for(int count_gn = 0;count_gn < 5;count_gn++)
       {
         //Publish rviz Trajectory for visualization:
         line_strip.header.stamp  = ros::Time::now();
@@ -183,7 +188,9 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
         }
         traj_pub.publish(line_strip);
         
+        
         //cout<<"Current Param guess: "<<(gn->s).transpose()<<endl;
+
         gn->Iterate();//Iterate Gauss newton 2 times for every ce
         cout << "Cost=" << gn->J << endl;
 
@@ -321,6 +328,8 @@ int main(int argc, char** argv)
   sys->U.lb[0] = -(sys->steeringClamp);
   sys->U.ub[1] = (sys->steeringClamp);
   sys->U.bnd = true;
+
+  nh.getParam("initialz", (sys->initialz));
 
   sys->offsettrans.setIdentity();
   sys->offsettransinv.setIdentity();

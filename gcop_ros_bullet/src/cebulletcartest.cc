@@ -279,6 +279,8 @@ int main(int argc, char** argv)
   sys->U.ub[1] = (sys->steeringClamp);
   sys->U.bnd = true;
 
+  nh.getParam("initialz", (sys->initialz));
+
   sys->offsettrans.setIdentity();
   sys->offsettransinv.setIdentity();
 
