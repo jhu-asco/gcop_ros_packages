@@ -397,11 +397,15 @@ int main(int argc, char** argv)
   ControlTparam<Vector4d, 4, 2> ctp(*sys, tks);// Create Linear Parametrization of controls
 
   ce.reset(new RccarCe(*sys, cost, ctp, ts, xs, us, 0, dus, es));//Can pass custom parameters here too
-  ce->ce.mras = false;///<#TODO Find out what these are
+  //ce->ce.mras = true;///<#TODO Find out what these are
   ce->ce.inc = false;///<#TODO Find out what these are
   ce->external_render = &render_trajectory;
 
   nh.getParam("Ns", ce->Ns);
+  if(!nh.getParam("mras", ce->ce.mras))
+    ce->ce.mras = true;
+
+  cout<<"mras: "<<(ce->ce.mras)<<endl;
 
 
   ce->debug = true; 
