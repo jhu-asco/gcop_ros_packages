@@ -6,8 +6,9 @@ Ns: 240 #Number of samples
 
 #x,y,theta,v
 #x0:   [0.0, 0.0, 0.0, 0.0]   #Initial State
-x0:   [0.0, 1.5, -1.57, 0.0]   #Initial State
-xf:   [6.0, 3.0, -3.14, 0.0] #Final State
+x0:   [0.0, 2.7, -1.57, 0.0]   #Initial State
+#xf:   [6.0, 3.0, -3.14, 0.0] #Final State
+xf:   [7.2, 3.5, -3.14, 0.0] #Final State
 Qf:   [10.0, 10.0, 5.0, 1.0] #Final Cost
 Q:    [0.0, 0.0, 0.0, 1.0]   #State Cost
 #Q:    [0.0, 0.0, 0.0, 0.0]   #State Cost
@@ -16,5 +17,7 @@ Q:    [0.0, 0.0, 0.0, 1.0]   #State Cost
 R:    [0.01, 0.5] #Control Cost
 
 # GN Based feedback params
-x0bar: [0.5, 2.0, -1.57, 0.0]   #Initial State
+x0bar: [-0.5, 2.2, -2.0, 0.0]   #Initial State
 tf_gn: 1 # Final Time in GN
+initialz: 0.12
+mras: false
