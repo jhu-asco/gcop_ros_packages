@@ -205,7 +205,28 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
 		    trajectory.ctrl[count].ctrlvec[count1] = us[count](count1);
 	    }
     }
- 
+    //Along with the control trajectory send the x0
+    trajectory.statemsg[0].basepose.translation.x = xs[0](0);
+    trajectory.statemsg[0].basepose.translation.y = xs[0](1);
+    trajectory.statemsg[0].basepose.translation.z = 0;
+    trajectory.statemsg[0].basepose.rotation.x = 0;
+    trajectory.statemsg[0].basepose.rotation.y = 0;
+    trajectory.statemsg[0].basepose.rotation.z = sin(xs[0](2)/2);
+    trajectory.statemsg[0].basepose.rotation.w = cos(xs[0](2)/2);
+    trajectory.statemsg[0].basetwist.linear.y  = xs[0](3);
+
+    //Along with the control trajectory send all x
+//    for (int count = 0;count<Nreq+1;count++)
+//    {
+//      trajectory.statemsg[count].basepose.translation.x = xs[count](0);
+//      trajectory.statemsg[count].basepose.translation.y = xs[count](1);
+//      trajectory.statemsg[count].basepose.translation.z = xs[count](2);
+//      trajectory.statemsg[count].basepose.rotation.x = 0;
+//      trajectory.statemsg[count].basepose.rotation.y = 0;
+//      trajectory.statemsg[count].basepose.rotation.z = sin(xs[count](3)/2);
+//      trajectory.statemsg[count].basepose.rotation.w = cos(xs[count](3)/2);
+//    }
+
     config.iterate = false;
   }
   if(config.send_traj)
@@ -584,7 +605,7 @@ int main(int argc, char** argv)
 	traj_pub = nh.advertise<visualization_msgs::Marker>("best_traj", 1);
 	sampletraj_pub = nh.advertise<visualization_msgs::Marker>("sample_traj", 100);
 	joint_pub = nh.advertise<sensor_msgs::JointState>("/joint_states", 1);
-  gcoptraj_pub = nh.advertise<gcop_comm::CtrlTraj>("ctrltraj",1);
+  gcoptraj_pub = nh.advertise<gcop_comm::CtrlTraj>("ctrl_traj",1);
   costlog_pub = nh.advertise<std_msgs::Float64>("cost",10);
 
   //Setup service:
@@ -853,6 +874,7 @@ int main(int argc, char** argv)
 
   trajectory.N = Nreq;
   trajectory.ctrl.resize(Nreq);
+  trajectory.statemsg.resize(1);
   trajectory.time.assign(ts.begin(), ts.begin()+Nreq+1);
   for(int count1 = 0;count1 < Nreq; count1++)
   {

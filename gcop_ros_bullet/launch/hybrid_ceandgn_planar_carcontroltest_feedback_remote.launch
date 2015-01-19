@@ -26,8 +26,12 @@
         <arg name="serial_number" value="1"/>
   </include>
 
-  <node name="rcreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure"/>
+  <include file="$(find rampage_logger)/launch/rampage_rosserial.launch">
+        <arg name="serial_number" value="0"/>
+  </include>
 
-  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find gcop_ros_bullet)/launch/rccar.rviz" />
+  <include file="$(find rampage_logger)/launch/rampage_rosserial.launch">
+        <arg name="serial_number" value="1"/>
+  </include>
 
 </launch>
