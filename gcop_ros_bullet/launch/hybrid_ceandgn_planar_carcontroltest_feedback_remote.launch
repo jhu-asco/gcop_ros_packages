@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<launch>
+
+  <param name="robot_description" textfile="$(find gcop_ros_bullet)/urdf/rccar.urdf"/>
+
+  <!--node name="rccar_opt" pkg="gcop_ros_bullet" type="hybrid_ceandgn_bulletcartest2" output="screen" launch-prefix="valgrind"-->
+# launch-prefix="gdb --args"
+  <node name="rccar_opt" pkg="gcop_ros_bullet" type="hybrid_ceandgn_feedbacktest" output="screen">
+    <param name="mesh" type="str" value="plane"/>
+    <param name="marker_height" type="double" value="0"/>
+    <rosparam command="load" file="$(find gcop_ros_bullet)/params/cerccar.yaml"/>
+  </node>
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+  </node>
+
+  <node name="feedback_parser" pkg="rampage_estimator_and_controller" type="rampage_gcop_request_feedback_traj" output="screen">
+    <remap from="/feedback_parser/ctrl_traj" to="/rccar_opt/ctrl_traj"/>
+  </node>
+
+  <include file="$(find rampage_logger)/launch/rampage_rosserial.launch">
+        <arg name="serial_number" value="0"/>
+  </include>
+
+  <include file="$(find rampage_logger)/launch/rampage_rosserial.launch">
+        <arg name="serial_number" value="1"/>
+  </include>
+
+  <node name="rcreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure"/>
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find gcop_ros_bullet)/launch/rccar.rviz" />
+
+</launch>
