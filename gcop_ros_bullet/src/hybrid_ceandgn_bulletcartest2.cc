@@ -11,7 +11,6 @@
 #include <gcop/rnlqcost.h>
 #include <gcop/bulletrccar.h>
 #include <gcop/bulletworld.h>
-#include <gcop/controltparam.h>
 #include <gcop/tparam.h>
 //#include "utils.h"
 //#include "controltparam.h"
@@ -27,6 +26,14 @@
 #include <std_msgs/Float64MultiArray.h>
 #include "gcop_comm/CtrlTraj.h"//msg for publishing ctrl trajectory
 #include <std_msgs/Float64.h>
+
+#define USE_SPLINEPARAM
+
+#ifdef USE_SPLINEPARAM
+#include <gcop/splinetparam.h>
+#else
+#include <gcop/controltparam.h>
+#endif
 
 
 using namespace std;
@@ -569,15 +576,24 @@ int main(int argc, char** argv)
   int Nk = 10;
   nh.getParam("Nk", Nk);
 
+#ifdef USE_SPLINEPARAM
+  VectorXd tks(Nk+1);
+#else
   vector<double> tks(Nk+1);
+#endif
   for (int k = 0; k <=Nk; ++k)
   {
     tks[k] = k*(tf/Nk);
   }
 
-  ControlTparam<Vector4d, 4, 2> ctp(*sys, tks);// Create Linear Parametrization of controls
+#ifdef USE_SPLINEPARAM
+  SplineTparam<Vector4d, 4, 2> ctp(*sys, tks);
+#else
+  ControlTparam<Vector4d, 4, 2> ctp(*sys, tks);
+#endif
 
-  Tparam<Vector4d, 4, 2> tp_gn(*sys, N_gn*2);// default/no parametrization for GN
+
+  Tparam<Vector4d, 4, 2> tp_gn(*sys, N_gn*2);// default/no parametrization for GN Can add parametrization if we convert back and forth
 
   gn.reset(new RccarGn(*sys, cost_gn, tp_gn, ts_gn, xs_gn, us_gn));  
   gn->debug = true;

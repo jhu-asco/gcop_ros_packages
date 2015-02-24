@@ -5,17 +5,13 @@
   <param name="robot_description" textfile="$(find gcop_ros_bullet)/urdf/rccar.urdf"/>
 
   <!--node name="rccar_opt" pkg="gcop_ros_bullet" type="cebulletcartest" output="screen" launch-prefix="valgrind"-->
-  <node name="rccar_opt" pkg="gcop_ros_bullet" type="hybrid_ceandgn_bulletcartest" output="screen">
-    <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/carterrain_goodquality_fillholes.stl"/>
-    <rosparam command="load" file="$(find gcop_ros_bullet)/params/ceterrain_rccar.yaml"/>
+  <node name="rccar_opt" pkg="gcop_ros_bullet" type="sddpbulletcartest" output="screen">
     <param name="marker_height" type="double" value="0.5"/>
+    <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/carterrain_goodquality_fillholes.stl"/>
+    <rosparam command="load" file="$(find gcop_ros_bullet)/params/sddpterrain_rccar.yaml"/>
   </node>
 
   <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
-  </node>
-
-  <node name="real_car_controller" pkg="rampage_estimator_and_controller" type="rampage_gcop_trajectory_parser" output="screen">
-    <remap from="/real_car_controller/ctrltraj" to="/rccar_opt/ctrltraj"/>
   </node>
 
   <node name="rcreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure"/>

@@ -10,7 +10,6 @@
 #include <gcop/rnlqcost.h>
 #include <gcop/bulletrccar.h>
 #include <gcop/bulletworld.h>
-#include <gcop/controltparam.h>
 //#include "utils.h"
 //#include "controltparam.h"
 
@@ -25,6 +24,14 @@
 #include <std_msgs/Float64MultiArray.h>
 #include "gcop_comm/CtrlTraj.h"//msg for publishing ctrl trajectory
 #include <std_msgs/Float64.h>
+
+#define USE_SPLINEPARAM
+
+#ifdef USE_SPLINEPARAM
+#include <gcop/uniformsplinetparam.h>
+#else
+#include <gcop/controltparam.h>
+#endif
 
 
 using namespace std;
@@ -303,6 +310,8 @@ int main(int argc, char** argv)
 
   // initial state
   Vector4d x0(1,1,0,0);
+  Vector2d us_firsthalf(0.1,0.0);
+  Vector2d us_secondhalf(0.1,0.0);
 
   // cost
   RnLqCost<4, 2> cost(*sys, tf, xf);
@@ -324,6 +333,17 @@ int main(int argc, char** argv)
 
     xf = temp;
 
+  if(nh.getParam("us1", list))
+      xml2vec(temp,list);
+    ROS_ASSERT(temp.size() == 2);
+
+    us_firsthalf = temp;
+
+    if(nh.getParam("us2", list))
+      xml2vec(temp,list);
+    ROS_ASSERT(temp.size() == 2);
+
+    us_secondhalf = temp;
 
     if(nh.getParam("Q", list))
       xml2vec(temp,list);
@@ -365,8 +385,10 @@ int main(int argc, char** argv)
   us.resize(N);
 
   for (int i = 0; i < N/2; ++i) {
-    us[i] = Vector2d(1, 0);
-    us[N/2+i] = Vector2d(1, 0);    
+    //us[i] = Vector2d(1, 0);
+    //us[N/2+i] = Vector2d(1, 0);    
+    us[i] = us_firsthalf;
+    us[N/2+i] = us_secondhalf;    
   }
   //Set initial state:
   xs[0] = x0;
@@ -379,7 +401,26 @@ int main(int argc, char** argv)
 
   Vector2d du(.4, .2);///<Hardcoded if needed change the du and de here
 
-  Vector2d e(.001, .001);
+  Vector2d e(.0001, .0001);
+  {
+    VectorXd temp;
+    XmlRpc::XmlRpcValue list;
+
+    //Initial state
+    if(nh.getParam("du_scale", list))
+    {
+      xml2vec(temp,list);
+      ROS_ASSERT(temp.size() == 2);
+      du = temp;
+    }
+
+    if(nh.getParam("e", list))
+    {
+      xml2vec(temp,list);
+      ROS_ASSERT(temp.size() == 2);
+      e = temp;
+    }
+  }
 
   vector<Vector2d> dus(N, du);
   vector<Vector2d> es(N, e);
@@ -388,13 +429,24 @@ int main(int argc, char** argv)
   int Nk = 10;
   nh.getParam("Nk", Nk);
 
+#ifdef USE_SPLINEPARAM
+  VectorXd tks(Nk+1);
+#else
   vector<double> tks(Nk+1);
+#endif
   for (int k = 0; k <=Nk; ++k)
   {
     tks[k] = k*(tf/Nk);
   }
 
-  ControlTparam<Vector4d, 4, 2> ctp(*sys, tks);// Create Linear Parametrization of controls
+#ifdef USE_SPLINEPARAM
+  int degree = 2;
+  nh.getParam("degree",degree);
+  assert(degree>0);
+  UniformSplineTparam<Vector4d, 4, 2> ctp(*sys, tks,degree);
+#else
+  ControlTparam<Vector4d, 4, 2> ctp(*sys, tks);
+#endif
 
   ce.reset(new RccarCe(*sys, cost, ctp, ts, xs, us, 0, dus, es));//Can pass custom parameters here too
   //ce->ce.mras = true;///<#TODO Find out what these are

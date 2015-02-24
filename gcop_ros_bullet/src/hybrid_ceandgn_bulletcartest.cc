@@ -4,6 +4,7 @@
  */
 //System stuff
 #include <iostream>
+#include <iomanip>
 
 //Gcop Stuff
 #include <gcop/systemce.h>
@@ -11,7 +12,6 @@
 #include <gcop/rnlqcost.h>
 #include <gcop/bulletrccar.h>
 #include <gcop/bulletworld.h>
-#include <gcop/controltparam.h>
 //#include "utils.h"
 //#include "controltparam.h"
 
@@ -27,6 +27,15 @@
 #include "gcop_comm/CtrlTraj.h"//msg for publishing ctrl trajectory
 #include <std_msgs/Float64.h>
 
+#define USE_SPLINEPARAM
+
+#ifdef USE_SPLINEPARAM
+#include <gcop/splinetparam.h>
+#else
+#include <gcop/controltparam.h>
+#endif
+
+
 
 using namespace std;
 using namespace Eigen;
@@ -40,6 +49,11 @@ typedef Matrix<double, 6, 1> Vector6d;//#DEBUG
 boost::shared_ptr<RccarCe> ce;///<Cross entropy based solver
 boost::shared_ptr<RccarGn> gn;///<Cross entropy based solver
 boost::shared_ptr<Bulletrccar> sys;///Bullet rccar system
+#ifdef USE_SPLINEPARAM
+boost::shared_ptr<SplineTparam<Vector4d, 4, 2> > ctp;//Parametrization
+#else
+boost::shared_ptr<ControlTparam<Vector4d, 4, 2> > ctp;//Parametrization
+#endif
 vector<Vector4d> xs;///< State trajectory of the system
 vector<Vector2d> us;///< Controls for the trajectory of the system
 vector<double> ts;///< Times for trajectory
@@ -159,7 +173,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       cout << "Iteration #" << i << " took: " << (ros::Time::now() - currtime).toSec()*1e3 << " ms." << endl;
       cout << "Cost=" << ce->J << endl;
 
-      std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
+      /*std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
       costmsg.data = ce->J;
       costlog_pub.publish(costmsg);
       costmsg.data = ce->nofevaluations;
@@ -168,13 +182,70 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       //Set the Gn guess to be the ce guess:
       if(abs(ce->ce.Jmin - ce->J)<1e-3)
         gn->s = ce->ce.zmin;//Current mean
+      */
+      int Nelite = ce->ce.zps.size();//Number zps pairs left
+      cout<<"Elite samples: "<<Nelite<<endl;
+      //set the min Cost for the elite samples as very high;
+      ce->ce.Jmin = std::numeric_limits<double>::max();
 
-      if(gn->lm)
+      //For each of the elite samples run GN method:
+      for(int count_e =0;count_e < Nelite; count_e++)
       {
-        delete (gn->lm);
-        gn->lm = 0;
+        gn->s = ce->ce.zps[count_e].first;//Current parameter guess
+        if(gn->lm)//Recreate gn problem everytime
+        {
+          delete (gn->lm);
+          gn->lm = 0;
+        }
+        //cout<<"Cost before iteration: "<<(ce->ce.cs[count_e])<<endl;
+        for(int it_gn = 0;it_gn < 5; it_gn++)
+        {
+          gn->Iterate();//Iterate GN
+          if(gn->info == 2)
+            break;
+        }
+        cout << "Cost_after_before: " << (ce->ce).cs[count_e]<<"\t"<<gn->J << endl;//GN Cost after one iteration
+        ce->ce.zps[count_e].first = gn->s;//Copy Back the sample to CE
+        ce->ce.zps[count_e].second = gn->J;
+        //Verify if new gn cost is less than ce J:
+        if((gn->J) < (ce->ce.Jmin))
+        {
+          ce->ce.zmin = (gn->s);
+          ce->ce.Jmin = gn->J;
+        }
+        //getchar();
       }
-      for(int count_gn = 0;count_gn < 5;count_gn++)
+      //With new samples Fit CE again:
+      if (!(ce->ce.Fit())) {
+        cout << "[W] TrajectoryPrmSample::Sample: ce.Fit failed!" << endl;
+      }
+      if((ce->ce.Jmin) < ce->J)//For the updated samples, if there is a sample which has a lower cost than the current min, then update xs, us and the min cost
+      {
+        ctp->From(ts, xs, us, (ce->ce.zmin),ce->p);
+        //cout<<"Update ce cost: "<<ce->Update(xs, us)<<endl;//#DEBUG
+        ce->Update(xs,us,false);
+        ce->J = (ce->ce).Jmin;
+        ce->zmin = (ce->ce).zmin;
+      }
+      else
+      {
+        ctp->From(ts, xs, us, ce->zmin,ce->p);
+      }
+      cout<<"Final ce->J: "<<(ce->J)<<endl;
+//Publish the line strip
+      for(int i =0;i<xs.size(); i++)
+      {
+        //geometry_msgs::Point p;
+        line_strip.points[i].x = xs[i][0];
+        line_strip.points[i].y = xs[i][1];
+        line_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
+      }
+      traj_pub.publish(line_strip);
+        
+
+
+      
+      /*for(int count_gn = 0;count_gn < 2;count_gn++)
       {
         //Publish rviz Trajectory for visualization:
         line_strip.header.stamp  = ros::Time::now();
@@ -205,6 +276,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       ce->ce.gmm.ns[0].mu = gn->s;
       ce->ce.zmin = gn->s;
       ce->J = gn->J;
+      */
       /*{
         double cost1 = 0;
         int N = us.size();
@@ -284,6 +356,8 @@ int main(int argc, char** argv)
 {
   ros::init(argc, argv, "cecartest");
 
+  cout<<std::setprecision(20)<<endl;
+
   ros::NodeHandle nh("~");
 
   //setup tf
@@ -353,6 +427,8 @@ int main(int argc, char** argv)
 
   // initial state
   Vector4d x0(1,1,0,0);
+  Vector2d us_firsthalf(0.1,0.0);
+  Vector2d us_secondhalf(0.1,0.0);
 
   // cost
   RnLqCost<4, 2, Dynamic, 6> cost(*sys, tf, xf);
@@ -374,6 +450,17 @@ int main(int argc, char** argv)
 
     xf = temp;
 
+    if(nh.getParam("us1", list))
+      xml2vec(temp,list);
+    ROS_ASSERT(temp.size() == 2);
+
+    us_firsthalf = temp;
+
+    if(nh.getParam("us2", list))
+      xml2vec(temp,list);
+    ROS_ASSERT(temp.size() == 2);
+
+    us_secondhalf = temp;
 
     if(nh.getParam("Q", list))
       xml2vec(temp,list);
@@ -415,8 +502,10 @@ int main(int argc, char** argv)
   us.resize(N);
 
   for (int i = 0; i < N/2; ++i) {
-    us[i] = Vector2d(0.5, 0);
-    us[N/2+i] = Vector2d(0.5, 0);    
+    //us[i] = Vector2d(0.5, 0);
+    //us[N/2+i] = Vector2d(0.5, 0);    
+    us[i] = us_firsthalf;
+    us[N/2+i] = us_secondhalf;    
     //us[i] = Vector2d(1, -.1);
     //us[N/2+i] = Vector2d(1, -.1);    
   }
@@ -440,18 +529,32 @@ int main(int argc, char** argv)
   int Nk = 10;
   nh.getParam("Nk", Nk);
 
+#ifdef USE_SPLINEPARAM
+  VectorXd tks(Nk+1);
+#else
   vector<double> tks(Nk+1);
+#endif
   for (int k = 0; k <=Nk; ++k)
   {
     tks[k] = k*(tf/Nk);
   }
 
-  ControlTparam<Vector4d, 4, 2> ctp(*sys, tks);// Create Linear Parametrization of controls
+#ifdef USE_SPLINEPARAM
+  int degree = 2;
+  nh.getParam("degree",degree);
+  assert(degree>0);
+  ctp.reset(new SplineTparam<Vector4d, 4, 2>(*sys, tks, degree));// Create Linear Parametrization of controls
+#else
+  ctp.reset(new ControlTparam<Vector4d, 4, 2>(*sys, tks));// Create Linear Parametrization of controls
+#endif
 
-  gn.reset(new RccarGn(*sys, cost, ctp, ts, xs, us));  
+
+
+  gn.reset(new RccarGn(*sys, cost, *ctp, ts, xs, us));  
+  gn->numdiff_stepsize = 1e-6;
   gn->debug = false;
 
-  ce.reset(new RccarCe(*sys, cost, ctp, ts, xs, us, 0, dus, es));//Can pass custom parameters here too
+  ce.reset(new RccarCe(*sys, cost, *ctp, ts, xs, us, 0, dus, es));//Can pass custom parameters here too
   ce->ce.mras = false;///<#TODO Find out what these are (This is a different type of CE sampling method which uses all the samples instead of only the elite samples)
   ce->ce.inc = false;///<#TODO Find out what these are
   ce->external_render = &render_trajectory;

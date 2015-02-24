@@ -7,7 +7,7 @@
   <!--node name="rccar_opt" pkg="gcop_ros_bullet" type="cebulletcartest" output="screen" launch-prefix="valgrind"-->
   <node name="rccar_opt" pkg="gcop_ros_bullet" type="cebulletcartest" output="screen">
     <param name="marker_height" type="double" value="0.5"/>
-    <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/carterrain_goodquality.stl"/>
+    <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/carterrain_goodquality_fillholes.stl"/>
     <rosparam command="load" file="$(find gcop_ros_bullet)/params/ceterrain_rccar.yaml"/>
   </node>
 

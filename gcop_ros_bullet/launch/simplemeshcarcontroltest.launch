@@ -1,14 +1,16 @@
 <?xml version="1.0"?>
 <launch>
 
-  <param name="mesh_description" textfile="$(find gcop_ros_bullet)/urdf/mesh.urdf"/>
   <param name="robot_description" textfile="$(find gcop_ros_bullet)/urdf/rccar.urdf"/>
+  <param name="mesh_description" textfile="$(find gcop_ros_bullet)/urdf/simple_mesh.urdf"/>
+  <arg name="algo" default="gn"/>
 
   <!--node name="rccar_opt" pkg="gcop_ros_bullet" type="cebulletcartest" output="screen" launch-prefix="valgrind"-->
-  <node name="rccar_opt" pkg="gcop_ros_bullet" type="hybrid_ceandgn_bulletcartest" output="screen">
-    <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/carterrain_goodquality_fillholes.stl"/>
-    <rosparam command="load" file="$(find gcop_ros_bullet)/params/ceterrain_rccar.yaml"/>
-    <param name="marker_height" type="double" value="0.5"/>
+  <node name="rccar_opt" pkg="gcop_ros_bullet" type="$(arg algo)bulletcartest" output="screen">
+    <param name="marker_height" type="double" value="0"/>
+    <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/simple_mesh2.stl"/>
+    <!--param name="sendtrajectory" type="bool" value="true"/-->
+    <rosparam command="load" file="$(find gcop_ros_bullet)/params/simplemesh.yaml"/>
   </node>
 
   <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">

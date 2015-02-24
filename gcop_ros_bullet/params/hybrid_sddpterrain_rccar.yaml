@@ -1,0 +1,41 @@
+## Controller Params
+tf: 10 # Final Time
+N: 50 # Number of segments
+Nk: 15 # Number of knots for parametrization
+Ns: 240 #Number of samples
+Ns1: 50 #Number of samples
+
+#x,y,theta,v
+#xf:   [0.0, 0.0, -3.14, 0.0]   #Initial State
+#x0:   [0.5, 2.7, 0.0, 0.0]   #Initial State
+#x0:   [0.0, 2.7, -1.57, 0.0]   #Initial State
+#x0:   [5.0, -3.0, 1.57, 0.0]   #Initial State Useful to show superiority of Hybrid Method
+x0:   [2.0, -2.0, 0.3, 0.0] 
+#xf:   [6.0, 3.0, -3.14, 0.0] #Final State
+#xf:   [7.2, 3.5, -3.14, 0.0] #Final State
+xf:   [7.2, 3.5, 0.0, 0.0] #Final State
+#xf:   [7.2, 4.5, -3.14, 0.0] #Final State
+Qf:   [10.0, 10.0, 5.0, 1.0] #Final Cost
+Q:    [0.0, 0.0, 0.0, 1.0]   #State Cost
+#Q:    [0.0, 0.0, 0.0, 0.0]   #State Cost
+
+#desired velocity, steering angle
+R:    [0.01, 0.5] #Control Cost
+
+# GN Based feedback params
+x0bar: [-0.5, 2.2, -2.0, 0.0]   #Initial State
+tf_gn: 1 # Final Time in GN
+initialz: 0.12
+mras: false
+#du_scale: [0.1, 0.02]
+#du_scale: [0.02, 0.005]
+#du_scale: [0.02, 0.01]
+du_scale: [0.04, 0.02]
+#dx_scale: [0.0005, 0.0005, 0.0005, 0.0005]
+dx_scale: [0.01, 0.01, 0.005, 0.001]
+#us1: [0.8, 0.1]
+#us1: [0.8, 0.1]
+#us2: [0.9, -0.2]
+us1: [1.0, -0.2]
+us2: [1.0, -0.2]
+degree: 4
