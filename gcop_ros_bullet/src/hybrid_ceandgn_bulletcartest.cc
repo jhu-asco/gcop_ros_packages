@@ -30,7 +30,7 @@
 #define USE_SPLINEPARAM
 
 #ifdef USE_SPLINEPARAM
-#include <gcop/splinetparam.h>
+#include <gcop/uniformsplinetparam.h>
 #else
 #include <gcop/controltparam.h>
 #endif
@@ -50,7 +50,7 @@ boost::shared_ptr<RccarCe> ce;///<Cross entropy based solver
 boost::shared_ptr<RccarGn> gn;///<Cross entropy based solver
 boost::shared_ptr<Bulletrccar> sys;///Bullet rccar system
 #ifdef USE_SPLINEPARAM
-boost::shared_ptr<SplineTparam<Vector4d, 4, 2> > ctp;//Parametrization
+boost::shared_ptr<UniformSplineTparam<Vector4d, 4, 2> > ctp;//Parametrization
 #else
 boost::shared_ptr<ControlTparam<Vector4d, 4, 2> > ctp;//Parametrization
 #endif
@@ -543,7 +543,7 @@ int main(int argc, char** argv)
   int degree = 2;
   nh.getParam("degree",degree);
   assert(degree>0);
-  ctp.reset(new SplineTparam<Vector4d, 4, 2>(*sys, tks, degree));// Create Linear Parametrization of controls
+  ctp.reset(new UniformSplineTparam<Vector4d, 4, 2>(*sys, tks, degree));// Create Linear Parametrization of controls
 #else
   ctp.reset(new ControlTparam<Vector4d, 4, 2>(*sys, tks));// Create Linear Parametrization of controls
 #endif

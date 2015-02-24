@@ -30,7 +30,7 @@
 #define USE_SPLINEPARAM
 
 #ifdef USE_SPLINEPARAM
-#include <gcop/splinetparam.h>
+#include <gcop/uniformsplinetparam.h>
 #else
 #include <gcop/controltparam.h>
 #endif
@@ -587,7 +587,7 @@ int main(int argc, char** argv)
   }
 
 #ifdef USE_SPLINEPARAM
-  SplineTparam<Vector4d, 4, 2> ctp(*sys, tks);
+  UniformSplineTparam<Vector4d, 4, 2> ctp(*sys, tks);
 #else
   ControlTparam<Vector4d, 4, 2> ctp(*sys, tks);
 #endif
