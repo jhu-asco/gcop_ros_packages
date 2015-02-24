@@ -1,0 +1,25 @@
+## Controller Params
+tf: 2 # Final Time
+N: 50 # Number of segments
+Nk: 10 #Number of knots for parametrization
+Ns: 200
+#Nk: 15 #Number of knots for parametrization
+
+#x,y,theta,v
+x0:   [0.0, 4.0, 0.2, 1.0]   #Initial State
+#xf:   [2.0, 4.0, 0.0, 0.0] #Final State
+#xf:   [3.0, 3.0, -1.57, 0.0] #Final State
+xf:   [5.0, 3.0, 3.14, 1.0] #Final State
+#xf:   [0.0, 4.0, 1.2, 0.0] #Final State
+Qf:   [10.0, 10.0, 5.0, 5.0] #Final Cost
+Q:    [0.0, 0.0, 0.0, 0.1]   #State Cost
+
+      #desired velocity, steering angle
+R:    [0.1, 0.1] #Control Cost
+#du_scale: [0.15, 0.06]
+du_scale: [0.15, 0.03]
+e: [0.0001, 0.0001]
+dx_scale: [0.1, 0.1, 0.01, 0.05]
+us1: [2.0, -0.3]
+us2: [2.0, -0.3]
+degree: 1
