@@ -15,7 +15,7 @@
   </node>
 
   <node name="real_car_controller" pkg="rampage_estimator_and_controller" type="rampage_gcop_trajectory_parser" output="screen">
-    <remap from="/real_car_controller/ctrltraj" to="/rccar_opt/ctrltraj"/>
+    <remap from="/real_car_controller/ctrl_traj" to="/rccar_opt/ctrl_traj"/>
   </node>
 
   <node name="rcreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure"/>

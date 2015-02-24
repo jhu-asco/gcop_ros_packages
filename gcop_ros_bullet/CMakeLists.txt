@@ -161,10 +161,6 @@ add_dependencies(gnbulletcartest ${PROJECT_NAME}_gencfg gcop_comm_generate_messa
 #target_link_libraries(gnbulletcartest1 ${LIBS} ${catkin_LIBRARIES})
 #add_dependencies(gnbulletcartest1 ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
-#add_executable(spsabulletcartest src/spsabulletcartest.cc)
-#target_link_libraries(spsabulletcartest ${LIBS} ${catkin_LIBRARIES})
-#add_dependencies(spsabulletcartest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
-
 add_executable(hybrid_ceandsddp_bulletcartest src/hybrid_ceandsddp_bulletcartest.cc)
 target_link_libraries(hybrid_ceandsddp_bulletcartest ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(hybrid_ceandsddp_bulletcartest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
