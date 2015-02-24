@@ -26,12 +26,4 @@
         <arg name="serial_number" value="1"/>
   </include>
 
-  <include file="$(find rampage_logger)/launch/rampage_rosserial.launch">
-        <arg name="serial_number" value="0"/>
-  </include>
-
-  <include file="$(find rampage_logger)/launch/rampage_rosserial.launch">
-        <arg name="serial_number" value="1"/>
-  </include>
-
 </launch>
