@@ -4,10 +4,10 @@
  */
 //System stuff
 #include <iostream>
+#include <iomanip>
 
 //Gcop Stuff
 #include <gcop/gndocp.h>
-#include <gcop/controltparam.h>
 #include <gcop/rnlqcost.h>
 #include <gcop/bulletrccar.h>
 #include <gcop/bulletworld.h>
@@ -26,6 +26,13 @@
 #include "gcop_comm/CtrlTraj.h"//msg for publishing ctrl trajectory
 #include <std_msgs/Float64.h>
 
+#define USE_SPLINEPARAM
+
+#ifdef USE_SPLINEPARAM
+#include <gcop/uniformsplinetparam.h>
+#else
+#include <gcop/controltparam.h>
+#endif
 
 using namespace std;
 using namespace Eigen;
@@ -156,6 +163,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
         line_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
       }
       traj_pub.publish(line_strip);
+      cout<<"gn->J: "<<(gn->J)<<endl;
     }
     
     for(int i =0;i < us.size();i++)
@@ -165,7 +173,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     }//#DEBUG
 
     //Publish control trajectory when parameter is set:
-    if(sendtrajectory)
+    /*if(sendtrajectory)
     {
       for (int count = 0;count<Nreq;count++)
       {
@@ -176,6 +184,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       }
       gcoptraj_pub.publish(trajectory);
     }
+    */
  
     config.iterate = false;
   }
@@ -216,6 +225,8 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "gncartest");
 
   ros::NodeHandle nh("~");
+
+  //cout<<std::setprecision(20)<<endl;
 
   //setup tf
 	broadcaster = new tf::TransformBroadcaster();
@@ -280,6 +291,8 @@ int main(int argc, char** argv)
 
   // initial state
   Vector4d x0(1,1,0,0);
+  Vector2d us_firsthalf(0.1,0.0);
+  Vector2d us_secondhalf(0.1,0.0);
 
 
   // cost
@@ -302,6 +315,17 @@ int main(int argc, char** argv)
 
     xf = temp;
 
+    if(nh.getParam("us1", list))
+      xml2vec(temp,list);
+    ROS_ASSERT(temp.size() == 2);
+
+    us_firsthalf = temp;
+
+    if(nh.getParam("us2", list))
+      xml2vec(temp,list);
+    ROS_ASSERT(temp.size() == 2);
+
+    us_secondhalf = temp;
 
     if(nh.getParam("Q", list))
       xml2vec(temp,list);
@@ -343,8 +367,10 @@ int main(int argc, char** argv)
   us.resize(N);
 
   for (int i = 0; i < N/2; ++i) {
-    us[i] = Vector2d(0.5, 0);
-    us[N/2+i] = Vector2d(0.5, 0);    
+    //us[i] = Vector2d(0.5, 0.1);
+    //us[N/2+i] = Vector2d(0.5, -0.1);    
+    us[i] = us_firsthalf;
+    us[N/2+i] = us_secondhalf;    
   }
   //Set initial state:
   xs[0] = x0;
@@ -353,13 +379,25 @@ int main(int argc, char** argv)
   nh.getParam("Nk", Nk);
   assert(Nk > 0);
 
+#ifdef USE_SPLINEPARAM
+  VectorXd tks(Nk+1);
+#else
   vector<double> tks(Nk+1);
+#endif
   for (int k = 0; k <=Nk; ++k)
     tks[k] = k*(tf/Nk);
   
+#ifdef USE_SPLINEPARAM
+  int degree = 2;
+  nh.getParam("degree",degree);
+  assert(degree>0);
+  UniformSplineTparam<Vector4d, 4, 2> ctp(*sys, tks, degree);
+#else
   ControlTparam<Vector4d, 4, 2> ctp(*sys, tks);
+#endif
 
   gn.reset(new RccarGn(*sys, cost, ctp, ts, xs, us));  
+  gn->numdiff_stepsize=1e-4;
 
   gn->debug = false; 
   //Add Visualize option through external function passing #TODO
