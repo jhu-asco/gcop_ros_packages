@@ -407,7 +407,7 @@ int main(int argc, char** argv)
     XmlRpc::XmlRpcValue list;
 
     //Initial state
-    if(nh.getParam("du_scale", list))
+    /*if(nh.getParam("du_scale", list))
     {
       xml2vec(temp,list);
       ROS_ASSERT(temp.size() == 2);
@@ -420,6 +420,7 @@ int main(int argc, char** argv)
       ROS_ASSERT(temp.size() == 2);
       e = temp;
     }
+    */
   }
 
   vector<Vector2d> dus(N, du);
