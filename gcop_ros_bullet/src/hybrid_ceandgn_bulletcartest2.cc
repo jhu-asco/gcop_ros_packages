@@ -60,6 +60,7 @@ double tf_gn = 2.0;///< Time horizon for gauss newton shooting
 
 vector<Vector4d> xs_gn;///< State trajectory of the system (For feedback)
 vector<Vector2d> us_gn;///< Controls for the trajectory of the system
+vector<Vector4d> xs_gndes;///< State trajectory of the system (For feedback)
 vector<double> ts_gn;///< Times for trajectory
 Vector4d xf_gn(0,0,0,0);///< final state
 
@@ -237,17 +238,16 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       //modify initialstate:
       btVector3 &carorigin = (sys->initialstate)->cartransform.getOrigin();
       carorigin[2] += 0.3;//set the car 0.3 m high and check where it settles down:
-      /*if(count_gn%2 == 0)
+      if(count_gn%2 == 0)
       {
-        carorigin[0] += 0.1;//noise in feedback
-        carorigin[1] += 0.1;//noise in feedback
+        carorigin[0] += 0.05;//noise in feedback
+        carorigin[1] += 0.05;//noise in feedback
       }
       else
       {
-        carorigin[0] -= 0.1;
-        carorigin[1] -= 0.1;
+        carorigin[0] -= 0.05;
+        carorigin[1] -= 0.05;
       }
-      */
       sys->setinitialstate(*(sys->initialstate), xs_gn[0]);//This should be called by Feedback loop to set the current car state. Carstate: cartransform, carvel, carangularvel
       //getchar();
       //set the gn controls from ce trajectory:
@@ -260,12 +260,20 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       {
         us_index = (count_gn*N_gn + count_us);
         if(us_index < us.size())
+        {
           us_gn[count_us] = us[us_index];
+          xs_gndes[count_us+1] = xs[us_index+1];//Also Record xs_gndes
+        }
         else
+        {
           us_gn[count_us] = Vector2d::Zero();
+          xs_gndes[count_us+1] = xf;
+        }
         cout<<"us_gn["<<count_us<<"]: "<<us_gn[count_us].transpose()<<endl;
       }
       gn->tparam.To(gn->s, ts_gn, xs_gn, us_gn, 0);//Convert the controls into a single vector for gn
+      xs_gndes[0] = xs_gn[0];
+      cout<<"Size: xs_gndes"<<(xs_gndes.size())<<endl;
       /*
       if(gn->lm)
       {
@@ -463,18 +471,12 @@ int main(int argc, char** argv)
 
   // initial state
   Vector4d x0(1,1,0,0);
+  Vector2d us_firsthalf(0.1,0.0);
+  Vector2d us_secondhalf(0.1,0.0);
 
 
   // cost
   RnLqCost<4, 2, Dynamic, 6> cost(*sys, tf, xf);
-
-  //Gn cost:
-  int N_gn = round(tf_gn/h);
-  for(int count = 0; count <= N_gn; count++)
-    ts_gn.push_back(count*h);
-  ts_gn[N_gn] = tf_gn;//Set the last time to tf_gn 
-  us_gn.resize(N_gn);
-  xs_gn.resize(N_gn+1);
   RnLqCost<4, 2, Dynamic, 6> cost_gn(*sys, tf_gn, xf_gn);
 
   {
@@ -505,6 +507,20 @@ int main(int argc, char** argv)
 
     xf = temp;
 
+    if(nh.getParam("us1", list))
+      xml2vec(temp,list);
+    ROS_ASSERT(temp.size() == 2);
+
+    us_firsthalf = temp;
+
+    if(nh.getParam("us2", list))
+      xml2vec(temp,list);
+    ROS_ASSERT(temp.size() == 2);
+
+    us_secondhalf = temp;
+
+
+
 
     if(nh.getParam("Q", list))
       xml2vec(temp,list);
@@ -533,10 +549,29 @@ int main(int argc, char** argv)
     cout<<"R: "<<endl<<cost.R<<endl;
 
     cost_gn.Qf = cost.Qf;
-    cost_gn.Q.setZero();
+    cost_gn.Q.setConstant(0.1);
     cost_gn.R = cost.R;
     cost_gn.UpdateGains();//#TODO Make this somehow implicit in the cost function otherwise becomes a coder's burden !
   }
+
+  //Gn cost:
+  int N_gn = round(tf_gn/h);
+  us_gn.resize(N_gn);
+  xs_gn.resize(N_gn+1);
+  xs_gndes.resize(N_gn+1);
+  for(int count = 0; count < N_gn; count++)
+  {
+    xs_gn[count].setZero();
+    cout<<"xs_gn: "<<xs_gn[count].transpose()<<endl;
+    xs_gndes[count].setZero();
+    us_gn[count].setZero();
+    cout<<"us_gn: "<<us_gn[count].transpose()<<endl;
+    ts_gn.push_back(count*h);
+  }
+  xs_gn[N_gn].setZero();
+  xs_gndes[N_gn].setZero();
+  ts_gn.push_back(tf_gn);//Set the last time to tf_gn 
+  cost_gn.SetReference(&xs_gndes,0);
 
   // times
   ts.resize(N+1);
@@ -551,8 +586,10 @@ int main(int argc, char** argv)
   us.resize(N);
 
   for (int i = 0; i < N/2; ++i) {
-    us[i] = Vector2d(0.5, 0);
-    us[N/2+i] = Vector2d(0.5, 0);    
+    //us[i] = Vector2d(0.5, 0);
+    //us[N/2+i] = Vector2d(0.5, 0);    
+    us[i] = us_firsthalf;
+    us[N/2+i] = us_secondhalf;    
     //us[i] = Vector2d(1, -.1);
     //us[N/2+i] = Vector2d(1, -.1);    
   }

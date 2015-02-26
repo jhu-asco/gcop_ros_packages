@@ -56,6 +56,8 @@ boost::shared_ptr<ControlTparam<Vector4d, 4, 2> > ctp;//Parametrization
 #endif
 vector<Vector4d> xs;///< State trajectory of the system
 vector<Vector2d> us;///< Controls for the trajectory of the system
+vector<Vector4d> xs_des;///< Desired states when initializing gn
+vector<Vector2d> us_des;///< Desired controls when initializing gn
 vector<double> ts;///< Times for trajectory
 vector<double> zs;///< Height of the car along the trajectory (same as xs) only used for visualization
 int Nreq;///< Number of segments requested for gcop trajectory
@@ -187,6 +189,10 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       cout<<"Elite samples: "<<Nelite<<endl;
       //set the min Cost for the elite samples as very high;
       ce->ce.Jmin = std::numeric_limits<double>::max();
+      //Also set the  xds and uds based on ce best guess currently:
+      xs_des = xs;
+      us_des = us;
+      xs_des.back() = xf;
 
       //For each of the elite samples run GN method:
       for(int count_e =0;count_e < Nelite; count_e++)
@@ -204,7 +210,20 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
           if(gn->info == 2)
             break;
         }
+        //Re compute gn->J using ce cost:
+        {
+          int N = us.size();
+          int count_cost = 0;
+          gn->J = 0;
+          for(count_cost = 0;count_cost < N;count_cost++)
+          {
+            double h = (ts[count_cost+1] - ts[count_cost]);
+            (gn->J) += (ce->cost).L(ts[count_cost], xs[count_cost], us[count_cost], h, 0);
+          }
+          (gn->J) += (ce->cost).L(ts[count_cost], xs[count_cost], us[count_cost-1], 0, 0);
+        }
         cout << "Cost_after_before: " << (ce->ce).cs[count_e]<<"\t"<<gn->J << endl;//GN Cost after one iteration
+
         ce->ce.zps[count_e].first = gn->s;//Copy Back the sample to CE
         ce->ce.zps[count_e].second = gn->J;
         //Verify if new gn cost is less than ce J:
@@ -432,6 +451,7 @@ int main(int argc, char** argv)
 
   // cost
   RnLqCost<4, 2, Dynamic, 6> cost(*sys, tf, xf);
+  RnLqCost<4, 2, Dynamic, 6> gncost(*sys, tf, xf);
 
   {
     VectorXd temp;
@@ -467,20 +487,24 @@ int main(int argc, char** argv)
     ROS_ASSERT(temp.size() == 4);
 
     cost.Q = temp.asDiagonal();
+    gncost.Q = Vector4d::Constant(0.1).asDiagonal();
 
     if(nh.getParam("Qf", list))
       xml2vec(temp,list);
     ROS_ASSERT(temp.size() == 4);
 
     cost.Qf = temp.asDiagonal();
+    gncost.Qf = Vector4d::Constant(10).asDiagonal();
 
     if(nh.getParam("R", list))
       xml2vec(temp,list);
     ROS_ASSERT(temp.size() == 2);
 
     cost.R = temp.asDiagonal();
+    gncost.R = temp.asDiagonal();
 
     cost.UpdateGains();//#TODO Make this somehow implicit in the cost function otherwise becomes a coder's burden !
+    gncost.UpdateGains();
 
     cout<<"x0: "<<x0.transpose()<<endl;
     cout<<"xf: "<<xf.transpose()<<endl;
@@ -496,10 +520,15 @@ int main(int argc, char** argv)
 
   // states
   xs.resize(N+1);
+  xs_des.resize(N+1);
   // initial state
 
   // initial controls [ If more complicated control is needed hardcode them here]
   us.resize(N);
+  us_des.resize(N);
+
+  //set gncost desired quantities:
+  gncost.SetReference(&xs_des, &us_des);
 
   for (int i = 0; i < N/2; ++i) {
     //us[i] = Vector2d(0.5, 0);
@@ -550,7 +579,7 @@ int main(int argc, char** argv)
 
 
 
-  gn.reset(new RccarGn(*sys, cost, *ctp, ts, xs, us));  
+  gn.reset(new RccarGn(*sys, gncost, *ctp, ts, xs, us));  
   gn->numdiff_stepsize = 1e-6;
   gn->debug = false;
 
