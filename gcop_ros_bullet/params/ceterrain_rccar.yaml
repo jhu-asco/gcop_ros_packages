@@ -1,7 +1,7 @@
 ## Controller Params
 tf: 10 # Final Time
 N: 50 # Number of segments
-Nk: 15 # Number of knots for parametrization
+Nk: 10 # Number of knots for parametrization
 Ns: 240 #Number of samples
 #Ns: 50 #Number of samples
 
@@ -22,14 +22,15 @@ Q:    [0.0, 0.0, 0.0, 1.0]   #State Cost
 R:    [0.01, 0.5] #Control Cost
 
 # GN Based feedback params
-x0bar: [-0.5, 2.7, -1.57, 0.0]   #Initial State
-tf_gn: 1 # Final Time in GN
+#x0bar: [-0.5, 2.7, -1.57, 0.0]   #Initial State
+x0bar: [2.0, -2.0, 0.0, 0.0]   #Initial State
+tf_gn: 0.4 # Final Time in GN
 initialz: 0.12
 mras: false
-du_scale: [0.1, 0.02]
+#du_scale: [0.1, 0.02]
 #us1: [0.8, 0.1]
 #us2: [0.8, -0.1]
-us1: [1.0, -0.2]
+us1: [1.0, 0.1]
 us2: [1.0, -0.2]
 #degree: 3
 degree: 4

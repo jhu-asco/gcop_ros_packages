@@ -1,7 +1,7 @@
 ## Controller Params
 tf: 10 # Final Time
 N: 50 # Number of segments
-Nk: 15 # Number of knots for parametrization
+Nk: 10 # Number of knots for parametrization
 Ns: 240 #Number of samples
 Ns1: 50 #Number of samples
 
@@ -13,7 +13,7 @@ Ns1: 50 #Number of samples
 x0:   [2.0, -2.0, 0.3, 0.0] 
 #xf:   [6.0, 3.0, -3.14, 0.0] #Final State
 #xf:   [7.2, 3.5, -3.14, 0.0] #Final State
-xf:   [7.2, 3.5, 0.0, 0.0] #Final State
+xf:   [7.2, 3.5, -3.14, 0.0] #Final State
 #xf:   [7.2, 4.5, -3.14, 0.0] #Final State
 Qf:   [10.0, 10.0, 5.0, 1.0] #Final Cost
 Q:    [0.0, 0.0, 0.0, 1.0]   #State Cost
@@ -36,6 +36,6 @@ dx_scale: [0.01, 0.01, 0.005, 0.001]
 #us1: [0.8, 0.1]
 #us1: [0.8, 0.1]
 #us2: [0.9, -0.2]
-us1: [1.0, -0.2]
+us1: [1.0, 0.1]
 us2: [1.0, -0.2]
 degree: 4
