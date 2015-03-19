@@ -4,6 +4,7 @@
  */
 //System stuff
 #include <iostream>
+#include <fstream>
 #include <iomanip>
 
 //Gcop Stuff
@@ -51,6 +52,8 @@ bool sendtrajectory;///< Send the gcop trajectory
 int Nreq;///< Number of segments requested for gcop trajectory
 Vector4d xf(0,0,0,0);///< final state
 double marker_height;///< Height of the final arrow
+ofstream costlogfile("/home/gowtham/hydro_workspace/src/gcop_ros_packages/gcop_ros_bullet/results/costs/gn.dat");
+ofstream optimaltrajlogfile("/home/gowtham/hydro_workspace/src/gcop_ros_packages/gcop_ros_bullet/results/costs/gntraj.dat");
 
 //ros publisher and subscribers:
 ros::Publisher joint_pub;///<Rccar model joint publisher for animation
@@ -133,9 +136,10 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       cost1 += (gn->cost).L(ts[count_cost], xs[count_cost], us[count_cost-1], 0, 0);
       cout<<"Initial cost: "<<cost1<<endl;
 
-      std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
-      costmsg.data = cost1;
-      costlog_pub.publish(costmsg);
+      //std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
+      //costmsg.data = cost1;
+      //costlog_pub.publish(costmsg);
+      costlogfile<<cost1<<"\t"<<1<<endl;
     }
 
     cout<<"Iterating: "<<endl;
@@ -147,10 +151,11 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       //cout<<"xsN: "<<xs.back().transpose()<<endl;
 
       std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
-      costmsg.data = gn->J;
-      costlog_pub.publish(costmsg);
-      costmsg.data = gn->nofevaluations;
-      costlog_pub.publish(costmsg);
+      //costmsg.data = gn->J;
+      //costlog_pub.publish(costmsg);
+      //costmsg.data = gn->nofevaluations;
+      //costlog_pub.publish(costmsg);
+      costlogfile<<(gn->J)<<"\t"<<(gn->nofevaluations)<<endl;
 
       //Publish rviz Trajectory for visualization:
       line_strip.header.stamp  = ros::Time::now();
@@ -170,7 +175,9 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     {
       cout<<"us["<<i<<"]: "<<us[i].transpose()<<endl;
       cout<<"xs["<<i+1<<"]: "<<xs[i+1].transpose()<<endl;
+      optimaltrajlogfile<<ts[i]<<"\t"<<us[i].transpose()<<"\t"<<xs[i].transpose()<<endl;
     }//#DEBUG
+    optimaltrajlogfile<<ts[us.size()]<<"\t"<<us[us.size()-1].transpose()<<"\t"<<xs[us.size()].transpose()<<endl;
 
     //Publish control trajectory when parameter is set:
     /*if(sendtrajectory)

@@ -8,7 +8,7 @@
   <node name="rccar_opt" pkg="gcop_ros_bullet" type="gnbulletcartest" output="screen">
     <!--param name="mesh" type="str" value="plane"/>
     <param name="marker_height" type="double" value="0"/-->
-    <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/carterrain_goodquality.stl"/>
+    <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/carterrain_goodquality_fillholes.stl"/>
     <param name="marker_height" type="double" value="0.5"/>
     <!--param name="sendtrajectory" type="bool" value="true"/-->
     <rosparam command="load" file="$(find gcop_ros_bullet)/params/gnterrain_rccar.yaml"/>

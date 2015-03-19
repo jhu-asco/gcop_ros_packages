@@ -57,7 +57,7 @@ boost::shared_ptr<ControlTparam<Vector4d, 4, 2> > ctp;//Parametrization
 vector<Vector4d> xs;///< State trajectory of the system
 vector<Vector2d> us;///< Controls for the trajectory of the system
 vector<Vector4d> xs_des;///< Desired states when initializing gn
-vector<Vector2d> us_des;///< Desired controls when initializing gn
+//vector<Vector2d> us_des;///< Desired controls when initializing gn
 vector<double> ts;///< Times for trajectory
 vector<double> zs;///< Height of the car along the trajectory (same as xs) only used for visualization
 int Nreq;///< Number of segments requested for gcop trajectory
@@ -191,11 +191,11 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       ce->ce.Jmin = std::numeric_limits<double>::max();
       //Also set the  xds and uds based on ce best guess currently:
       xs_des = xs;
-      us_des = us;
+      //us_des = us;
       xs_des.back() = xf;
 
       //For each of the elite samples run GN method:
-      for(int count_e =0;count_e < Nelite; count_e++)
+      for(int count_e =0;count_e < min(Nelite,2); count_e++)
       {
         gn->s = ce->ce.zps[count_e].first;//Current parameter guess
         if(gn->lm)//Recreate gn problem everytime
@@ -204,10 +204,10 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
           gn->lm = 0;
         }
         //cout<<"Cost before iteration: "<<(ce->ce.cs[count_e])<<endl;
-        for(int it_gn = 0;it_gn < 5; it_gn++)
+        for(int it_gn = 0;it_gn < 15; it_gn++)
         {
           gn->Iterate();//Iterate GN
-          if(gn->info == 2)
+          if(gn->info == 3)
             break;
         }
         //Re compute gn->J using ce cost:
@@ -525,10 +525,10 @@ int main(int argc, char** argv)
 
   // initial controls [ If more complicated control is needed hardcode them here]
   us.resize(N);
-  us_des.resize(N);
+  //us_des.resize(N);
 
   //set gncost desired quantities:
-  gncost.SetReference(&xs_des, &us_des);
+  gncost.SetReference(&xs_des, 0);
 
   for (int i = 0; i < N/2; ++i) {
     //us[i] = Vector2d(0.5, 0);

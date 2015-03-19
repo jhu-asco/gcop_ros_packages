@@ -4,6 +4,7 @@
  */
 //System stuff
 #include <iostream>
+#include <fstream>
 
 //Gcop Stuff
 #include <gcop/sddp.h>
@@ -45,6 +46,8 @@ bool sendtrajectory;///< Send the gcop trajectory
 int Nreq;///< Number of segments requested for gcop trajectory
 Vector4d xf(0,0,0,0);///< final state
 double marker_height;///< Height of the final arrow
+ofstream costlogfile("/home/gowtham/hydro_workspace/src/gcop_ros_packages/gcop_ros_bullet/results/costs/sddp.dat");
+ofstream optimaltrajlogfile("/home/gowtham/hydro_workspace/src/gcop_ros_packages/gcop_ros_bullet/results/costs/sddptraj.dat");
 
 //ros publisher and subscribers:
 ros::Publisher joint_pub;///<Rccar model joint publisher for animation
@@ -146,42 +149,48 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       cost1 += (ddp->cost).L(ts[count_cost], xs[count_cost], us[count_cost-1], 0, 0);
       cout<<"Initial cost: "<<cost1<<endl;
 
-      std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
-      costmsg.data = cost1;
-      costlog_pub.publish(costmsg);
+      //std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
+      //costmsg.data = cost1;
+      //costlog_pub.publish(costmsg);
+      costlogfile<<cost1<<"\t"<<1<<endl;
     }
     cout<<"Iterating: "<<endl;
     for (int i = 0; i < config.Nit; ++i) {
+      //Publish rviz Trajectory for visualization:
+      line_strip.header.stamp  = ros::Time::now();
+
+        for(int i =0;i<xs.size(); i++)
+        {
+      //geometry_msgs::Point p;
+      line_strip.points[i].x = xs[i][0];
+      line_strip.points[i].y = xs[i][1];
+      line_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
+      }
+      traj_pub.publish(line_strip);
+
       currtime = ros::Time::now();
       ddp->Iterate();
       cout << "Iteration #" << i << " took: " << (ros::Time::now() - currtime).toSec()*1e3 << " ms." << endl;
       //cout << "Cost=" << ddp->J << endl;
       //cout<<"xsN: "<<xs.back().transpose()<<endl;
 
-      std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
-      costmsg.data = ddp->J;
-      costlog_pub.publish(costmsg);
-      costmsg.data = ddp->nofevaluations;
-      costlog_pub.publish(costmsg);
+      //std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
+      //costmsg.data = ddp->J;
+      //costlog_pub.publish(costmsg);
+      //costmsg.data = ddp->nofevaluations;
+      //costlog_pub.publish(costmsg);
+      costlogfile<<(ddp->J)<<"\t"<<(ddp->nofevaluations)<<endl;
 
-      //Publish rviz Trajectory for visualization:
-      line_strip.header.stamp  = ros::Time::now();
-
-      for(int i =0;i<xs.size(); i++)
-      {
-        //geometry_msgs::Point p;
-        line_strip.points[i].x = xs[i][0];
-        line_strip.points[i].y = xs[i][1];
-        line_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
-      }
-      traj_pub.publish(line_strip);
+      
     }
     
     for(int i =0;i < us.size();i++)
     {
       cout<<"us["<<i<<"]: "<<us[i].transpose()<<endl;
       cout<<"xs["<<i+1<<"]: "<<xs[i+1].transpose()<<endl;
+      optimaltrajlogfile<<ts[i]<<"\t"<<us[i].transpose()<<"\t"<<xs[i].transpose()<<endl;
     }//#DEBUG
+    optimaltrajlogfile<<ts[us.size()]<<"\t"<<us[us.size()-1].transpose()<<"\t"<<xs[us.size()].transpose()<<endl;
 
     //Publish control trajectory when parameter is set:
     if(sendtrajectory)
@@ -207,7 +216,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     //Run the system:
     Vector4d xs0 = xs[0];
     //xs0 += dx_scale; 
-    xs0 += Vector4d(0.0, 0.1, 0.0, 0.0);
+    //xs0 += Vector4d(0.0, 0.1, 0.0, 0.0);
     sys->reset(xs0,ts[0]);
     for(int count1 = 0;count1 < us.size();count1++)
     {
@@ -280,6 +289,7 @@ int main(int argc, char** argv)
 
   zs.resize(N+1);//<Resize the height vector and pass it to the rccar system
   sys.reset(new Bulletrccar(world, &zs));
+  //sys->m_vehicle->m_sideFrictionStiffness2 = 1.0;
   sys->initialz = 0.12;
   sys->gain_cmdvelocity = 1.04;
   sys->kp_steer = 0.2;

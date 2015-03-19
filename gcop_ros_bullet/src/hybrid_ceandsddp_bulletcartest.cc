@@ -5,6 +5,7 @@
  */
 //System stuff
 #include <iostream>
+#include <fstream>
 #include <iomanip>
 
 //Gcop Stuff
@@ -63,7 +64,9 @@ vector<double> ts;///< Times for trajectory
 vector<double> zs;///< Height of the car along the trajectory (same as xs) only used for visualization
 int Nreq;///< Number of segments requested for gcop trajectory
 Vector4d xf(0,0,0,0);///< final state
+Vector4d x0bar(1,1,0,0);///< perturbed initial state
 double marker_height;///< Height of the final arrow
+ofstream costlogfile("/home/gowtham/hydro_workspace/src/gcop_ros_packages/gcop_ros_bullet/results/costs/hybrid.dat");
 
 //ros publisher and subscribers:
 ros::Publisher joint_pub;///<Rccar model joint publisher for animation
@@ -74,6 +77,7 @@ ros::Publisher costlog_pub;///<Publish the cost after every iteration for loggin
 
 //Messages:
 visualization_msgs::Marker line_strip;///<Best trajectory message
+visualization_msgs::Marker feedbackline_strip;///<Best gn trajectory message
 visualization_msgs::Marker sampleline_strip;///<Sample trajectory message
 visualization_msgs::Marker goal_arrow;///<Best trajectory message
 sensor_msgs::JointState joint_state;///< Joint states for wheels in animation
@@ -169,6 +173,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     traj_pub.publish(line_strip);
 
     //Publish initial trajectory cost:
+    int extra_evals = 0;
     //Publish the cost of the initial trajectory:
     {
       double cost1 = 0;
@@ -181,10 +186,13 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       }
       cost1 += (ce->cost).L(ts[count_cost], xs[count_cost], us[count_cost-1], 0, 0);
       cout<<"Initial cost: "<<cost1<<endl;
+      extra_evals++;
 
-      std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
-      costmsg.data = cost1;
-      costlog_pub.publish(costmsg);
+      costlogfile<<cost1<<"\t"<<(ce->nofevaluations+sddp->nofevaluations+extra_evals)<<endl;
+
+      //std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
+      //costmsg.data = cost1;
+      //costlog_pub.publish(costmsg);
     }
 
     cout<<"Iterating: "<<endl;
@@ -194,191 +202,115 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       ce->Iterate();
       cout << "Iteration #" << i << " took: " << (ros::Time::now() - currtime).toSec()*1e3 << " ms." << endl;
       cout << "Cost=" << ce->J << endl;
-
-      /*std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
-      costmsg.data = ce->J;
-      costlog_pub.publish(costmsg);
-      costmsg.data = ce->nofevaluations;
-      costlog_pub.publish(costmsg);
-
-      //Set the Gn guess to be the ce guess:
-      if(abs(ce->ce.Jmin - ce->J)<1e-3)
-        gn->s = ce->ce.zmin;//Current mean
-      */
-      int Nelite = ce->ce.zps.size();//Number zps pairs left
-      cout<<"Elite samples: "<<Nelite<<endl;
-      //set the min Cost for the elite samples as very high;
-      ce->ce.Jmin = std::numeric_limits<double>::max();
-
-      //For each of the elite samples run SDDP method:
-      for(int count_e =0;count_e < min(Nelite, 1); count_e++)
-      {
-        //Convert the parameter to control guess for SDDP:
-        ctp->From(ts, xs_sddp, us_sddp, (ce->ce.zps[count_e]).first,ce->p);
-        sddp->Reset();//Set internal parameters to fresh set
-
-        //cout<<"Cost before iteration: "<<(ce->ce.cs[count_e])<<endl;
-        //Do Two Iterations:
-        for(int it_sddp = 0;it_sddp < 4; it_sddp++)
-        {
-          sddp->Iterate();//Iterate SDDP
-        }
-        cout << "Cost_after_before: " << (ce->ce).cs[count_e]<<"\t"<<sddp->J << endl;//SDDP Cost after iteration
-
-        //Verify if the sddp true cost is less than ce.Jmin then directly store the xs_sddp and us_sddp in the best xs, us
-        if((sddp->J) < (ce->J))
-        {
-          ce->J = (sddp->J);
-          xs = xs_sddp;//Copy xs, us
-          us = us_sddp;
-          cout<<"Found best trajectory purely from sddp"<<endl;
-        }
-
-        if(count_e == 0)
-          stemp.resize(ce->ce.zps[0].first.size());//Resize stemp for the first time
-        ctp->To(stemp, ts, xs_sddp, us_sddp, ce->p);
-        vector<Vector2d> us_verify = us_sddp;///< #DEBUG
-        ctp->From(ts, xs_sddp, us_sddp, stemp,ce->p);
-        //#DEBUG For Data Visualization Purposes:
-        {
-          cout<<"#Us_verify US_SDDP"<<endl;
-          for(int count_verify = 0;count_verify < us.size(); count_verify++)
-          {
-            cout<<us_verify[count_verify].transpose()<<"\t"<<us_sddp[count_verify].transpose()<<endl;
-            //cout<<"us_sddp_orig["<<count_verify<<"]: "<<us_verify[count_verify].transpose()<<endl;
-            //cout<<"us_sddp_param["<<count_verify<<"]: "<<us_sddp[count_verify].transpose()<<endl;
-            //cout<<"error: "<< (us_sddp[count_verify] - us_verify[count_verify]).array().abs().transpose()<<endl;
-          }
-          //getchar();
-        }
-        //Find the new cost after finding least square parametrization:
-        {
-          double cost1 = 0;
-          int N = us_sddp.size();
-          int count_cost = 0;
-          for(count_cost = 0;count_cost < N;count_cost++)
-          {
-            double h = (ts[count_cost+1] - ts[count_cost]);
-            cost1 += (ce->cost).L(ts[count_cost], xs_sddp[count_cost], us_sddp[count_cost], h, 0);
-          }
-          cost1 += (ce->cost).L(ts[count_cost], xs_sddp[count_cost], us_sddp[count_cost-1], 0, 0);
-          cout<<"Parametrized traj cost: "<<cost1<<endl;
-          if(cost1< (ce->ce.cs[count_e]))
-          {
-            cout<<"Updating CE Elite with better sample"<<endl;
-            ce->ce.zps[count_e].second = cost1;
-            ce->ce.zps[count_e].first = stemp;
-          }
-
-          //Verify if new cost is less than ce Jmin:
-          if(cost1 < (ce->ce.Jmin))
-          {
-            ce->ce.zmin = ce->ce.zps[count_e].first;
-            ce->ce.Jmin = cost1;
-          }
-        }
-        //getchar();
-      }
-      //With new samples Fit CE again:
-      if (!(ce->ce.Fit())) {
-        cout << "[W] TrajectoryPrmSample::Sample: ce.Fit failed!" << endl;
-      }
-      if((ce->ce.Jmin) < ce->J)//For the updated samples, if there is a sample which has a lower cost than the current min, then update xs, us and the min cost
-      {
-        ctp->From(ts, xs, us, (ce->ce.zmin),ce->p);
-        //cout<<"Update ce cost: "<<ce->Update(xs, us)<<endl;//#DEBUG
-        ce->Update(xs,us,false);
-        ce->J = (ce->ce).Jmin;
-        ce->zmin = (ce->ce).zmin;
-      }
-      /*
-      else
-      {
-        ctp->From(ts, xs, us, ce->zmin,ce->p);
-      }
-      */
-      cout<<"Final ce->J: "<<(ce->J)<<endl;
-//Publish the line strip
-      for(int i =0;i<xs.size(); i++)
-      {
-        //geometry_msgs::Point p;
-        line_strip.points[i].x = xs[i][0];
-        line_strip.points[i].y = xs[i][1];
-        line_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
-      }
-      traj_pub.publish(line_strip);
-        
-
-
-      
-      /*for(int count_gn = 0;count_gn < 2;count_gn++)
-      {
-        //Publish rviz Trajectory for visualization:
-        line_strip.header.stamp  = ros::Time::now();
-
-        for(int i =0;i<xs.size(); i++)
-        {
-          //geometry_msgs::Point p;
-          line_strip.points[i].x = xs[i][0];
-          line_strip.points[i].y = xs[i][1];
-          line_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
-        }
-        traj_pub.publish(line_strip);
-        
-        
-        //cout<<"Current Param guess: "<<(gn->s).transpose()<<endl;
-
-        gn->Iterate();//Iterate Gauss newton 2 times for every ce
-        cout << "Cost=" << gn->J << endl;
-
-        std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
-        costmsg.data = gn->J;
-        costlog_pub.publish(costmsg);
-        costmsg.data = gn->nofevaluations;
-        costlog_pub.publish(costmsg);
-        //getchar();
-      }
-      //Set the ce mu to the one from gauss newton optimization:
-      ce->ce.gmm.ns[0].mu = gn->s;
-      ce->ce.zmin = gn->s;
-      ce->J = gn->J;
-      */
-      /*{
-        double cost1 = 0;
-        int N = us.size();
-        Vector6d g;
-        int count_cost = 0;
-        for(count_cost = 0;count_cost < N;count_cost++)
-        {
-          double h = (ts[count_cost+1] - ts[count_cost]);
-          cost1 += (ce->cost).L(ts[count_cost], xs[count_cost], us[count_cost], h, 0);
-          //gn->cost.Res(g, ts[count_cost], xs[count_cost], us[count_cost], h, 0);
-          //cost2 += 0.5*(g.transpose()*g);
-        }
-        cost1 += (ce->cost).L(ts[count_cost], xs[count_cost], us[count_cost-1], 0, 0);
-
-        ce->J =  cost1;
-      }
-      */
-      //cout<<"xsN: "<<xs.back().transpose()<<endl;
+      costlogfile<<(ce->J)<<"\t"<<(ce->nofevaluations+sddp->nofevaluations+extra_evals)<<endl;
     }
-    
-    /*for(int i =0;i < us.size();i++)
+
+    //Optimize using SDDP:
     {
+      //Convert the parameter to control guess for SDDP:
+      //ctp->From(ts, xs_sddp, us_sddp, (ce->ce.zps[count_e]).first,ce->p);
+      xs_sddp = xs;
+      us_sddp = us;//Using CE best trajectory as input to sddp
+      sddp->Reset();//Set internal parameters to fresh set
+
+      //cout<<"Cost before iteration: "<<(ce->ce.cs[count_e])<<endl;
+      for(int it_sddp = 0;it_sddp < 5; it_sddp++)
+      {
+        sddp->Iterate();//Iterate SDDP
+      }
+      cout << "Cost_after_before: " << (ce->J)<<"\t"<<(sddp->J)<< endl;//SDDP Cost after iteration
+      xs = xs_sddp;
+      us = us_sddp;//Copy Back the data
+    }
+
+    //int Nelite = ce->ce.zps.size();//Number zps pairs left
+    //cout<<"Elite samples: "<<Nelite<<endl;
+    //set the min Cost for the elite samples as very high;
+    //ce->ce.Jmin = std::numeric_limits<double>::max();
+
+    //For each of the elite samples run SDDP method:
+    //for(int count_e =0;count_e < min(Nelite, 1); count_e++)
+
+    //Publish the line strip
+    for(int i =0;i<xs.size(); i++)
+    {
+      //geometry_msgs::Point p;
+      line_strip.points[i].x = xs[i][0];
+      line_strip.points[i].y = xs[i][1];
+      line_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
+    }
+    traj_pub.publish(line_strip);
+
+
+
+
+    /*for(int count_gn = 0;count_gn < 2;count_gn++)
+      {
+    //Publish rviz Trajectory for visualization:
+    line_strip.header.stamp  = ros::Time::now();
+
+    for(int i =0;i<xs.size(); i++)
+    {
+    //geometry_msgs::Point p;
+    line_strip.points[i].x = xs[i][0];
+    line_strip.points[i].y = xs[i][1];
+    line_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
+    }
+    traj_pub.publish(line_strip);
+
+
+    //cout<<"Current Param guess: "<<(gn->s).transpose()<<endl;
+
+    gn->Iterate();//Iterate Gauss newton 2 times for every ce
+    cout << "Cost=" << gn->J << endl;
+
+    std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
+    costmsg.data = gn->J;
+    costlog_pub.publish(costmsg);
+    costmsg.data = gn->nofevaluations;
+    costlog_pub.publish(costmsg);
+    //getchar();
+    }
+    //Set the ce mu to the one from gauss newton optimization:
+    ce->ce.gmm.ns[0].mu = gn->s;
+    ce->ce.zmin = gn->s;
+    ce->J = gn->J;
+     */
+    /*{
+      double cost1 = 0;
+      int N = us.size();
+      Vector6d g;
+      int count_cost = 0;
+      for(count_cost = 0;count_cost < N;count_cost++)
+      {
+      double h = (ts[count_cost+1] - ts[count_cost]);
+      cost1 += (ce->cost).L(ts[count_cost], xs[count_cost], us[count_cost], h, 0);
+    //gn->cost.Res(g, ts[count_cost], xs[count_cost], us[count_cost], h, 0);
+    //cost2 += 0.5*(g.transpose()*g);
+    }
+    cost1 += (ce->cost).L(ts[count_cost], xs[count_cost], us[count_cost-1], 0, 0);
+
+    ce->J =  cost1;
+    }
+     */
+    //cout<<"xsN: "<<xs.back().transpose()<<endl;
+
+    /*for(int i =0;i < us.size();i++)
+      {
       cout<<"us["<<i<<"]: "<<us[i].transpose()<<endl;
       cout<<"xs["<<i+1<<"]: "<<xs[i+1].transpose()<<endl;
-    }//#DEBUG
-    */
+      }//#DEBUG
+     */
 
     //Publish control trajectory when parameter is set:
     for (int count = 0;count<Nreq;count++)
     {
-	    for(int count1 = 0;count1 < 2;count1++)
-	    {
-		    trajectory.ctrl[count].ctrlvec[count1] = us[count](count1);
-	    }
+      for(int count1 = 0;count1 < 2;count1++)
+      {
+        trajectory.ctrl[count].ctrlvec[count1] = us[count](count1);
+      }
     }
- 
+
     config.iterate = false;
   }
   if(config.send_traj)
@@ -388,12 +320,27 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     config.send_traj = false;
   }
   if(config.animate)
-  {
+  { 
+    feedbackline_strip.header.stamp  = ros::Time::now();
+
     //Run the system:
-    sys->reset(xs[0],ts[0]);
-    for(int count1 = 0;count1 < us.size();count1++)
+    sys->reset(x0bar,ts[0]);
     {
-      sys->Step2(us[count1], ts[count1+1]-ts[count1]);
+      //geometry_msgs::Point p;
+      feedbackline_strip.points[0].x = x0bar[0];
+      feedbackline_strip.points[0].y = x0bar[1];
+      feedbackline_strip.points[0].z = zs[0];
+    }
+    for(int count1 = 0;count1 < us.size();count1++)
+    { 
+      Vector2d us_feedback = us[count1] + (sddp->Kuxs[count1])*((sys->x) - xs[count1]);
+      sys->Step2(us_feedback, ts[count1+1]-ts[count1]);
+      {
+        //geometry_msgs::Point p;
+        feedbackline_strip.points[count1+1].x = sys->x[0];
+        feedbackline_strip.points[count1+1].y = sys->x[1];
+        feedbackline_strip.points[count1+1].z = zs[count1+1];
+      }
       //Set the car joint stuff:
       joint_state.header.stamp = ros::Time::now();
       //Back wheel
@@ -414,6 +361,8 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       cout<<"ce->sys.x" <<ts[count1+1]<<"\txs: "<<(sys->x).transpose()<<endl;//#DEBUG
       usleep((ts[count1+1] - ts[count1])*1e6);//microseconds
     }
+    traj_pub.publish(feedbackline_strip);
+    
       config.animate = false;
   }
 }
@@ -511,6 +460,17 @@ int main(int argc, char** argv)
     ROS_ASSERT(temp.size() == 4);
 
     x0 = temp;
+
+    if(nh.getParam("x0bar", list))
+    {
+      xml2vec(temp,list);
+      ROS_ASSERT(temp.size() == 4);
+      x0bar = temp;
+    }
+    else
+    {
+      x0bar = x0;
+    }
 
     if(nh.getParam("xf", list))
       xml2vec(temp,list);
@@ -682,6 +642,13 @@ int main(int argc, char** argv)
 	line_strip.color.r = 1.0;
 	line_strip.color.a = 1.0;
   line_strip.points.resize(xs.size());
+  //feedback line setup:
+  feedbackline_strip = line_strip;//copy from above
+  feedbackline_strip.id = 10;//Same namespace everything just a separate id
+  feedbackline_strip.color.g = 1.0;
+  feedbackline_strip.color.r = 0.0;
+  feedbackline_strip.points.resize(xs_sddp.size());
+
   //Setup sample trajectory
   sampleline_strip.header.frame_id = "/world";
 	sampleline_strip.ns = "sampletraj";

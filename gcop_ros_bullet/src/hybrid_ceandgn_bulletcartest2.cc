@@ -238,7 +238,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       //modify initialstate:
       btVector3 &carorigin = (sys->initialstate)->cartransform.getOrigin();
       carorigin[2] += 0.3;//set the car 0.3 m high and check where it settles down:
-      if(count_gn%2 == 0)
+      /*if(count_gn%2 == 0)
       {
         carorigin[0] += 0.05;//noise in feedback
         carorigin[1] += 0.05;//noise in feedback
@@ -248,6 +248,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
         carorigin[0] -= 0.05;
         carorigin[1] -= 0.05;
       }
+      */
       sys->setinitialstate(*(sys->initialstate), xs_gn[0]);//This should be called by Feedback loop to set the current car state. Carstate: cartransform, carvel, carangularvel
       //getchar();
       //set the gn controls from ce trajectory:
@@ -326,16 +327,22 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
           double h = (ts_gn[count_cost+1] - ts_gn[count_cost]);
           cost1 += (gn->cost).L(ts_gn[count_cost], xs_gn[count_cost], us_gn[count_cost], h, 0);
         }
-        cost1 += (gn->cost).L(ts_gn[count_cost], xs_gn[count_cost], us_gn[count_cost-1], 0, 0);
+        cost1 += (gn->cost).L(ts_gn[count_cost], xs_gn[count_cost], us_gn[count_cost-1], (ts_gn[count_cost] - ts_gn[count_cost-1]), 0);
         cout<<"Initial cost: "<<cost1<<endl;
       }
       //getchar();
       //iterate gn and check gn cost. 
+      //Time this:
+      ros::Time currtime = ros::Time::now();
       for(int count = 0;count < 5;count++)
       {
         gn->Iterate();
+        if(gn->info == 2)
+          break;
         cout<<"Optimal Cost: "<<(gn->J)<<endl;
       }
+      cout<<"Time for optimizing: "<<(ros::Time::now() - currtime).toSec()<<endl;
+
       for(int count =0;count < us_gn.size();count++)
       {
         cout<<"us_gn["<<count<<"]: "<<us_gn[count].transpose()<<endl;
@@ -624,7 +631,10 @@ int main(int argc, char** argv)
   }
 
 #ifdef USE_SPLINEPARAM
-  UniformSplineTparam<Vector4d, 4, 2> ctp(*sys, tks);
+  int degree = 2;
+  nh.getParam("degree",degree);
+  assert(degree>0);
+  UniformSplineTparam<Vector4d, 4, 2> ctp(*sys, tks, degree);
 #else
   ControlTparam<Vector4d, 4, 2> ctp(*sys, tks);
 #endif

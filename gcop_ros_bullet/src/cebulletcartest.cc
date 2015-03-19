@@ -4,6 +4,7 @@
  */
 //System stuff
 #include <iostream>
+#include <fstream>
 
 //Gcop Stuff
 #include <gcop/systemce.h>
@@ -51,6 +52,8 @@ bool sendtrajectory;///< Send the gcop trajectory
 int Nreq;///< Number of segments requested for gcop trajectory
 Vector4d xf(0,0,0,0);///< final state
 double marker_height;///< Height of the final arrow
+ofstream costlogfile("/home/gowtham/hydro_workspace/src/gcop_ros_packages/gcop_ros_bullet/results/costs/ce.dat");
+ofstream optimaltrajlogfile("/home/gowtham/hydro_workspace/src/gcop_ros_packages/gcop_ros_bullet/results/costs/cetraj.dat");
 
 //ros publisher and subscribers:
 ros::Publisher joint_pub;///<Rccar model joint publisher for animation
@@ -103,7 +106,7 @@ void xml2vec(VectorXd &vec, XmlRpc::XmlRpcValue &my_list)
    {
      sampleline_strip.points[count1].x = xss[count1][0];
      sampleline_strip.points[count1].y = xss[count1][1];
-     sampleline_strip.points[count1].z = zs[count1];
+     sampleline_strip.points[count1].z = zs[count1]+0.1;
      //cout<<"count,x,y,z: "<<count1<<"\t"<<xss[count1][0]<<"\t"<<xss[count1][1]<<"\t"<<zs[count1]<<endl;
    }
    sampletraj_pub.publish(sampleline_strip);
@@ -134,7 +137,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       //geometry_msgs::Point p;
       line_strip.points[i].x = xs[i][0];
       line_strip.points[i].y = xs[i][1];
-      line_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
+      line_strip.points[i].z = zs[i]+0.1;//Need to add  this to state or somehow get it #TODO
     }
     traj_pub.publish(line_strip);
 
@@ -152,9 +155,11 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       cost1 += (ce->cost).L(ts[count_cost], xs[count_cost], us[count_cost-1], 0, 0);
       cout<<"Initial cost: "<<cost1<<endl;
 
-      std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
-      costmsg.data = cost1;
-      costlog_pub.publish(costmsg);
+      //std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
+      //costmsg.data = cost1;
+      //costlog_pub.publish(costmsg);
+      costlogfile<<cost1<<"\t"<<1<<endl;
+
     }
     cout<<"Iterating: "<<endl;
     for (int i = 0; i < config.Nit; ++i) {
@@ -164,11 +169,13 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       cout << "Cost=" << ce->J << endl;
       //cout<<"xsN: "<<xs.back().transpose()<<endl;
 
-      std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
+      /*std_msgs::Float64 costmsg;///<Message with the current cost after every iteration
       costmsg.data = ce->J;
       costlog_pub.publish(costmsg);
       costmsg.data = ce->nofevaluations;
       costlog_pub.publish(costmsg);
+      */
+      costlogfile<<(ce->J)<<"\t"<<(ce->nofevaluations)<<endl;
 
       //Publish rviz Trajectory for visualization:
       line_strip.header.stamp  = ros::Time::now();
@@ -178,7 +185,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
         //geometry_msgs::Point p;
         line_strip.points[i].x = xs[i][0];
         line_strip.points[i].y = xs[i][1];
-        line_strip.points[i].z = zs[i];//Need to add  this to state or somehow get it #TODO
+        line_strip.points[i].z = zs[i]+0.1;//Need to add  this to state or somehow get it #TODO
       }
       traj_pub.publish(line_strip);
     }
@@ -187,7 +194,9 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     {
       cout<<"us["<<i<<"]: "<<us[i].transpose()<<endl;
       cout<<"xs["<<i+1<<"]: "<<xs[i+1].transpose()<<endl;
+      optimaltrajlogfile<<ts[i]<<"\t"<<us[i].transpose()<<"\t"<<xs[i].transpose()<<endl;
     }//#DEBUG
+    optimaltrajlogfile<<ts[us.size()]<<"\t"<<us[us.size()-1].transpose()<<"\t"<<xs[us.size()].transpose()<<endl;
 
     //Publish control trajectory when parameter is set:
     if(sendtrajectory)
