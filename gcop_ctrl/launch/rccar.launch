@@ -3,6 +3,6 @@
   <rosparam command="load" file="$(find gcop_ctrl)/params/rccar.yaml" />
 	<node name="dmoc_rc" pkg="gcop_ctrl" type="rcctrl" output="screen"/>
 	<node name="rcreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" />
-	<!--include file="$(find gcop_urdf)/launch/display_rccar.launch"/-->
+	<include file="$(find gcop_urdf)/launch/display_rccar.launch"/>
 
 </launch>
