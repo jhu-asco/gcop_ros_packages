@@ -21,5 +21,5 @@
 	</group>
 
 	<node name="rcview" pkg="gcop_urdf" type="rctraj_viz"/>
-  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find gcop_urdf)/rccar.vcg"/>
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find gcop_urdf)/rccar.rviz"/>
 </launch>

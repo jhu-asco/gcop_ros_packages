@@ -41,9 +41,9 @@ void joint_publish(const gcop_comm::CtrlTraj::ConstPtr& trajectory)
 	goal.pose.position.y = trajectory->finalgoal.statevector[1];
 	goal.pose.position.z = 0.1;
 	goal.pose.orientation = tf::createQuaternionMsgFromYaw(trajectory->finalgoal.statevector[2]);
-	goal.scale.x = 1;
-	goal.scale.y = 1;
-	goal.scale.z = trajectory->finalgoal.statevector[3];
+	goal.scale.x = trajectory->finalgoal.statevector[3];
+	goal.scale.y = 0.05;
+	goal.scale.z = 0.05;
 
 	goal.color.r = 0.8;
 	goal.color.g = 0.0;
