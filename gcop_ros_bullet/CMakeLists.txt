@@ -180,6 +180,10 @@ add_executable(hybrid_ceandgn_feedbacktest src/hybrid_ceandgn_feedbacktest.cc)
 target_link_libraries(hybrid_ceandgn_feedbacktest ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(hybrid_ceandgn_feedbacktest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
+add_executable(stlmodificationtest src/stlmodificationtest.cc)
+target_link_libraries(stlmodificationtest ${LIBS} ${catkin_LIBRARIES})
+add_dependencies(stlmodificationtest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(gcop_ros_bullet_node gcop_ros_bullet_generate_messages_cpp)
