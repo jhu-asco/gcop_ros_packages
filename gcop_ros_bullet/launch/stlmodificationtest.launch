@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<launch>
+  <!--node name="rccar_opt" pkg="gcop_ros_bullet" type="cebulletcartest" output="screen" launch-prefix="valgrind"-->
+  <node name="stl_modify" pkg="gcop_ros_bullet" type="stlmodificationtest" output="screen">
+    <param name="marker_height" type="double" value="0.0"/>
+    <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/plane.stl"/>
+    <!--<rosparam command="load" file="$(find gcop_ros_bullet)/params/cerccar.yaml"/>-->
+  </node>
+
+</launch>
