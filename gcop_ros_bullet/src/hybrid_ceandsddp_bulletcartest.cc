@@ -334,7 +334,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     for(int count1 = 0;count1 < us.size();count1++)
     { 
       Vector2d us_feedback = us[count1] + (sddp->Kuxs[count1])*((sys->x) - xs[count1]);
-      sys->Step2(us_feedback, ts[count1+1]-ts[count1]);
+      sys->Step_internaloutput(us_feedback, ts[count1+1]-ts[count1]);
       {
         //geometry_msgs::Point p;
         feedbackline_strip.points[count1+1].x = sys->x[0];

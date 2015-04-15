@@ -202,7 +202,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     sys->reset(xs[0],ts[0]);
     for(int count1 = 0;count1 < us.size();count1++)
     {
-      sys->Step2(us[count1], ts[count1+1]-ts[count1]);
+      sys->Step_internaloutput(us[count1], ts[count1+1]-ts[count1]);
       //Set the car joint stuff:
       joint_state.header.stamp = ros::Time::now();
       //Back wheel

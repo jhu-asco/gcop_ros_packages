@@ -221,7 +221,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     for(int count1 = 0;count1 < us.size();count1++)
     {
       Vector2d us_feedback = us[count1] + (ddp->Kuxs[count1])*((sys->x) - xs[count1]);
-      sys->Step2(us_feedback, ts[count1+1]-ts[count1]);
+      sys->Step_internaloutput(us_feedback, ts[count1+1]-ts[count1]);
       //btWheelInfo& wheel = (sys->m_vehicle->getWheelInfo(0));
       //cout<<"SideImpulse: "<<(sys->m_vehicle->m_sideImpulse[0])<<endl;
       //cout<<"ForwardImpulse: "<<(sys->m_vehicle->m_forwardImpulse[0])<<endl;
