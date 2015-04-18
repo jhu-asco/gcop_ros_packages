@@ -155,6 +155,8 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       costlogfile<<cost1<<"\t"<<1<<endl;
     }
     cout<<"Iterating: "<<endl;
+    //Evaluate average frequency:
+    double total_iteration_time = 0.0;
     for (int i = 0; i < config.Nit; ++i) {
       //Publish rviz Trajectory for visualization:
       line_strip.header.stamp  = ros::Time::now();
@@ -170,6 +172,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
 
       currtime = ros::Time::now();
       ddp->Iterate();
+      total_iteration_time += (ros::Time::now() - currtime).toSec();
       cout << "Iteration #" << i << " took: " << (ros::Time::now() - currtime).toSec()*1e3 << " ms." << endl;
       //cout << "Cost=" << ddp->J << endl;
       //cout<<"xsN: "<<xs.back().transpose()<<endl;
@@ -183,6 +186,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
 
       
     }
+    cout<<"Average Frequency: "<<(config.Nit/total_iteration_time)<<endl;
     
     for(int i =0;i < us.size();i++)
     {

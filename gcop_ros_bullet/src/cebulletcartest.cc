@@ -162,9 +162,12 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
 
     }
     cout<<"Iterating: "<<endl;
+    //Evaluate average frequency:
+    double total_iteration_time = 0.0;
     for (int i = 0; i < config.Nit; ++i) {
       currtime = ros::Time::now();
       ce->Iterate();
+      total_iteration_time += (ros::Time::now() - currtime).toSec();
       cout << "Iteration #" << i << " took: " << (ros::Time::now() - currtime).toSec()*1e3 << " ms." << endl;
       cout << "Cost=" << ce->J << endl;
       //cout<<"xsN: "<<xs.back().transpose()<<endl;
@@ -189,6 +192,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       }
       traj_pub.publish(line_strip);
     }
+    cout<<"Average Frequency: "<<(config.Nit/total_iteration_time)<<endl;
     
     for(int i =0;i < us.size();i++)
     {

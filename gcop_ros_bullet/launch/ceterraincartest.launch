@@ -3,12 +3,13 @@
 
   <param name="mesh_description" textfile="$(find gcop_ros_bullet)/urdf/mesh.urdf"/>
   <param name="robot_description" textfile="$(find gcop_ros_bullet)/urdf/rccar.urdf"/>
+  <arg name="paramfile" default="ceterrain_rccar.yaml"/>
 
   <!--node name="rccar_opt" pkg="gcop_ros_bullet" type="cebulletcartest" output="screen" launch-prefix="valgrind"-->
   <node name="rccar_opt" pkg="gcop_ros_bullet" type="cebulletcartest" output="screen">
     <param name="marker_height" type="double" value="0.5"/>
     <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/carterrain_goodquality_fillholes.stl"/>
-    <rosparam command="load" file="$(find gcop_ros_bullet)/params/ceterrain_rccar.yaml"/>
+    <rosparam command="load" file="$(find gcop_ros_bullet)/params/$(arg paramfile)"/>
   </node>
 
   <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
