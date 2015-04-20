@@ -1,3 +1,12 @@
+/** This is an example on how to control a rccar using GCOP Library. This creates a 
+  * rccar system, rnlq cost and an optimization method (DDP) using  GCOP.
+  * There is a dynamic reconfigure interface to change initial and final conditions
+  * and iterate the optimization algorithm.
+  * An interface to optimize the continously based on external feedback is also added.
+  * The optimized trajectories are published on a topic("CtrlTraj") which has all the controls and states
+  *
+  * Author: Gowtham Garimella
+*/
 #include "ros/ros.h"
 #include <iomanip>
 #include <iostream>
@@ -23,39 +32,41 @@ using namespace gcop;
 typedef Ddp<Vector4d, 4, 2> RccarDdp;
 
 //ros messages
-gcop_comm::CtrlTraj trajectory;
+gcop_comm::CtrlTraj trajectory; ///< Trajectory message for publishing the optimized trajectory
 
 //Publisher
-ros::Publisher trajpub;
+ros::Publisher trajpub;///< Publisher for optimal trajectory
 
 //Timer
-ros::Timer iteratetimer;
+ros::Timer iteratetimer;///< Timer to iterate continously the optimization problem
 
 //Subscriber
-ros::Subscriber initialposn_sub;
+ros::Subscriber initialposn_sub;///< Subscriber to receive external feedback on initial position
 
 
 //Initialize the rccar system
-Rccar sys;
+Rccar sys;///< GCOP Rccar system for performing dynamics
 
 //Optimal Controller
-	RccarDdp *ddp;
+RccarDdp *ddp;///< Optimization algorithm from GCOP
 
 //Cost class
-RnLqCost<4, 2>*cost;
+RnLqCost<4, 2>*cost;///< Cost function for optimization 
 
 //Define states and controls for system
-	vector<double> ts;
-  vector<Vector4d> xs;
-  vector<Vector2d> us;
-  Vector4d xf = Vector4d::Zero();// final state initialization passed by reference so needs to be global to be changed
-	int Nit = 30;//number of iterations for ddp
-bool usemocap = false;
+vector<double> ts;///< time knots for trajectory
+vector<Vector4d> xs;///< Discrete states at the discrete times in trajectory
+vector<Vector2d> us;///< Discrete controls at the discrete times in trajectory
+Vector4d xf = Vector4d::Zero();///< final state
+int Nit = 30;///< Number of iterations for ddp
+bool usemocap = false;///< If true uses tf for input position. (Passed by parameter)
 
-double tprev = 0;
+double tprev = 0;///< Local variable
 
-tf::Vector3 yprev;
+tf::Vector3 yprev;///< Local variable
 
+/** Publishes the current trajectory
+*/
 void pubtraj() //N is the number of segments
 {
 	int N = us.size();
@@ -87,6 +98,8 @@ void pubtraj() //N is the number of segments
 	trajpub.publish(trajectory);
 }
 
+/** Iterates through the optimization algorithm. Is called by a ros timer
+*/
 void iterateCallback(const ros::TimerEvent & event)
 //void iterateCallback()
 {
@@ -106,6 +119,9 @@ timer_start(timer);
 	//iteratetimer.stop();
 	pubtraj();
 }
+
+/** Subscriber callback for initial position to modify initial conditions for optimization problem
+*/
 void initialposnCallback(const geometry_msgs::TransformStamped::ConstPtr &currframe)
 {
 	if(!usemocap)
@@ -137,7 +153,8 @@ void initialposnCallback(const geometry_msgs::TransformStamped::ConstPtr &currfr
 	//iterateCallback(e1);
 	return;
 }
-
+/** Reconfiguration interface for configuring the optimization problem
+*/
 void paramreqcallback(gcop_ctrl::DMocInterfaceConfig &config, uint32_t level) 
 {
 	Nit = config.Nit; 
