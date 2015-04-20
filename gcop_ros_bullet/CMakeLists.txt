@@ -140,6 +140,11 @@ include_directories(
 
 ## Declare a cpp executable
 # add_executable(gcop_ros_bullet_node src/gcop_ros_bullet_node.cpp)
+
+add_executable(cetrajectory_tracking src/cetrajectory_tracking.cc)
+target_link_libraries(cetrajectory_tracking ${LIBS} ${catkin_LIBRARIES})
+add_dependencies(cetrajectory_tracking ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+
 add_executable(cebulletcartest src/cebulletcartest.cc)
 target_link_libraries(cebulletcartest ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(cebulletcartest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
