@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<robot name="Mesh">
+  <link name="world">
+		<visual>
+			<origin xyz="0 0 0" rpy="0 0 0"/>
+			<geometry>
+				<mesh filename="package://gcop_ros_bullet/urdf/meshes/simple_mesh2.dae"/>
+			</geometry>
+      <material name="blue">
+        <color rgba="0 0 0.8 1"/>
+      </material>
+		</visual>
+	</link>
+</robot>

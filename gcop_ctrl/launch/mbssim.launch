@@ -1,11 +1,14 @@
+<?xml version="1.0"?>
 <launch>	
-	<arg name="parameters" default="$(find gcop_ctrl)/params/chain1_4.yaml"/>
+	<!--arg name="parameters" default="$(find gcop_ctrl)/params/chain1_4.yaml"/-->
+	<arg name="parameters" default="$(find gcop_ctrl)/params/airbot5.yaml"/>
 	<param name="mbssim" value="true"/>
 	<include file="$(find gcop_urdf)/launch/display_chainsim.launch">
-		<arg name="model" default="$(find gcop_ctrl)/params/chain1_4.urdf"/>
+		<arg name="model" default="$(find gcop_ctrl)/params/airbot5.urdf"/>
+		<!--arg name="model" default="$(find gcop_ctrl)/params/chain1_4.urdf"/-->
 	</include>
 
   <rosparam command="load" file="$(arg parameters)" />
 	<node name="mbs_sim" pkg="gcop_ctrl" type="mbssim" output="screen"/>
-	<node name="mbsreconfigure" pkg="dynamic_reconfigure" type="reconfigure_gui" />
+	<!--node name="mbsreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" /-->
 </launch>

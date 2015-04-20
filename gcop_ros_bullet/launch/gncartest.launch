@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<launch>
+
+  <param name="mesh_description" textfile="$(find gcop_ros_bullet)/urdf/mesh.urdf"/>
+  <param name="robot_description" textfile="$(find gcop_ros_bullet)/urdf/rccar.urdf"/>
+
+  <!--node name="rccar_opt" pkg="gcop_ros_bullet" type="cebulletcartest" output="screen" launch-prefix="valgrind"-->
+  <node name="rccar_opt" pkg="gcop_ros_bullet" type="gnbulletcartest" output="screen">
+    <!--param name="mesh" type="str" value="plane"/>
+    <param name="marker_height" type="double" value="0"/-->
+    <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/carterrain_goodquality_fillholes.stl"/>
+    <param name="marker_height" type="double" value="0.5"/>
+    <!--param name="sendtrajectory" type="bool" value="true"/-->
+    <rosparam command="load" file="$(find gcop_ros_bullet)/params/gnterrain_rccar.yaml"/>
+    <!--param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/car_terrain_lowresmesh.dae"/-->
+  </node>
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+  </node>
+
+  <node name="rcreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure"/>
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find gcop_ros_bullet)/launch/rccar.rviz" />
+
+</launch>

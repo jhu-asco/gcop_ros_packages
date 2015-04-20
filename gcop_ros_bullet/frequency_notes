@@ -1,0 +1,9 @@
+cerccar_short_horizon.yaml: with ce 4.7 Hz without parallelization
+sddp 4.2 Hz without parallelization varies and falls to 3.5 Hz when it fails to step
+SDDP Also works Ns = 30 samples where as CE Fails to do so at 5.5 - 8.2 Hz
+At Ns = 15 samples SDDP works at 13 Hz but does converges very slowly.
+
+Terrain CE with 10 iterations Final cost 15.68 at 1.5 Hz and Ns = 100
+Frequency = 3 Hz at Ns = 50 samples with Final cost = 15.1 at 10 iterations
+
+SDDP Works at 3 Hz at Ns = 50 samples with Final cost = 18 at the end of 10 iterations

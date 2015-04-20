@@ -1,0 +1,9 @@
+*.bak*
+build*
+msg_gen*
+bin*
+lib*
+data/
+*.dat
+*.swp
+frames/

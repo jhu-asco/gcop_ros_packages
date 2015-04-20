@@ -1,0 +1,41 @@
+## Controller Params
+tf: 10 # Final Time
+N: 50 # Number of segments
+#Nk: 10 # Number of knots for parametrization
+Nk: 10
+#Ns: 240 #Number of samples
+Ns: 100
+#Ns: 50 #Number of samples
+
+#x,y,theta,v
+#x0:   [0.0, 0.0, 0.0, 0.0]   #Initial State
+#x0:   [5.0, -3.0, 1.57, 0.0]   #Initial State
+#x0:   [2.0, -2.0, 0.3, 0.0] 
+#x0:   [3.0, -3.0, 0.1, 0.0]   #Initial State
+x0:   [0.0, 2.7, -1.57, 0.0]   #Initial State
+#xf:   [6.0, 3.0, -3.14, 0.0] #Final State
+xf:   [7.2, 3.5, -3.14, 0.0] #Final State
+#xf:   [7.2, 3.5, 0.0, 0.0] #Final State
+Qf:   [10.0, 10.0, 5.0, 1.0] #Final Cost
+Q:    [0.0, 0.0, 0.0, 1.0]   #State Cost
+#Q:    [0.0, 0.0, 0.0, 0.0]   #State Cost
+
+#desired velocity, steering angle
+R:    [0.01, 0.5] #Control Cost
+
+# GN Based feedback params
+x0bar: [0.0, 2.2, -1.57, 0.0]   #Initial State
+#x0bar: [2.5, -2.5, 0.3, 0.0]   #Initial State
+#tf_gn: 0.4 # Final Time in GN
+tf_gn: 0.4 # Final Time in GN
+initialz: 0.12
+mras: false
+#du_scale: [0.1, 0.02]
+#us1: [0.8, 0.1]
+#us2: [0.8, -0.1]
+#us1: [0.8, 0.01]
+#us2: [0.9, -0.1]
+#degree: 3
+degree: 1
+us1: [0.8, 0.0]
+us2: [0.9, -0.1]

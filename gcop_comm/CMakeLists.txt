@@ -50,15 +50,15 @@ find_package(catkin REQUIRED COMPONENTS
 	 Ctrl.msg
 	 State.msg
 	 CtrlTraj.msg
-         CurrPose.msg
+   CurrPose.msg
+	 Iteration_req.msg
  )
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
+ add_service_files(
+   FILES
+	 Trajectory_req.srv
+ )
 
 ## Generate actions in the 'action' folder
 # add_action_files(

@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<launch>
+  <!--node name="rccar_opt" pkg="gcop_ros_bullet" type="cebulletcartest" output="screen" launch-prefix="valgrind"-->
+  <param name="robot_description" textfile="$(find gcop_ros_bullet)/urdf/rccar.urdf"/>
+
+  <!--<node name="stl_modify" pkg="gcop_ros_bullet" type="stlmodificationtest" output="screen" launch-prefix="gdb --><!--args">-->
+  <node name="stl_modify" pkg="gcop_ros_bullet" type="stlmodificationtest" output="screen">
+    <param name="marker_height" type="double" value="0.0"/>
+    <param name="mesh" type="str" value="$(find gcop_ros_bullet)/urdf/meshes/plane.stl"/>
+    <!--<rosparam command="load" file="$(find gcop_ros_bullet)/params/cerccar.yaml"/>-->
+  </node>
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+  </node>
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find gcop_ros_bullet)/launch/rccar1.rviz" />
+</launch>

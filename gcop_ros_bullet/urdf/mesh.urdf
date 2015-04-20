@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<robot name="Mesh">
+  <link name="world">
+		<visual>
+			<origin xyz="0 0 0" rpy="0 0 0"/>
+			<geometry>
+				<mesh filename="package://gcop_ros_bullet/urdf/meshes/carterrain_goodquality_fillholes.dae"/>
+			</geometry>
+		</visual>
+	</link>
+</robot>
