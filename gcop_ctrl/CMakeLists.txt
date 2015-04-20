@@ -127,9 +127,9 @@ include_directories(
 ## Declare a cpp executable
 # add_executable(gcop_ctrl_node src/gcop_ctrl_node.cpp)
 
-add_executable(chainload src/chainload.cc)
-target_link_libraries(chainload ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(chainload ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+#add_executable(chainload src/chainload.cc)
+#target_link_libraries(chainload ${LIBS} ${catkin_LIBRARIES})
+#add_dependencies(chainload ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
 add_executable(mbstest src/mbstest.cc)
 target_link_libraries(mbstest ${LIBS} ${catkin_LIBRARIES})

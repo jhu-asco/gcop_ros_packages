@@ -273,7 +273,7 @@ int main(int argc, char** argv)
 
 	ros::param::get("/ddp/xN", xf(0));
 	ros::param::get("/ddp/xN", xf(1));
-	ros::param::get("/ddp/vy0", xf(2));
+	ros::param::get("/ddp/vxN", xf(2));
 	ros::param::get("/ddp/vyN", xf(3));
 
 	ros::param::get("/ddp/Qf1", Qf(0));
