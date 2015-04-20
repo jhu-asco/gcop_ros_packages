@@ -1,3 +1,13 @@
+/** This is a node for external programs to control Multi body systems (mbs). This creates a
+  * mbs system from a custom URDF file in params folders.A rnlq cost based on joints and base position is created and an optimization method (DDP) 
+  * is used to create optimal reference trajectories.
+  * The node accepts iteration request which is initial state of the mbs, final goal, number of iterations etc through a topic (Iteration_request) and 
+  * outputs a trajectory on another topic. This is non blocking and allows for the requesting node to work on other stuff which the optimization is happening
+  * The optimized trajectories are published on a topic("CtrlTraj") which has all the controls and states
+  *
+  * Author: Gowtham Garimella
+*/
+
 #include "ros/ros.h"
 
 #include <iomanip>
@@ -37,9 +47,6 @@ typedef Ddp<MbsState> MbsDdp;//defining chainddp
 visualization_msgs::Marker trajectory_marker;
 std::vector<sensor_msgs::JointState> jointstate_vec;
 std::vector<geometry_msgs::TransformStamped> basetransform_msg;
-
-//Server
-ros::ServiceServer trajectory_service;
 
 //Timer
 
@@ -349,44 +356,6 @@ void iteration_request(const gcop_comm::Iteration_req &req)
 	return;
 }
 
-bool trajectory_request(gcop_comm::Trajectory_req::Request &req, gcop_comm::Trajectory_req::Response &resp)
-{
-	if(!mbsddp)
-		return false;
-	int N = mbsddp->us.size();
-
-	//Fill the initial state mbs
-	fill_mbsstate(mbsddp->xs[0], req.itreq.x0);
-	//Also need to generate a trajectory which is consistent with the initial conditions and the controls
-
-	//Fill the final state mbs
-	fill_mbsstate(*xf, req.itreq.xf);
-
-	cost->tf = (req.itreq.tf < 0.01)?0.01:req.itreq.tf;
-	cout<<"tf: "<<(cost->tf)<<endl;
-	double h = (cost->tf)/N;   // time step
-	for (int k = 0; k <=N; ++k)
-		mbsddp->ts[k] = k*h;
-
-	mbsmodel->Rec(mbsddp->xs[0], h);//To fill the transformation matrices
-
-	//Iterating:
-	ros::Time startime = ros::Time::now(); 
-	for (int count = 1;count <= Nit;count++)
-	{
-		mbsddp->Iterate();//Updates us and xs after one iteration
-	}
-	double te = 1e6*(ros::Time::now() - startime).toSec();
-	cout << "Time taken " << te << " us." << endl;
-
-	//Fill Trajectory
-	if(req.itreq.N == 0 || req.itreq.N > N)//Check the requested number of segments is less than or equal to existing no of seg
-		req.itreq.N = N;//Overwrite the request
-	cout<<"Req_N: "<<req.itreq.N<<endl;
-	filltraj(resp.traj, req.itreq.N);
-	return true;
-}
-
 void paramreqcallback(gcop_ctrl::MbsNodeInterfaceConfig &config, uint32_t level) 
 {
 	if(!mbsddp)
@@ -675,7 +644,6 @@ int main(int argc, char** argv)
 	temp_trans.header.frame_id = "/optitrak";
 
 	//Setup ros server for accepting trajectory requests:
-	trajectory_service = n.advertiseService("traj_srv", trajectory_request);
 	trajectory_pub = n.advertise<gcop_comm::CtrlTraj>("traj_resp",1);
 	visualize_trajectory_pub = n.advertise<visualization_msgs::Marker>("desired_traj",1);
 

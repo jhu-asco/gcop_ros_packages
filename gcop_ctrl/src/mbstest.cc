@@ -1,3 +1,10 @@
+/** This is an example on how to control a Multibodysystem using GCOP Library. This creates a 
+  * mbs system from a custom URDF file in params folders.A rnlq cost based on joints and base position is created and an optimization method (DDP) 
+  * is used to create optimal reference trajectories.
+  * The optimized trajectories are published on a topic("CtrlTraj") which has all the controls and states
+  *
+  * Author: Gowtham Garimella
+*/
 #include "ros/ros.h"
 #include <iomanip>
 #include <iostream>
@@ -31,9 +38,6 @@ ros::Publisher trajpub;
 //Timer
 ros::Timer iteratetimer;
 
-//Subscriber
-//ros::Subscriber initialposn_sub;
-
 //Pointer for mbs system
 boost::shared_ptr<Mbs> mbsmodel;
 
@@ -51,25 +55,6 @@ int Nit = 1;//number of iterations for ddp
 int N = 100;      // discrete trajectory segments
 string mbstype; // Type of system
 Matrix4d gposeroot_i; //inital inertial frame wrt the joint frame
-/*void mySigintHandler(int sig)
-{
-	// Do some custom action.
-	// For example, publish a stop message to some other nodes.
-	cout<<"SigInt Detected"<<endl;
-	mbsddp.reset();
-	cout<<"Reset mbsddp Done"<<endl;
-	cost.reset();
-	cout<<"Reset cost Done"<<endl;
-	xf.reset();
-	cout<<"Reset xf Done"<<endl;
-	ctrl.reset();
-	cout<<"Reset ctrl Done"<<endl;
-	mbsmodel.reset();
-	cout<<"Reset mbsmodel Done"<<endl;
-	// All the default sigint handler does is call shutdown()
-	ros::shutdown();
-}
-*/
 
 void q2transform(geometry_msgs::Transform &transformmsg, Vector6d &bpose)
 {
@@ -86,8 +71,6 @@ void xml2vec(VectorXd &vec, XmlRpc::XmlRpcValue &my_list)
 	ROS_ASSERT(my_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
 	ROS_ASSERT(my_list.size() > 0);
 	vec.resize(my_list.size());
-	//cout<<my_list.size()<<endl;
-	//ROS_ASSERT(vec.size() <= my_list.size()); //Desired size
 
 	for (int32_t i = 0; i < my_list.size(); i++) 
 	{
@@ -118,7 +101,6 @@ void pubtraj() //N is the number of segments
 	cout<<"nb: "<<nb<<endl;
 	Vector6d bpose;
 
-	//gcop::SE3::Instance().g2q(bpose, mbsddp->xs[0].gs[0]);
 	gcop::SE3::Instance().g2q(bpose,gposeroot_i*mbsddp->xs[0].gs[0]);
 	q2transform(trajectory.statemsg[0].basepose,bpose);
 
@@ -161,7 +143,6 @@ void iterateCallback(const ros::TimerEvent & event)
 {
 	if(!mbsddp)
 		return;
-	//getchar();
 	ros::Time startime = ros::Time::now(); 
 	for (int count = 1;count <= Nit;count++)
 	{
@@ -172,28 +153,7 @@ void iterateCallback(const ros::TimerEvent & event)
 	//publish the message
 	pubtraj();
 }
-/*
-void initialposnCallback(const geometry_msgs::TransformStamped::ConstPtr &currframe)
-{
-	tf::StampedTransform UV_O;
-	transformStampedMsgToTF(*currframe,UV_O);//converts to the right format 
-	//getrpy:
 
-	double roll,pitch,yaw;
-	UV_O.getBasis().getRPY(roll,pitch,yaw);
-	double tcurr = currframe->header.stamp.toSec();
-	tf::Vector3 y = UV_O.getOrigin();
-	Vector4d x0 = Vector4d::Zero();// initial state
-	x0[0] = y[0];
-	x0[1] = y[1];
-	x0[2] = yaw;
-	x0[3] =0;/// need to calculate velocity
-	xs[0] = x0;
-	//ros::TimerEvent e1;
-	//iterateCallback(e1);
-	return;
-}
-*/
 void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level) 
 {
 	if(!mbsddp)
@@ -331,48 +291,33 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 		mbsddp->xs[0].r[config.i_J -1] = config.Ji;
 		mbsddp->xs[0].dr[config.i_J -1] = config.Jvi;
 		mbsmodel->Rec(mbsddp->xs[0], h);
-		//return;
-		//mbsddp->xs[size] = mbsddp->xs[0];
 	}
 	if(config.ureset)
-	{
-		//cout<<"Hello"<<endl;
-		VectorXd u(mbsmodel->U.n);
-		u.setZero();
-		if(mbstype == "AIRBASE")
-		{
-			for(int count = 0;count < nb;count++)
-				u[3] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
-			cout<<"u[3]: "<<u[3]<<endl;
-		}
-		else if(mbstype == "FLOATBASE")
-		{
-			for(int count = 0;count < nb;count++)
-				u[5] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
-			cout<<"u[5]: "<<u[5]<<endl;
-		}
-		int size = mbsddp->us.size();
-		double t1;
-		/*if((mbstype == "FLOATBASE")||(mbstype == "FIXEDBASE"))
-		{
-			cout<<"Using Controller"<<endl;
-			for (int i = 0; i < size; ++i) {
-				t1 = i*h;
-				ctrl->Set(mbsddp->us[i], t1, mbsddp->xs[i]); 
-				mbsmodel->Step(mbsddp->xs[i+1], t1, mbsddp->xs[i], mbsddp->us[i], h);
-			}
-		}
-		else
-		{
-			*/
-			for(int count = 0;count < size;count++)
-			{
-				mbsddp->us[count] = u;
-				mbsmodel->Step(mbsddp->xs[count+1], count*h, mbsddp->xs[count], mbsddp->us[count], h);
-				//mbsddp->xs[count] = mbsddp->xs[0];
-			}
-		//}
-	}
+  {
+    //cout<<"Hello"<<endl;
+    VectorXd u(mbsmodel->U.n);
+    u.setZero();
+    if(mbstype == "AIRBASE")
+    {
+      for(int count = 0;count < nb;count++)
+        u[3] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
+      cout<<"u[3]: "<<u[3]<<endl;
+    }
+    else if(mbstype == "FLOATBASE")
+    {
+      for(int count = 0;count < nb;count++)
+        u[5] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
+      cout<<"u[5]: "<<u[5]<<endl;
+    }
+    int size = mbsddp->us.size();
+    double t1;
+
+    for(int count = 0;count < size;count++)
+    {
+      mbsddp->us[count] = u;
+      mbsmodel->Step(mbsddp->xs[count+1], count*h, mbsddp->xs[count], mbsddp->us[count], h);
+    }
+  }
 
 
 	if(config.i_Q > mbsmodel->X.n)
@@ -390,35 +335,11 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 
 	cost->R(config.i_R -1,config.i_R -1) = config.Ri;
 
-	//resize
-	//mbsddp->xs.resize(N+1);
-	//mbsddp->us.resize(N);
-	//mbsddp->ts.resize(N+1);
-	//trajectory.N = N;
-	//trajectory.statemsg.resize(N+1);
-	//trajectory.ctrl.resize(N);
-
-	//Setting Values
+  //Setting Values
 	for (int k = 0; k <=N; ++k)
 	mbsddp->ts[k] = k*h;
 
 	cost->tf = config.tf;
-
-	/*VectorXd u(6+ (nb-1));
-		u.setZero();
-		for(int count = 0;count < nb;count++)
-		u[5] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
-	 */
-
-	/*	for (int i = 0; i < mbsddp->xs.size()-1; ++i) 
-			{
-			double t = i*h;
-			ctrl->Set(mbsddp->us[i], t, mbsddp->xs[i]);
-			mbsmodel->Step(mbsddp->xs[i+1], i*h, mbsddp->xs[i], mbsddp->us[i], h);
-			}
-	 */
-
-	//mbsddp->mu = config.mu;[ONLY SET IN BEGINNING]
 	
 }
 
@@ -427,11 +348,8 @@ int main(int argc, char** argv)
 {
 	ros::init(argc, argv, "chainload");
 	ros::NodeHandle n("mbsddp");
-//	signal(SIGINT, mySigintHandler);
 	//Initialize publisher
 	trajpub = n.advertise<gcop_comm::CtrlTraj>("ctrltraj",1);
-	//Subscribe to initial posn from tf
-	//initialposn_sub = rosddp.subscribe("mocap",1,initialposnCallback);
 	//get parameter for xml_string:
 	string xml_string, xml_filename;
 	if(!ros::param::get("/robot_description", xml_string))
@@ -445,7 +363,6 @@ int main(int argc, char** argv)
 	Matrix4d gposei_root;
 	//Create Mbs system
 	mbsmodel = gcop_urdf::mbsgenerator(xml_string,gposei_root, mbstype);
-	//[NOTE]mbsmodel->U.bnd = false;
 	gcop::SE3::Instance().inv(gposeroot_i,gposei_root);
 	cout<<"Mbstype: "<<mbstype<<endl;
 	mbsmodel->ag << 0, 0, -0.05;
@@ -549,13 +466,7 @@ int main(int argc, char** argv)
 	//Define Lqr Cost
 	cost.reset(new LqCost<MbsState>(*mbsmodel, tf, *xf));
 	cost->Qf.setIdentity();
-	/*	if(mbstype != "FIXEDBASE")
-			{
-			cost->Qf(0,0) = 2; cost->Qf(1,1) = 2; cost->Qf(2,2) = 2;
-			cost->Qf(3,3) = 20; cost->Qf(4,4) = 20; cost->Qf(5,5) = 20;
-			}
-	 */
-	//cost.Qf(9,9) = 20; cost.Qf(10,10) = 20; cost.Qf(11,11) = 20;
+	
 	//list of final cost :
 	XmlRpc::XmlRpcValue finalcost_list;
 	if(n.getParam("Qf", finalcost_list))
@@ -621,35 +532,13 @@ int main(int argc, char** argv)
 	// initial controls (e.g. hover at one place)
 	VectorXd u(mbsmodel->U.n);
 	u.setZero();
-	/* We wont need this any more since we are computing ext forces to stabilize automatically
-	if(mbstype == "AIRBASE")
-	{
-		for(int count = 0;count < nb;count++)
-			u[3] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
-		cout<<"u[3]: "<<u[3]<<endl;
-		double u1;
-		n.getParam("Torque_init",u1);
-		u[1] = u1;//Torque in y dirxn to stop rotation
-		cout<<"u[1]: "<<u[1]<<endl;
-	}
-	else if(mbstype == "FLOATBASE")
-	{
-		for(int count = 0;count < nb;count++)
-			u[5] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
-		cout<<"u[5]: "<<u[5]<<endl;
-	}
-	*/
 
 	//States and controls for system
-
 	cout<<"Finding Biases"<<endl;
 	int n11 = mbsmodel->nb -1 + 6*(!mbsmodel->fixed);
 	VectorXd forces(n11);
 	mbsmodel->Bias(forces,0,x0);
 	cout<<"Bias computed: "<<forces.transpose()<<endl;
-
-	//forces = -1*forces;//Controls should be negative of the forces
-
 
 	//Set Controls to cancel the forces:
 	if(mbstype == "FLOATBASE")
@@ -672,44 +561,6 @@ int main(int argc, char** argv)
 
 	vector<VectorXd> us(N,u);
 	vector<MbsState> xs(N+1,x0);
-	//bool usectrl = true;
-
-	/* @MK: this is the new part, initialize trajectory using a controller [Replacing this with Direct computation of ext forces to stabilize]
-	if((mbstype == "FLOATBASE")||(mbstype == "FIXEDBASE"))
-	{
-		ctrl.reset(new MbsController(*mbsmodel, xf.get()));
-
-		XmlRpc::XmlRpcValue kp_list;
-		if(n.getParam("Kp", kp_list))
-			xml2vec(xmlconversion,kp_list);
-		ROS_ASSERT(xmlconversion.size() == mbsmodel->U.n);
-		ctrl->Kp = xmlconversion.head(mbsmodel->U.n);
-		cout<<"Kp"<<endl<<ctrl->Kp<<endl;
-
-		XmlRpc::XmlRpcValue kd_list;
-		if(n.getParam("Kd", kd_list))
-			xml2vec(xmlconversion,kd_list);
-		ROS_ASSERT(xmlconversion.size() == mbsmodel->U.n);
-		ctrl->Kd = xmlconversion.head(mbsmodel->U.n);
-		cout<<"Kd"<<endl<<ctrl->Kd<<endl;
-
-		n.getParam("usectrl",usectrl);
-		if(usectrl)
-		{
-			cout<<"Using Controller"<<endl;
-			for (int i = 0; i < xs.size()-1; ++i) {
-				double t = i*h;
-				ctrl->Set(us[i], t, xs[i]); 
-				mbsmodel->Step(xs[i+1], i*h, xs[i], us[i], h);
-			}
-		}
-	}
-	*/
-	//cout<<"us"<<endl<<us<<endl;
-
-	// see the result before running optimization
-	//getchar();
-
 
 	mbsddp.reset(new MbsDdp(*mbsmodel, *cost, ts, xs, us));
 

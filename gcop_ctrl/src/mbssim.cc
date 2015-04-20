@@ -1,3 +1,9 @@
+/** This is an example on simulating a Multi body system with given controls. There is a reconfiguration interface for changing the controls and is 
+  * used primarily for checking if the created MBS system from urdf file is working properly
+  *
+  * Author: Gowtham Garimella
+*/
+
 #include "ros/ros.h"
 #include <iomanip>
 #include <iostream>
