@@ -139,6 +139,10 @@ add_executable(rcctrl src/rccartest.cc)
 target_link_libraries(rcctrl ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(rcctrl ${PROJECT_NAME}_gencfg)
 
+add_executable(rcctrlsub src/rccarsub.cc)
+target_link_libraries(rcctrlsub ${LIBS} ${catkin_LIBRARIES})
+add_dependencies(rcctrlsub ${PROJECT_NAME}_gencfg)
+
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(gcop_ctrl_node gcop_ctrl_generate_messages_cpp)
