@@ -9,10 +9,10 @@ Node to test and plan multi body systems using a simple reconfiguration interfac
 ![cost function] (./render.png " Cost function ")
 
 
-## Publishers:
+### Publishers:
 * '/mbsddp/ctrltraj': [gcop_comm/CtrlTraj] Optimal trajectory containing the optimal controls and states published whenever iteration is done through reconfigure interface
 
-## Parameters:
+### Parameters:
 * 'mbsddp/X0' :[vector] Initial state of the multibody state see examples in params folder
 * 'mbsddp/XN' :[vector] Final state of the multibody system
 * 'mbsddp/Qf' :[Vector] Terminal Cost
@@ -33,12 +33,12 @@ msbnode
 
 Node to plan multi body systems through ros topics. This allows external nodes to use the controller to plan optimal trajectories between start and goal states. This node is launched through mbsnode.launch
 
-## Publishers:
+### Publishers:
 * '/mbsddp/traj_resp': [gcop_comm/CtrlTraj] Response Optimal trajectory containing the optimal controls and states
 * '/mbsddp/desired_traj': [visualization_msgs/Marker] Trajectory published to rviz for visualization
 * '/msddp/robotname[]/joint_states': [sensor_msgs/JointState] Publishes joint states at different stages in the trajectory for visualization in rviz
 
-## Subscribers:
+### Subscribers:
 * '/mbsddp/iteration_req': [gcop_comm/Iteration_req] Request for iteration of the optimization algorithm from external node
 
 This node shares the same parameters as the above node but cannot reconfigure the parameters. 
@@ -49,13 +49,13 @@ rccartest
 
 This node provides an example of optimizing rccar system using DDP. This is similar to mbstest in the sense that it provides all the configuration parameters through rqt_reconfigure and changes the optimal trajectory based on the input goal and car states. This node keeps optimizing the trajectory continously based on timer callback using the current goal state even when new goal states have been not provided.
 
-## Publishers:
+### Publishers:
 * '/ddp/ctrltraj': [gcop_comm/CtrlTraj] Provides the current optimal trajectory whenever iteration is done
 
-## Subscribers:
+### Subscribers:
 * '/ddp/mocap': [geometry_msgs/TransformStamped] If use mocap option is turned on in rqt_reconfigure, optimizes the trajectory based on input state from external source in the given format. The message should provide the base link pose in the world frame. This is a 2D car simulation hence will not use roll, pitch, z coordinates
 
-## Parameters:
+### Parameters:
 * 'ddp/tf' :[double] Final time
 * 'ddp/N'  :[int] Number of segments in the trajectory
 * 'ddp/x0' :[double] Initial state of the car (x position)
@@ -75,10 +75,10 @@ rccarsub
 
 This node provides the optimization of rccar system through a topic based interface similar to mbsnode. This can be used by external nodes to call optimization request with specific target pose and receive optimal trajectories connecting the initial state and target pose
 
-## Publishers:
+### Publishers:
 * '/ddp/ctrltraj': [gcop_comm/CtrlTraj] Publish the optimal trajectory based on optimization using DDP
 
-## Subscribers:
+### Subscribers:
 * '/ddp/mocap': [gcop_comm/CurrPose] Loads the initial state of the car  from external nodes which publish this such as odometry etc
 * '/ddp/target': [geometry_msgs::PoseStamped] Loads the target pose of the car to optimize to
 
