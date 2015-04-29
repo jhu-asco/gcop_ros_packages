@@ -9,11 +9,15 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-camera_calibration_parsers cv_bridge image_transport nodelet roscpp sensor_msgs tf)
+camera_calibration_parsers cv_bridge image_transport nodelet roscpp sensor_msgs tf
+rampage_msgs
+gis_common
+gps_common
+)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
-find_package(GCOP REQUIRED est)
+find_package(GCOP REQUIRED)
 message("GCOP LIBS: ${GCOP_LIBRARIES}")
 find_package(OpenCV REQUIRED core highgui imgproc calib3d)
 find_package(Eigen3 REQUIRED)
@@ -171,3 +175,11 @@ target_link_libraries(cam_est ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${catkin_LIBRARIE
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+add_executable(gcop_insekf_test src/gcop_insekf_test.cpp)
+target_link_libraries(gcop_insekf_test 
+		      ${GCOP_LIBRARIES}
+		      ${OpenCV_LIBRARIES}
+	      ${TINYXML_LIBRARIES}
+	      ${catkin_LIBRARIES}
+)
