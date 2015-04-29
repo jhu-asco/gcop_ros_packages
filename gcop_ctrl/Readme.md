@@ -1,5 +1,6 @@
 # Gcop Controller Package
 This package provides nodes to control different systems provided by GCOP using ROS interface. The examples in the package are multibody systems with Quadcopters/Fixed serial chains/Rccar models. The package provides different nodes which are described as follows:
+![Applications of Gcop Ros Interface](http://flyingmanipulators.lcsr.jhu.edu/wp-content/uploads/2015/04/gcop_collage.png)
 
 mbstest   
 --------
