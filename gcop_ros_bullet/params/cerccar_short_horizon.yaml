@@ -5,11 +5,11 @@ N: 26 # Number of segments
 #N: 20
 Nk: 9 # Number of knots for parametrization
 #Ns: 200 #Number of samples
-Ns: 60
+Ns: 30
 
 #x,y,theta,v
 x0:   [0.0, 0.0, 0.0, 0.0]   #Initial State
-xf:   [6.0, 6.0, -1.57, 0.0] #Final State
+xf:   [6.0, 6.0, 0.0, 1.0] #Final State
 #xf:   [2.0, 4.0, 0.0, 0.0] #Final State
 #xf:   [3.0, 3.0, -1.0, 0.0] #Final State
 #xf:   [0.0, 3.0, 1.57, 0.0] #Final State
