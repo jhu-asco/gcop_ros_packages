@@ -13,8 +13,12 @@ camera_calibration_parsers cv_bridge image_transport nodelet roscpp sensor_msgs 
 rampage_msgs
 gis_common
 gps_common
+dynamic_reconfigure
 )
 
+generate_dynamic_reconfigure_options(
+  cfg/Insekf.cfg
+  )
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 find_package(GCOP REQUIRED)
@@ -183,3 +187,4 @@ target_link_libraries(gcop_insekf_test
 	      ${TINYXML_LIBRARIES}
 	      ${catkin_LIBRARIES}
 )
+add_dependencies(gcop_insekf_test ${PROJECT_NAME}_gencfg )
