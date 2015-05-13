@@ -10,7 +10,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
 camera_calibration_parsers cv_bridge image_transport nodelet roscpp sensor_msgs tf
-rampage_msgs
 gis_common
 gps_common
 dynamic_reconfigure
