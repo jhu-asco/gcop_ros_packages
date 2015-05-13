@@ -16,6 +16,7 @@ using namespace Eigen;
 using namespace gcop;
 
 boost::shared_ptr<Bulletrccar> sys;///Bullet rccar system
+boost::shared_ptr<BaseSystem> base_sys;///Bullet rccar system
 
 int main(int argc, char** argv)
 {
@@ -64,6 +65,7 @@ int main(int argc, char** argv)
   BulletWorld world(true);//Set the up axis as z for this world
   //Create Bullet rccar:
   sys.reset(new Bulletrccar(world));
+  base_sys = boost::static_pointer_cast<BaseSystem>(sys);
 
   //Load Ground
   std::string filename;
@@ -97,12 +99,12 @@ int main(int argc, char** argv)
   world.LocalCreateRigidBody(0,tr, (btCollisionShape*)groundShape);
 
   Vector4d x0(1,1,0,0);
-  sys->reset(x0,0);
+  sys->Reset(x0,0);
   Vector2d u(0,0);
   double deltat = 0.1, finaltime = 1;
   for(int count1 = 0; count1 < (finaltime/deltat); count1++)
   {
-    sys->Step_internaloutput(u, deltat);//0.1 seconds per step so running for 1 second
+    base_sys->Step(u, deltat);//0.1 seconds per step so running for 1 second
     cout<<"ce->sys.x" <<(deltat*(count1+1))<<"\txs: "<<(sys->x).transpose()<<endl;//#DEBUG
   }
   //Reset the car and modify the ground to see what happens:
@@ -173,10 +175,10 @@ int main(int argc, char** argv)
       groundShape->partialRefitTree(mesh_min, mesh_max);
 
       cout<<"Running system after modifying mesh"<<endl;
-      sys->reset(x0,0);
+      sys->Reset(x0,0);
       for(int count1 = 0; count1 < (finaltime/deltat); count1++)
       {
-        sys->Step_internaloutput(u, deltat);
+        base_sys->Step(u, deltat);
         //Set the car joint stuff:
         joint_state.header.stamp = ros::Time::now();
         //Back wheel

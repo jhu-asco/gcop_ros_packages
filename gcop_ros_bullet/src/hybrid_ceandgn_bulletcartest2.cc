@@ -48,6 +48,7 @@ typedef Matrix<double, 6, 1> Vector6d;//#DEBUG
 boost::shared_ptr<RccarCe> ce;///<Cross entropy based solver
 boost::shared_ptr<RccarGn> gn;///<Cross entropy based solver
 boost::shared_ptr<Bulletrccar> sys;///Bullet rccar system
+boost::shared_ptr<BaseSystem> base_sys;///Bullet rccar system
 vector<Vector4d> xs;///< State trajectory of the system
 vector<Vector2d> us;///< Controls for the trajectory of the system
 vector<double> ts;///< Times for trajectory
@@ -221,7 +222,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
   if(config.animate)
   {
     //Run the system:
-    sys->reset(x0bar, ts[0]);
+    sys->Reset(x0bar, ts[0]);
     
     int count_gn = 0;
     double h = (ce->cost.tf)/us.size();//h for the original problem
@@ -352,10 +353,10 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
       //getchar();
 
       //reset car state and update the trajectory with new controls.
-      sys->reset(xs_gn[0],ts_gn[0]);
+      sys->Reset(xs_gn[0],ts_gn[0]);
       for(int count1 = 0;count1 < N_gn;count1++)
       {
-        sys->Step_internaloutput(us_gn[count1], ts_gn[count1+1]-ts_gn[count1]);
+        base_sys->Step(us_gn[count1], ts_gn[count1+1]-ts_gn[count1]);
         //Set the car joint stuff:
         joint_state.header.stamp = ros::Time::now();
         //Back wheel
@@ -443,6 +444,7 @@ int main(int argc, char** argv)
 
   zs.resize(N+1);//<Resize the height vector and pass it to the rccar system
   sys.reset(new Bulletrccar(world, &zs));
+  base_sys = boost::static_pointer_cast<BaseSystem>(sys);
   sys->initialz = 0.12;
   sys->gain_cmdvelocity = 1;
   sys->kp_steer = 0.2;

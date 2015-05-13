@@ -35,6 +35,7 @@ typedef SPSA<Vector4d, 4, 2> RccarSPSA;
 //Global variable:
 boost::shared_ptr<RccarSPSA> spsa;///<Cross entropy based solver
 boost::shared_ptr<Bulletrccar> sys;///Bullet rccar system
+boost::shared_ptr<BaseSystem> base_sys;///Bullet rccar system
 vector<Vector4d> xs;///< State trajectory of the system
 vector<Vector2d> us;///< Controls for the trajectory of the system
 vector<double> ts;///< Times for trajectory
@@ -136,10 +137,10 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
   if(config.animate)
   {
     //Run the system:
-    sys->reset(xs[0],ts[0]);
+    sys->Reset(xs[0],ts[0]);
     for(int count1 = 0;count1 < us.size();count1++)
     {
-      sys->Step_internaloutput(us[count1], ts[count1+1]-ts[count1]);
+      base_sys->Step(us[count1], ts[count1+1]-ts[count1]);
       //Set the car joint stuff:
       joint_state.header.stamp = ros::Time::now();
       //Back wheel
@@ -196,6 +197,7 @@ int main(int argc, char** argv)
 
   zs.resize(N+1);//<Resize the height vector and pass it to the rccar system
   sys.reset(new Bulletrccar(world, &zs));
+  base_sys = boost::static_pointer_cast<BaseSystem>(sys);
   sys->initialz = 0.12;
   sys->gain_cmdvelocity = 1;
   sys->kp_steer = 0.0125;

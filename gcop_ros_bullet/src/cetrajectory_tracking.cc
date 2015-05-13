@@ -34,6 +34,8 @@
 #include <gcop/controltparam.h>
 #endif
 
+#include <boost/thread.hpp>
+
 
 using namespace std;
 using namespace Eigen;
@@ -44,6 +46,7 @@ typedef SystemCe<Vector4d, 4, 2, Dynamic> RccarCe;
 //Global variable:
 boost::shared_ptr<RccarCe> ce;///<Cross entropy based solver
 boost::shared_ptr<Bulletrccar> sys;///Bullet rccar system
+boost::shared_ptr<BaseSystem> base_sys;///Bullet rccar system
 vector<Vector4d> xs;///< State trajectory of the system
 vector<Vector2d> us;///< Controls for the trajectory of the system
 vector<Vector2d> dus;///< Variance of the controls  in CE
@@ -57,6 +60,12 @@ Vector4d xf(0,0,0,0);///< final state
 double marker_height;///< Height of the final arrow
 ofstream costlogfile("/home/gowtham/hydro_workspace/src/gcop_ros_packages/gcop_ros_bullet/results/costs/ce.dat");
 ofstream optimaltrajlogfile("/home/gowtham/hydro_workspace/src/gcop_ros_packages/gcop_ros_bullet/results/costs/cetraj.dat");
+
+//Animation thread variables:
+boost::mutex control_mutex;
+boost::mutex truestate_mutex;
+bool close_thread = false, true_state_set = false, controls_updated = false;
+std::string mesh_filename;
 
 //ros publisher and subscribers:
 ros::Publisher joint_pub;///<Rccar model joint publisher for animation
@@ -111,12 +120,138 @@ void xml2vec(VectorXd &vec, XmlRpc::XmlRpcValue &my_list)
 	}
 }
 
+/** Animation thread which runs in parallel to optimization thread
+*/
+void Animate()
+{
+  BulletWorld parallel_world(true);//Set the up axis as z for this parallel_world
+  boost::shared_ptr<Bulletrccar> parallel_sys;///Bullet rccar system
+  boost::shared_ptr<BaseSystem> base_parallel_sys;///Bullet rccar system
+  parallel_sys.reset(new Bulletrccar(parallel_world));
+  base_parallel_sys = boost::static_pointer_cast<BaseSystem>(parallel_sys);
+  parallel_sys->initialz = 0.18;
+  parallel_sys->gain_cmdvelocity = 1.04;
+  parallel_sys->kp_steer = 0.2;
+  parallel_sys->kp_torque = 100;
+  parallel_sys->steeringClamp = 15.0*(M_PI/180.0);
+  parallel_sys->U.lb[0] = -(parallel_sys->steeringClamp);
+  parallel_sys->U.ub[1] = (parallel_sys->steeringClamp);
+  parallel_sys->U.bnd = true;
+
+  parallel_sys->initialz = sys->initialz;
+
+  parallel_sys->offsettrans.setIdentity();
+  parallel_sys->offsettransinv.setIdentity();
+
+  //Load Ground
+  {
+    cout<<"Filename: "<<mesh_filename<<endl;
+    btCollisionShape *groundShape;
+    if(mesh_filename.compare("plane") == 0)
+      groundShape = parallel_world.CreateGroundPlane(20,20);
+    else
+      groundShape= parallel_world.CreateMeshFromSTL(mesh_filename.c_str());//20 by 20 long plane
+
+    btTransform tr;
+    tr.setOrigin(btVector3(0, 0, 0));
+    tr.setRotation(btQuaternion(0,0,0));
+    parallel_world.LocalCreateRigidBody(0,tr, groundShape);
+  }
+
+  double propagate_time = 0.5;
+  double timestep = ts[1] - ts[0];
+  int propagate_steps = round(propagate_time/timestep);//nofsteps to propagate
+  assert(propagate_steps > 0);
+  vector<Vector2d> us_parallel(propagate_steps);///< Controls for propagation of system 
+
+  truestate_mutex.lock();
+  parallel_sys->Reset(xs[0],ts[0]);
+  parallel_sys->setinitialstate(xs[0]);//This is used to fill the initial state matrix in the system based on the current state of the car. It also fills xs[0]
+  true_initialstate = *(parallel_sys->initialstate);
+  true_state_set = true;
+  truestate_mutex.unlock();
+
+  Eigen::Vector4d x0temp;
+  while(!close_thread)
+  {
+    {
+      int counter = 0;
+      while(1)
+      {
+        control_mutex.lock();
+        if(controls_updated == true || counter > 1000)
+        {
+          //Copy controls to propagate forward:
+          for(int propagate_count = 0; propagate_count < propagate_steps; propagate_count++)
+          {
+            us_parallel[propagate_count] = us[propagate_count];
+          }
+
+          controls_updated = false;
+          control_mutex.unlock();
+          break;
+        }
+        else
+        {
+          cout<<"Waiting for controls to be updated..."<<endl;
+          counter++;
+        }
+        control_mutex.unlock();
+        usleep(10000);
+      }
+      if(counter > 1000)
+      {
+        cout<<"Timeout: controls were not updated"<<endl;
+        return;
+      }
+    }
+
+    for(int propagate_count = 0; propagate_count<propagate_steps; propagate_count++)
+    {
+      //Add noise
+      base_parallel_sys->Step(us_parallel[propagate_count], timestep);
+      //Visualization:
+      //Set the car joint stuff:
+      joint_state.header.stamp = ros::Time::now();
+      //Back wheel
+      joint_state.position[2] = 0;
+      //steering angle
+      joint_state.position[0] = parallel_sys->gVehicleSteering;
+      joint_state.position[1] = parallel_sys->gVehicleSteering;
+      //send joint state
+      joint_pub.publish(joint_state);
+      //Set the pose for the car:
+      btTransform chassistransform = (parallel_sys->m_carChassis)->getWorldTransform();
+      btQuaternion chassisquat = chassistransform.getRotation();
+      btVector3 chassisorig = chassistransform.getOrigin();
+      tf::Transform tf_chassistransform;
+      tf_chassistransform.setRotation(tf::Quaternion(chassisquat.x(), chassisquat.y(), chassisquat.z(), chassisquat.w()));
+      tf_chassistransform.setOrigin(tf::Vector3(chassisorig.x(), chassisorig.y(), chassisorig.z()));
+      broadcaster->sendTransform(tf::StampedTransform(tf_chassistransform, ros::Time::now(), "world", "base_link"));
+      //ros::spinOnce();
+      cout<<"ce->parallel_sys.x" <<ts[propagate_count+1]<<"\txs: "<<(parallel_sys->x).transpose()<<endl;//#DEBUG
+      usleep(timestep*1e6);//microseconds
+    }
+
+    parallel_sys->setinitialstate(x0temp);//fill initialstate with current car state
+
+    truestate_mutex.lock();
+
+    true_initialstate = *(parallel_sys->initialstate);//store this state
+    true_state_set = true;
+
+    truestate_mutex.unlock();
+  }
+  close_thread = false;//Put back to default state
+}
+
 /**
  * Set xf on a circle
  */
  void setxf(double dt)
  {
    double r = sqrt(xf(0)*xf(0) + xf(1)*xf(1));
+   cout<<"r: "<<r<<endl;
    if(r < 0.001)
      r = 0.001;
    double omega = xf(3)/r;
@@ -129,7 +264,7 @@ void xml2vec(VectorXd &vec, XmlRpc::XmlRpcValue &my_list)
      getchar();
      xf(2) -= 2*M_PI;
    }
-   else if((xf(2)]) < -M_PI)
+   else if((xf(2)) < -M_PI)
    {
      cout<<"xf: "<<xf.transpose()<<endl;
      cout<<"x0: "<<xs[0].transpose()<<endl;
@@ -140,6 +275,8 @@ void xml2vec(VectorXd &vec, XmlRpc::XmlRpcValue &my_list)
 
    xf(0) = r*cos(xf(2));
    xf(1) = r*sin(xf(2));
+   cout<<"xf: "<<xf.transpose()<<endl;
+   cout<<"omega:"<<omega<<endl;
    return;
  }
 
@@ -220,6 +357,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
 
     }
     cout<<"Iterating: "<<endl;
+    cout<<"xf: "<<xf.transpose()<<endl;
     //Evaluate average frequency:
     double total_iteration_time = 0.0;
     //We are tracking a circle or radius tracking_rad and speed = 2 m/s
@@ -233,71 +371,103 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     //Propagate the true position we see to 0.5 seconds forward, run 3 iterations of SDDP, True Execution(run with noise closed loop(true position we see))
     //Added noise to input when following the trajectory.
 
+    int propagate_iterations = 2;//Number of optimization iterations that can be done in the above time
     double propagate_time = 0.5;
-    int propagate_iterations = 3;//Number of optimization iterations that can be done in the above time
     int propagate_steps = round(propagate_time/(ts[1] - ts[0]));//nofsteps to propagate
+    assert(propagate_steps > 0);
     int trajectory_steps = round(cost->tf/(ts[1]-ts[0]));//total nofsteps in trajectory
 
     //Do Initial iteration
-    sys->reset(xs[0],ts[0]);
-    sys->setinitialstate(xs[0]);//This is used to fill the initial state matrix in the system based on the current state of the car. It also fills xs[0]
-    true_initialstate = *(sys->initialstate);
+    sys->Reset(xs[0],ts[0]);
+    //sys->setinitialstate(xs[0]);//This is used to fill the initial state matrix in the system based on the current state of the car. It also fills xs[0]
+    //true_initialstate = *(sys->initialstate);
     for(int i = 0; i < propagate_iterations; ++i)
     {
       ce->Iterate();
       Publishrviztrajectory();
     }
+    controls_updated = true;//For the first time controls are updated by initial number of iterations
+    //Create a boost thread for running parallel system:
+		boost::thread animate_thread(Animate);//Passing in function to serial_recv
 
     for (int i = 0; i < config.Nit*ceil(trajectory_steps/propagate_steps); ++i) {
 
-      //Get x0' by propagating true_initialstate with us + noise added (This is actually done by real system)
-      sys->setinitialstate(true_initialstate, xs[0]);
-      sys->reset(xs[0],ts[0]);
-      for(int propagate_count = 0; propagate_count<propagate_steps; propagate_count++)
-      {
-        //Add noise
-        sys->Step_internaloutput(us[propagate_count], ts[propagate_count+1]-ts[propagate_count]);
-        //Visualization:
-        //Set the car joint stuff:
-        joint_state.header.stamp = ros::Time::now();
-        //Back wheel
-        joint_state.position[2] = 0;
-        //steering angle
-        joint_state.position[0] = sys->gVehicleSteering;
-        joint_state.position[1] = sys->gVehicleSteering;
-        //send joint state
-        joint_pub.publish(joint_state);
-        //Set the pose for the car:
-        btTransform chassistransform = (sys->m_carChassis)->getWorldTransform();
-        btQuaternion chassisquat = chassistransform.getRotation();
-        btVector3 chassisorig = chassistransform.getOrigin();
-        tf::Transform tf_chassistransform;
-        tf_chassistransform.setRotation(tf::Quaternion(chassisquat.x(), chassisquat.y(), chassisquat.z(), chassisquat.w()));
-        tf_chassistransform.setOrigin(tf::Vector3(chassisorig.x(), chassisorig.y(), chassisorig.z()));
-        broadcaster->sendTransform(tf::StampedTransform(tf_chassistransform, ros::Time::now(), "world", "base_link"));
-        //cout<<"ce->sys.x" <<ts[count1+1]<<"\txs: "<<(sys->x).transpose()<<endl;//#DEBUG
-        usleep((ts[propagate_count+1] - ts[propagate_count])*1e6);//microseconds
-      }
+    //  sys->setinitialstate(true_initialstate, xs[0]);
 
-      sys->setinitialstate(xs[0]);//fill initialstate with current car state
-      Bulletrccar::CarState temp_true_initialstate = *(sys->initialstate);//store this state
+
+//////////////////////////////
+     // sys->setinitialstate(xs[0]);//fill initialstate with current car state
+      //Bulletrccar::CarState temp_true_initialstate = *(sys->initialstate);//store this state
 
  
       //Project without Noise to predict where we will be starting for the next optimization run
       // *(sys->initialstate) = true_initialstate;
+      //wait till true_initialstate is set with a timeout of 1second
+      {
+        int counter = 0;
+        while(1)
+        {
+          truestate_mutex.lock();
+          if(true_state_set == true || counter > 1000)
+          {
+            true_state_set = false;
+            truestate_mutex.unlock();
+            break;
+          }
+          else
+          {
+            counter++;
+            cout<<"Waiting for true_state to be updated..."<<endl;
+          }
+          truestate_mutex.unlock();
+          usleep(10000);
+        }
+        if(counter > 1000)
+        {
+          cout<<"Timeout: initialstate was not set"<<endl;
+          return;
+        }
+      }
       sys->setinitialstate(true_initialstate, xs[0]);
-      true_initialstate = temp_true_initialstate;//Update true initialstate 
-      sys->reset(xs[0],ts[0]);
+      sys->Reset(xs[0],ts[0]);
+
+      //Wait for controls to be copied before changing them
+      {
+        int counter = 0;
+        while(1)
+        {
+          control_mutex.lock();
+          if(controls_updated == false || counter > 1000)
+          {
+            control_mutex.unlock();
+            break;
+          }
+          else
+          {
+            cout<<"Waiting for controls to be copied..."<<endl;
+            counter++;
+          }
+          control_mutex.unlock();
+          usleep(10000);
+        }
+        if(counter > 1000)
+        {
+          cout<<"Timeout: initialstate was not set"<<endl;
+          return;
+        }
+      }
+
       for(int propagate_count = 0; propagate_count<propagate_steps; propagate_count++)
       {
         //No noise
-        sys->Step_internaloutput(us[propagate_count], ts[propagate_count+1]-ts[propagate_count]);
+        base_sys->Step(us[propagate_count], ts[propagate_count+1]-ts[propagate_count]);
       }
+
       sys->setinitialstate(xs[0]);//Set x0 with predicted state      
 
-      //Set xtf These steps are done in truth parallely while above real system is being executed and should take the same time used for propagating x0'
       if(i == 0)
         xf(2) = atan2(xf(1),xf(0));//Set the goal angle for circle
+      cout<<"xf: "<<xf.transpose()<<endl;
       setxf(propagate_time);//propagate xf forward
       ///Publish goal:
       goal_arrow.pose.position.x = xf(0);
@@ -310,9 +480,9 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
         //break;
 
       //Set us, dus and update the trajectory:
-      //sys->reset(xs[0],ts[0]);
+      //sys->Reset(xs[0],ts[0]);
       //double cost_newtrajectory = 0;
-      /////DEBUG HERE/////
+      /////DEBUG HERE///// 
       for(int us_count = 0; us_count<trajectory_steps; us_count++)
       {
         int copy_index = (us_count+propagate_steps)>(trajectory_steps-1)?(trajectory_steps-1):(us_count+propagate_steps);
@@ -324,19 +494,20 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
           else
           dus[us_count] = dus[copy_index];
          */
-      //  sys->Step_internalinput(xs[us_count+1],us[us_count],ts[us_count+1]-ts[us_count]);//Update states based on these controls
+      //  base_sys->Step(xs[us_count+1],us[us_count],ts[us_count+1]-ts[us_count]);//Update states based on these controls
        // cost_newtrajectory += (ce->cost).L(ts[us_count], xs[us_count], us[us_count], (ts[us_count+1]-ts[us_count]), 0);
       }
 
       ce.reset(new RccarCe(*sys, *cost, *ctp, ts, xs, us, 0, dus, es));//Create a CE problem with the new us and xs #TODO Create a RESET function in Ce which can evaluate a trajectory and update dus etc
       ce->Ns = Ns;
       ce->ce.inc = false;///<#TODO Find out what these are
-      ce->external_render = &render_trajectory;
+      //ce->external_render = &render_trajectory;
       //Do Tparam conversion for us, dus also
       //cost_newtrajectory += (ce->cost).L(ts[trajectory_steps], xs[trajectory_steps], us[trajectory_steps-1], 0, 0);
       //ce->J = cost_newtrajectory;
       Publishrviztrajectory();
       //getchar();
+
 
       //Iterate 3 times get new us
       for(int iterate_count = 0; iterate_count < propagate_iterations; iterate_count++)
@@ -360,7 +531,12 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
         Publishrviztrajectory();
       //  getchar();
       }
+      //Let the other thread know we are done with optimization
+      control_mutex.lock();
+        controls_updated = true;
+      control_mutex.unlock();
     }
+    close_thread = true;
     cout<<"Average Frequency: "<<(config.Nit/total_iteration_time)<<endl;
     
     for(int i =0;i < us.size();i++)
@@ -371,8 +547,6 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     }//#DEBUG
     optimaltrajlogfile<<ts[us.size()]<<"\t"<<us[us.size()-1].transpose()<<"\t"<<xs[us.size()].transpose()<<endl;
 
-    //Publish control trajectory when parameter is set:
-    if(sendtrajectory)
     {
       for (int count = 0;count<Nreq;count++)
       {
@@ -393,10 +567,10 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
   if(config.animate)
   {
     //Run the system:
-    sys->reset(xs[0],ts[0]);
+    sys->Reset(xs[0],ts[0]);
     for(int count1 = 0;count1 < us.size();count1++)
     {
-      sys->Step_internaloutput(us[count1], ts[count1+1]-ts[count1]);
+      base_sys->Step(us[count1], ts[count1+1]-ts[count1]);
       //Set the car joint stuff:
       joint_state.header.stamp = ros::Time::now();
       //Back wheel
@@ -459,6 +633,7 @@ int main(int argc, char** argv)
 
   zs.resize(N+1);//<Resize the height vector and pass it to the rccar system
   sys.reset(new Bulletrccar(world, &zs));
+  base_sys = boost::static_pointer_cast<BaseSystem>(sys);
   sys->initialz = 0.12;
   sys->gain_cmdvelocity = 1.04;
   sys->kp_steer = 0.2;
@@ -475,14 +650,13 @@ int main(int argc, char** argv)
 
   //Load Ground
   {
-    std::string filename;
-    nh.getParam("mesh",filename);
-    cout<<"Filename: "<<filename<<endl;
+    nh.getParam("mesh",mesh_filename);
+    cout<<"Filename: "<<mesh_filename<<endl;
     btCollisionShape *groundShape;
-    if(filename.compare("plane") == 0)
+    if(mesh_filename.compare("plane") == 0)
       groundShape = world.CreateGroundPlane(20,20);
     else
-      groundShape= world.CreateMeshFromSTL(filename.c_str());//20 by 20 long plane
+      groundShape= world.CreateMeshFromSTL(mesh_filename.c_str());//20 by 20 long plane
 
     btTransform tr;
     tr.setOrigin(btVector3(0, 0, 0));

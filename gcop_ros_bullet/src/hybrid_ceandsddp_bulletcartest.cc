@@ -51,6 +51,7 @@ typedef SDdp<Vector4d, 4, 2, Dynamic> RccarDdp;
 boost::shared_ptr<RccarCe> ce;///<Cross entropy based solver
 boost::shared_ptr<RccarDdp> sddp;///<Cross entropy based solver
 boost::shared_ptr<Bulletrccar> sys;///Bullet rccar system
+boost::shared_ptr<BaseSystem> base_sys;///Bullet rccar system
 #ifdef USE_SPLINEPARAM
 boost::shared_ptr<UniformSplineTparam<Vector4d, 4, 2> > ctp;//Parametrization
 #else
@@ -324,7 +325,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     feedbackline_strip.header.stamp  = ros::Time::now();
 
     //Run the system:
-    sys->reset(x0bar,ts[0]);
+    sys->Reset(x0bar,ts[0]);
     {
       //geometry_msgs::Point p;
       feedbackline_strip.points[0].x = x0bar[0];
@@ -334,7 +335,7 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     for(int count1 = 0;count1 < us.size();count1++)
     { 
       Vector2d us_feedback = us[count1] + (sddp->Kuxs[count1])*((sys->x) - xs[count1]);
-      sys->Step_internaloutput(us_feedback, ts[count1+1]-ts[count1]);
+      base_sys->Step(us_feedback, ts[count1+1]-ts[count1]);
       {
         //geometry_msgs::Point p;
         feedbackline_strip.points[count1+1].x = sys->x[0];
@@ -407,6 +408,7 @@ int main(int argc, char** argv)
 
   zs.resize(N+1);//<Resize the height vector and pass it to the rccar system
   sys.reset(new Bulletrccar(world, &zs));
+  base_sys = boost::static_pointer_cast<BaseSystem>(sys);
   sys->initialz = 0.12;
   sys->gain_cmdvelocity = 1;
   sys->kp_steer = 0.2;

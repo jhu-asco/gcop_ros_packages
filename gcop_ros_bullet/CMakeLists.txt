@@ -169,17 +169,17 @@ add_executable(hybrid_ceandsddp_bulletcartest src/hybrid_ceandsddp_bulletcartest
 target_link_libraries(hybrid_ceandsddp_bulletcartest ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(hybrid_ceandsddp_bulletcartest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
-add_executable(hybrid_ceandgn_bulletcartest src/hybrid_ceandgn_bulletcartest.cc)
-target_link_libraries(hybrid_ceandgn_bulletcartest ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(hybrid_ceandgn_bulletcartest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+#add_executable(hybrid_ceandgn_bulletcartest src/hybrid_ceandgn_bulletcartest.cc)
+#target_link_libraries(hybrid_ceandgn_bulletcartest ${LIBS} ${catkin_LIBRARIES})
+#add_dependencies(hybrid_ceandgn_bulletcartest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
 #add_executable(hybrid_ceandgn_bulletcartest1 src/hybrid_ceandgn_bulletcartest1.cc)
 #target_link_libraries(hybrid_ceandgn_bulletcartest1 ${LIBS} ${catkin_LIBRARIES})
 #add_dependencies(hybrid_ceandgn_bulletcartest1 ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
-add_executable(hybrid_ceandgn_bulletcartest2 src/hybrid_ceandgn_bulletcartest2.cc)
-target_link_libraries(hybrid_ceandgn_bulletcartest2 ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(hybrid_ceandgn_bulletcartest2 ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+#add_executable(hybrid_ceandgn_bulletcartest2 src/hybrid_ceandgn_bulletcartest2.cc)
+#target_link_libraries(hybrid_ceandgn_bulletcartest2 ${LIBS} ${catkin_LIBRARIES})
+#add_dependencies(hybrid_ceandgn_bulletcartest2 ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
 add_executable(hybrid_ceandgn_feedbacktest src/hybrid_ceandgn_feedbacktest.cc)
 target_link_libraries(hybrid_ceandgn_feedbacktest ${LIBS} ${catkin_LIBRARIES})

@@ -37,6 +37,7 @@ typedef SDdp<Vector4d, 4, 2, Dynamic> RccarDdp;
 //Global variable:
 boost::shared_ptr<RccarDdp> ddp;///<Cross entropy based solver
 boost::shared_ptr<Bulletrccar> sys;///Bullet rccar system
+boost::shared_ptr<BaseSystem> base_sys;///Bullet rccar system
 vector<Vector4d> xs;///< State trajectory of the system
 vector<Vector2d> us;///< Controls for the trajectory of the system
 vector<double> ts;///< Times for trajectory
@@ -221,11 +222,11 @@ void ParamreqCallback(gcop_ros_bullet::CEInterfaceConfig &config, uint32_t level
     Vector4d xs0 = xs[0];
     //xs0 += dx_scale; 
     //xs0 += Vector4d(0.0, 0.1, 0.0, 0.0);
-    sys->reset(xs0,ts[0]);
+    sys->Reset(xs0,ts[0]);
     for(int count1 = 0;count1 < us.size();count1++)
     {
       Vector2d us_feedback = us[count1] + (ddp->Kuxs[count1])*((sys->x) - xs[count1]);
-      sys->Step_internaloutput(us_feedback, ts[count1+1]-ts[count1]);
+      base_sys->Step(us_feedback, ts[count1+1]-ts[count1]);
       //btWheelInfo& wheel = (sys->m_vehicle->getWheelInfo(0));
       //cout<<"SideImpulse: "<<(sys->m_vehicle->m_sideImpulse[0])<<endl;
       //cout<<"ForwardImpulse: "<<(sys->m_vehicle->m_forwardImpulse[0])<<endl;
@@ -293,6 +294,7 @@ int main(int argc, char** argv)
 
   zs.resize(N+1);//<Resize the height vector and pass it to the rccar system
   sys.reset(new Bulletrccar(world, &zs));
+  base_sys = boost::static_pointer_cast<BaseSystem>(sys);
   //sys->m_vehicle->m_sideFrictionStiffness2 = 1.0;
   sys->initialz = 0.12;
   sys->gain_cmdvelocity = 1.04;
