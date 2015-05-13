@@ -1,5 +1,5 @@
 ###############SET This to GCOP Source Directory###############
-set(GCOP_SOURCE_DIR /home/gowtham/fuerte_workspace/sandbox/gcop)
+set(GCOP_SOURCE_DIR /home/subhransu/projects/libraries/gcop/gcop)
 
 set(BULLET_PHYSICS_SOURCE_DIR ${GCOP_SOURCE_DIR}/bullet3)
 
