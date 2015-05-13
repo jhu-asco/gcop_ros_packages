@@ -4,6 +4,10 @@
 #include "ros/ros.h"
 #include <tf/transform_broadcaster.h>
 
+// Dynamic reconfigure
+#include <dynamic_reconfigure/server.h>
+#include <gcop_ros_est/InsekfConfig.h>
+
 // ROS standard messages
 #include "std_msgs/String.h"
 #include <sensor_msgs/Imu.h>
@@ -47,6 +51,7 @@ typedef KalmanCorrector<InsState, 15, 6, Dynamic, Vector3d, 3> InsGpsKalmanCorre
 //-----------------------------GLOBAL VARIABLES--------------------------------------
 //-----------------------------------------------------------------------------------
 sig_atomic_t g_shutdown_requested=0;
+gcop_ros_est::InsekfConfig g_config;
 InsKalmanPredictor* g_p_kp_ins;
 InsImuKalmanCorrector* g_p_kc_insimu;
 InsGpsKalmanCorrector* g_p_kc_insgps;
@@ -347,6 +352,21 @@ void sendImu(const ros::TimerEvent&)
  g_pub_imu.publish(msg_imu_ros);
 }
 
+void cbReconfig(gcop_ros_est::InsekfConfig &config, uint32_t level)
+{
+  static bool first_time=true;
+
+
+  if(first_time)
+  {
+    first_time=false;
+  }
+  else
+  {
+
+  }
+  g_config = config;
+}
 //-----------------------------------------------------------------------------------
 //-----------------------------------MAIN--------------------------------------------
 //-----------------------------------------------------------------------------------
@@ -356,6 +376,12 @@ int main(int argc, char** argv)
   signal(SIGINT,mySigIntHandler);
 
   ros::NodeHandle nh;
+
+  dynamic_reconfigure::Server<gcop_ros_est::InsekfConfig> server;
+  dynamic_reconfigure::Server<gcop_ros_est::InsekfConfig>::CallbackType f;
+
+  f = boost::bind(&cbReconfig, _1, _2);
+  server.setCallback(f);
 
 //  ros::Subscriber sub_imu_simple = nh.subscribe<rampage_msgs::ImuSimple>("imu_simple",1000,cbMsgImuSimple);
 //  ros::Subscriber sub_gps_simple = nh.subscribe<rampage_msgs::GpsSimple>("gps_simple",1000,cbMsgGpsSimple);
