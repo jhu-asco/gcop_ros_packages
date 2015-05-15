@@ -87,8 +87,8 @@ void cbMsgImu(const sensor_msgs::Imu::ConstPtr& msg_imu)
   //ROS_INFO("I got IMU msg");
   static bool first_time = true;
   static ros::Time t_epoch_prev;
+  g_p_imu->R.topLeftCorner<3,3>().diagonal().setConstant(msg_imu->linear_acceleration_covariance[0]);
 
-  g_p_imu->sra = sqrt(msg_imu->linear_acceleration_covariance[0]);
   if(g_first_gps_received)
   {
     if(first_time)
@@ -143,8 +143,8 @@ void cbMsgGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps)
 {
   //Update covariance
   g_p_gps->R(0,0) = msg_gps->position_covariance[0];
-  g_p_gps->R.R(1,1) = msg_gps->position_covariance[3];
-  g_p_gps->R.R(2,2) = msg_gps->position_covariance[6];
+  g_p_gps->R(1,1) = msg_gps->position_covariance[3];
+  g_p_gps->R(2,2) = msg_gps->position_covariance[6];
 
   double x_m_lcl, y_m_lcl, yaw_m_lcl; //local in reference to the LL point on the JHU map
   gis_common::gpsToLocal(x_m_lcl,y_m_lcl,msg_gps->latitude,msg_gps->longitude,g_config.lat0_deg, g_config.lon0_deg);
@@ -198,6 +198,8 @@ void cbMsgGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps)
 
 void cbMsgMag(const sensor_msgs::MagneticField::ConstPtr& msg_mag)
 {
+
+  //g_p_imu->R.template bottomRightCorner<3,3>().diagonal().setConstant(srm*srm);
   std::cout<<"mag msg received"<<std::endl;
 }
 /**
@@ -250,8 +252,16 @@ void cbReconfig(gcop_ros_est::InsekfConfig &config, uint32_t level)
   {
 
   }
+
+  if(config.reinitialize_filter == true)
+  {
+    config.reinitialize_filter=false;
+    g_first_gps_received = false;
+  }
   g_config = config;
 }
+
+
 //-----------------------------------------------------------------------------------
 //-----------------------------------MAIN--------------------------------------------
 //-----------------------------------------------------------------------------------
@@ -284,6 +294,8 @@ int main(int argc, char** argv)
   g_p_gps = &gps;
   g_p_imu = &imu;
 
+
+
   gps.sxy = 3;
   gps.sz = 1;
   gps.R(0,0) = gps.sxy*gps.sxy;
@@ -292,6 +304,8 @@ int main(int argc, char** argv)
 
   ins.g0[2]=g_acc_gravity;
   imu.a0[2]=g_acc_gravity;
+
+
 
   //Instantiate the kalman predictor and correctors
   InsKalmanPredictor kp_ins(ins);
