@@ -11,3 +11,4 @@ Change the variable to the actual source directory where GCOP is installed (For 
 * gncartest.launch: Launch Bullet rccar model on a plane with Gauss Newton based optimization method
 * sddp_planar_cartest.launch: Launch Bullet rccar model on plane with Sampling based Differential Dynamic Programming (SDDP) optimization method
 * ceterraincartest.launch: Launch Bullet rccar model on a pre-built terrain and optimize using CE based optimization method
+<!-- http://stackoverflow.com/questions/653454/how-do-you-make-git-ignore-files-without-using-gitignore : For ignoring GcopBullet.cmake -->
