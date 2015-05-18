@@ -187,3 +187,11 @@ target_link_libraries(gcop_insekf_test
 	      ${catkin_LIBRARIES}
 )
 add_dependencies(gcop_insekf_test ${PROJECT_NAME}_gencfg )
+
+add_executable(mbsforceest src/mbsforceest.cc)
+target_link_libraries(mbsforceest 
+                      ${GCOP_LIBRARIES}
+                      ${TINYXML_LIBRARIES}
+                      ${catkin_LIBRARIES})
+add_dependencies(mbsforceest gcop_comm_generate_messages_cpp)
+
