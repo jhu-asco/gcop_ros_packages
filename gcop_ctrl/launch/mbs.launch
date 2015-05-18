@@ -3,7 +3,7 @@
 	<arg name="parameters" default="$(find gcop_ctrl)/params/airbot4.yaml"/>
 
 	<include file="$(find gcop_urdf)/launch/display_chain.launch">
-		<arg name="model" default="$(find gcop_ctrl)/params/airbot4.urdf"/>
+		<arg name="model" default="$(find gcop_urdf)/urdf/airbot4.urdf"/>
 	</include>
 
   <rosparam command="load" file="$(arg parameters)" />
