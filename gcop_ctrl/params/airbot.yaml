@@ -1,30 +1,30 @@
 ## Controller Params
-mbsdmoc/tf: 3 # Final Time
-mbsdmoc/N: 128 # Number of segments
+mbsddp/tf: 3 # Final Time
+mbsddp/N: 128 # Number of segments
 
              #rpy         #xyz            #vrpy       #vxyz
-mbsdmoc/X0: [0.0,0.0,0.0, 0.5,0.0,0.0,  0.0,0.0,0.0, 0.0,0.0,0.0]
-mbsdmoc/XN: [0.0,0.0,0.0, 0.0,0.0,0.0,  0.0,0.0,0.0, 0.0,0.0,0.0]
+mbsddp/X0: [0.0,0.0,0.0, 0.5,0.0,0.0,  0.0,0.0,0.0, 0.0,0.0,0.0]
+mbsddp/XN: [0.0,0.0,0.0, 0.0,0.0,0.0,  0.0,0.0,0.0, 0.0,0.0,0.0]
 
                   #rpy                   #xyz               #r            #w0                      #v0             #dr
-mbsdmoc/Qf:   [2.0,2.0,2.0,         20.0,20.0,20.0,      2.0,2.0,      1.0,1.0,1.0,            1.0,1.0,1.0,      1.0,1.0]   #   Final   Cost
-mbsdmoc/Q:    [1.0,1.0,1.0,         2.0,2.0,2.0,         1.0,1.0,      1.0,1.0,1.0,            1.0,1.0,1.0,      1.0,1.0]   #   Final   Cost
+mbsddp/Qf:   [2.0,2.0,2.0,         20.0,20.0,20.0,      2.0,2.0,      1.0,1.0,1.0,            1.0,1.0,1.0,      1.0,1.0]   #   Final   Cost
+mbsddp/Q:    [1.0,1.0,1.0,         2.0,2.0,2.0,         1.0,1.0,      1.0,1.0,1.0,            1.0,1.0,1.0,      1.0,1.0]   #   Final   Cost
 
-mbsdmoc/R:    [0.1, 0.1, 0.1, 0.0,   0.1,0.1] #Control Cost
+mbsddp/R:    [0.1, 0.1, 0.1, 0.0,   0.1,0.1] #Control Cost
 
-mbsdmoc/ag: [0.0, 0.0, -9.81] # Gravity
+mbsddp/ag: [0.0, 0.0, -9.81] # Gravity
 
-#mbsdmoc/Kp:   [.2,.2,.2,         2.0,2.0,2.0,   2.0,2.0]
-#mbsdmoc/Kd:   [1.0,1.0,1.0,      2.0,2.0,2.0,   2.0,2.0]
+#mbsddp/Kp:   [.2,.2,.2,         2.0,2.0,2.0,   2.0,2.0]
+#mbsddp/Kd:   [1.0,1.0,1.0,      2.0,2.0,2.0,   2.0,2.0]
 
-mbsdmoc/J0: [rad(-pi/2), rad(pi/2)]
-mbsdmoc/JN: [rad(-pi/2), rad(pi/2)] # Joint angles
+mbsddp/J0: [rad(-pi/2), rad(pi/2)]
+mbsddp/JN: [rad(-pi/2), rad(pi/2)] # Joint angles
 
 
-mbsdmoc/basetype: "AIRBASE"
+mbsddp/basetype: "AIRBASE"
 
-mbsdmoc/mu: 10
+mbsddp/mu: 10
 
-mbsdmoc/Nit: 1 
+mbsddp/Nit: 1 
 
 

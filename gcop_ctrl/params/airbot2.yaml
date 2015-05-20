@@ -1,33 +1,33 @@
 ## Controller Params
-mbsdmoc/tf: 5 # Final Time
-mbsdmoc/N: 128 # Number of segments
+mbsddp/tf: 5 # Final Time
+mbsddp/N: 128 # Number of segments
 
              #rpy         #xyz            #vrpy       #vxyz
-mbsdmoc/X0: [0.0,0.0,0.0, 0.0,0.0,0.0,  0.0,0.0,0.0, 0.0,0.0,0.0]
-mbsdmoc/XN: [0.0,0.0,0.0, 0.0,0.0,0.0,  0.0,0.0,0.0, 0.0,0.0,0.0]
+mbsddp/X0: [0.0,0.0,0.0, 0.0,0.0,0.0,  0.0,0.0,0.0, 0.0,0.0,0.0]
+mbsddp/XN: [0.0,0.0,0.0, 0.0,0.0,0.0,  0.0,0.0,0.0, 0.0,0.0,0.0]
                   #rpy                   #xyz               #r            #w0                      #v0             #dr
-mbsdmoc/Qf:   [2.0,2.0,2.0,         20.0,20.0,20.0,      2.0,2.0,2.0,2.0,      1.0,1.0,1.0,            1.0,1.0,1.0,      1.0,1.0,1.0,1.0]   #   Final   Cost
-mbsdmoc/Q:    [1.0,1.0,1.0,         2.0,2.0,2.0,         1.0,1.0,1.0,1.0,     1.0,1.0,1.0,            1.0,1.0,1.0,       1.0,1.0,1.0,1.0]   #   Final   Cost
+mbsddp/Qf:   [2.0,2.0,2.0,         20.0,20.0,20.0,      2.0,2.0,2.0,2.0,      1.0,1.0,1.0,            1.0,1.0,1.0,      1.0,1.0,1.0,1.0]   #   Final   Cost
+mbsddp/Q:    [1.0,1.0,1.0,         2.0,2.0,2.0,         1.0,1.0,1.0,1.0,     1.0,1.0,1.0,            1.0,1.0,1.0,       1.0,1.0,1.0,1.0]   #   Final   Cost
 
-mbsdmoc/R:    [0.1, 0.1, 0.1, 0.0,       0.1,0.1,0.1,0.1] #Control Cost
+mbsddp/R:    [0.1, 0.1, 0.1, 0.0,       0.1,0.1,0.1,0.1] #Control Cost
 
-mbsdmoc/ag: [0.0, 0.0, -9.81] # Gravity
+mbsddp/ag: [0.0, 0.0, -9.81] # Gravity
 
-mbsdmoc/Kp:   [.2,.2,.2,   2.0,2.0,2.0,   2.0,2.0,2.0,2.0]
-mbsdmoc/Kd:   [1.0,1.0,1.0,      2.0,2.0,2.0,   2.0,2.0,2.0,2.0]
-
-
-mbsdmoc/ulb: [-5.0, -5.0, -5.0, 0.0] # lower bound on base body controls
-mbsdmoc/uub: [5.0, 5.0, 5.0, 300.0] # upper bound on base body controls
-
-mbsdmoc/J0: [rad(-pi/2), 0.0, rad(pi/2), 0.0]
-mbsdmoc/JN: [rad(-pi/2), 0.0, rad(pi/2), 0.0] # Joint angles
+mbsddp/Kp:   [.2,.2,.2,   2.0,2.0,2.0,   2.0,2.0,2.0,2.0]
+mbsddp/Kd:   [1.0,1.0,1.0,      2.0,2.0,2.0,   2.0,2.0,2.0,2.0]
 
 
-mbsdmoc/basetype: "AIRBASE"
+mbsddp/ulb: [-5.0, -5.0, -5.0, 0.0] # lower bound on base body controls
+mbsddp/uub: [5.0, 5.0, 5.0, 300.0] # upper bound on base body controls
 
-mbsdmoc/mu: 0
+mbsddp/J0: [rad(-pi/2), 0.0, rad(pi/2), 0.0]
+mbsddp/JN: [rad(-pi/2), 0.0, rad(pi/2), 0.0] # Joint angles
 
-mbsdmoc/Nit: 1 
 
-mbsdmoc/mode: "user"
+mbsddp/basetype: "AIRBASE"
+
+mbsddp/mu: 0
+
+mbsddp/Nit: 1 
+
+mbsddp/mode: "user"

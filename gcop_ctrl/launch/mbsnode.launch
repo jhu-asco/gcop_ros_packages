@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <launch>
-  <arg name="parameters" default="$(find gcop_ctrl)/params/airbot5.yaml"/>
-  <arg name="model" default="$(find gcop_ctrl)/params/airbot5.urdf"/>
+  <arg name="parameters" default="$$(find gcop_ctrl)/params/airbot5.yaml"/>
+  <arg name="model" default="$(find gcop_urdf)/urdf/airbot5.urdf"/>
   <param name="/robot_description" textfile="$(arg model)"/>
 	<node pkg="tf2_ros" type="static_transform_publisher" name="pixhawk_baselinktransform" args="0 0 0 0.0 0.0 0.0 1.0 pixhawk movingrobot/baselink"/>
   <group ns="movingrobot">
