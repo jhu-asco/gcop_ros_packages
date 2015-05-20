@@ -16,8 +16,8 @@ mbsddp/ag: [0.0, 0.0, -9.81] # Gravity
 mbsddp/Kp:   [.2,.2,.2,         2.0,2.0,2.0,   2.0,2.0]
 mbsddp/Kd:   [1.0,1.0,1.0,      2.0,2.0,2.0,   2.0,2.0]
 
-mbsddp/J0: [1.0, 1.0]
-mbsddp/JN: [0.0, 0.0] # Joint angles
+mbsddp/J0: [0.0, 1.57]
+mbsddp/JN: [1.0, 1.0] # Joint angles
 
 
 mbsddp/basetype: "FLOATBASE"
@@ -28,3 +28,6 @@ mbsddp/Nit: 1
 
 
 mbsddp/mode: "user"
+
+#mbsddp/extf: [0.0, 0.0, 0.0, 0.0001, 0.0, 0.0]
+mbsddp/extf: [0.0, 0.0001, 0.0, 0.0, 0.0, 0.0]

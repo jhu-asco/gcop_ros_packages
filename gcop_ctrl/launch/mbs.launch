@@ -1,9 +1,10 @@
 <?xml version="1.0"?>
 <launch>	
-	<arg name="parameters" default="$(find gcop_ctrl)/params/airbot4.yaml"/>
+  <arg name="model" default="chain1_1"/>
+	<arg name="parameters" default="$(find gcop_ctrl)/params/$(arg model).yaml"/>
 
 	<include file="$(find gcop_urdf)/launch/display_chain.launch">
-		<arg name="model" default="$(find gcop_urdf)/urdf/airbot4.urdf"/>
+		<arg name="model" default="$(find gcop_urdf)/urdf/$(arg model).urdf"/>
 	</include>
 
   <rosparam command="load" file="$(arg parameters)" />

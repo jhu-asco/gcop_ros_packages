@@ -43,6 +43,7 @@ boost::shared_ptr<Mbs> mbsmodel;
 vector<VectorXd> us;
 vector<MbsState> xs;
 vector<double> ts;
+VectorXd externalforce(6);///< External force on end effector in terms of parameter for step function
 
 string mbstype; // Type of system
 double tfinal = 20;   // time-horizon
@@ -75,7 +76,7 @@ void xml2vec(VectorXd &vec, XmlRpc::XmlRpcValue &my_list)
 }
 void simtraj(const ros::TimerEvent &event) //N is the number of segments
 {
-	cout<<"Sim Traj called"<<endl;
+	//cout<<"Sim Traj called"<<endl;
 	int N = us.size();
 	double h = tfinal/N; // time-step
 	//cout<<"N: "<<N<<endl;
@@ -96,8 +97,8 @@ void simtraj(const ros::TimerEvent &event) //N is the number of segments
 
 	for (int i = 0; i < N; ++i) 
 	{
-//		cout<<"i "<<i<<endl;
-		mbsmodel->Step(xs[i+1], i*h, xs[i], us[i], h);
+		//cout<<"i "<<i<<endl;
+		mbsmodel->Step(xs[i+1], i*h, xs[i], us[i], h, &externalforce);
 		//getchar();
 		gcop::SE3::Instance().g2q(bpose, gposeroot_i*xs[i+1].gs[0]);
 		rpy2transform(trajectory.statemsg[i+1].basepose,bpose);
@@ -115,8 +116,10 @@ void simtraj(const ros::TimerEvent &event) //N is the number of segments
 
 	trajectory.time = ts;
 
-	trajpub.publish(trajectory);
+  //cout<<"Publishing Trajectory"<<endl;
 
+	trajpub.publish(trajectory);
+  //cout<<"Done Publishing"<<endl;
 }
 
 
@@ -224,9 +227,22 @@ int main(int argc, char** argv)
 	ROS_ASSERT(xmlconversion.size() == 3);
 	//mbsmodel->ag = gposei_root.topLeftCorner(3,3).transpose()*xmlconversion.head(3);
 	mbsmodel->ag = xmlconversion.head(3);
+  //Set spring costants for bounds to be very low:
+  mbsmodel->lbK = VectorXd::Constant(mbsmodel->nb - 1, 0);
+  mbsmodel->lbD = VectorXd::Constant(mbsmodel->nb - 1, 0),
+  mbsmodel->ubK = VectorXd::Constant(mbsmodel->nb - 1, 0);
+  mbsmodel->ubD = VectorXd::Constant(mbsmodel->nb - 1, 0),
 
 	cout<<"mbsmodel->ag: "<<endl<<mbsmodel->ag<<endl;
 	//mbsmodel->ag = xmlconversion.head(3);
+
+  //Set external force from parameters:
+  externalforce<<0,0,0,0,0,0.0;//Default
+	XmlRpc::XmlRpcValue externalforce_list;
+	if(n.getParam("extf", externalforce_list))
+		xml2vec(externalforce,externalforce_list);
+	ROS_ASSERT(externalforce.size() == 6);
+
 
 	//Printing the mbsmodel params:
 	for(int count = 0;count<(mbsmodel->nb);count++)
@@ -413,8 +429,8 @@ int main(int argc, char** argv)
 	//getchar();
 	
 	// Create timer for iterating	and publishing data
-	iteratetimer = n.createTimer(ros::Duration(0.1), simtraj, true);
-	iteratetimer.start();
+	iteratetimer = n.createTimer(ros::Duration(0.1), simtraj);
+	//iteratetimer.start();
 	//	Dynamic Reconfigure setup Callback ! immediately gets called with default values	
 	dynamic_reconfigure::Server<gcop_ctrl::MbsSimInterfaceConfig> server;
 	dynamic_reconfigure::Server<gcop_ctrl::MbsSimInterfaceConfig>::CallbackType f;

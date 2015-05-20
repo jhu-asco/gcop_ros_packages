@@ -2,6 +2,7 @@
 <launch>
   <!--arg name="model" default="$(find gcop_urdf)/chain2.urdf"/-->
   <arg name="model"/>
+  <arg name="namespace" default="mbsddp"/>
 	<param name="/robot_description" textfile="$(arg model)"/>
 
 	<group ns="movingrobot">
@@ -11,7 +12,9 @@
 	</group>
 
   <!--node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher"/-->
-	<node name="rcview" pkg="gcop_urdf" type="chain_viz" output="screen"/>
+	<node name="rcview" pkg="gcop_urdf" type="chain_viz" output="screen">
+    <remap from="/mbsddp/ctrltraj" to="/$(arg namespace)/ctrltraj"/>
+  </node>
   <!--node name="rviz" pkg="rviz" type="rviz" args="-d $(find gcop_urdf)/chainsim.vcg"/-->
-  <node name="rviz" pkg="rviz" type="rviz"/>
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find gcop_urdf)/chainsim.rviz"/>
 </launch>

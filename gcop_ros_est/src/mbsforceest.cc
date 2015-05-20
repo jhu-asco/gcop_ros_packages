@@ -12,10 +12,20 @@
 #include <gcop/urdf_parser.h>
 #include "tf/transform_datatypes.h"
 #include <gcop/se3.h>
-#include "gcop/mbscontroller.h"
+#include <gcop/mbscontroller.h>
+#include <gcop/lqsensorcost.h>
+#include <gcop/sensor.h>
 //#include "gcop_ctrl/MbsSimInterfaceConfig.h"
 #include <tf/transform_listener.h>
+#include <geometry_msgs/WrenchStamped.h>
 #include <XmlRpcValue.h>
+
+#ifdef USE_STOCHASTIC_DYNAMICS
+#include <gcop/gndoep.h>
+#else
+#include <gcop/deterministicgndoep.h>
+#endif
+
 
 using namespace std;
 using namespace Eigen;
@@ -37,6 +47,8 @@ gcop_comm::CtrlTraj trajectory;
 
 //Publisher
 ros::Publisher trajpub;
+ros::Publisher wrenchpub;
+ros::Publisher desiredwrenchpub;
 
 //Timer
 ros::Timer iteratetimer;
@@ -47,6 +59,12 @@ ros::Timer iteratetimer;
 //Pointer for mbs system
 boost::shared_ptr<Mbs> mbsmodel;
 
+//Pointer to lqsensor cost
+boost::shared_ptr<LqSensorCost<MbsState, Dynamic, Dynamic, Dynamic, Dynamic, MbsState, Dynamic> > cost;
+
+//Pointer to sensor
+boost::shared_ptr<Sensor<MbsState> > sensor;
+
 
 //States and controls for system
 vector<VectorXd> us;
@@ -56,6 +74,11 @@ vector<double> ts;
 string mbstype; // Type of system
 double tfinal = 20;   // time-horizon
 Matrix4d gposeroot_i; //inital inertial frame wrt the joint frame
+
+string endeffector_framename;//Frame name of the end effector
+
+VectorXd p0(6);///< Initial Guess for external forces
+VectorXd pd(6);///< True External forces
 
 void rpy2transform(geometry_msgs::Transform &transformmsg, Vector6d &bpose)
 {
@@ -82,8 +105,59 @@ void xml2vec(VectorXd &vec, XmlRpc::XmlRpcValue &my_list)
 			  vec[i] =  (double)(my_list[i]);
 	}
 }
-void simtraj(const ros::TimerEvent &event) //N is the number of segments
+
+void publishtraj()
 {
+	int N = us.size();
+	double h = tfinal/N; // time-step
+	int csize = mbsmodel->U.n;
+	int nb = mbsmodel->nb;
+	Vector6d bpose;
+	gcop::SE3::Instance().g2q(bpose,gposeroot_i*xs[0].gs[0]);
+	rpy2transform(trajectory.statemsg[0].basepose,bpose);
+	for (int i = 0; i < N; ++i) 
+  {
+    //Fill trajectory message:
+    gcop::SE3::Instance().g2q(bpose, gposeroot_i*xs[i+1].gs[0]);
+    rpy2transform(trajectory.statemsg[i+1].basepose,bpose);
+    for(int count1 = 0;count1 < nb-1;count1++)
+    {
+      trajectory.statemsg[i+1].statevector[count1] = xs[i+1].r[count1];
+      trajectory.statemsg[i+1].names[count1] = mbsmodel->joints[count1].name;
+    }
+    for(int count1 = 0;count1 < csize;count1++)
+    {
+      trajectory.ctrl[i].ctrlvec[count1] = us[i](count1);
+    }
+  }
+	trajectory.time = ts;
+
+	trajpub.publish(trajectory);
+  //Also publish the desired and current wrenches:
+  geometry_msgs::WrenchStamped wrench_msg;
+  wrench_msg.header.stamp = ros::Time::now();
+  wrench_msg.header.frame_id = endeffector_framename;
+  //Current_wrench:
+  wrench_msg.wrench.torque.x = p0[0];
+  wrench_msg.wrench.torque.y = p0[1];
+  wrench_msg.wrench.torque.z = p0[2];
+  wrench_msg.wrench.force.x  = p0[3];
+  wrench_msg.wrench.force.y  = p0[4];
+  wrench_msg.wrench.force.z  = p0[5];
+  wrenchpub.publish(wrench_msg);
+  //Desired wrench:
+  wrench_msg.wrench.torque.x = pd[0];
+  wrench_msg.wrench.torque.y = pd[1];
+  wrench_msg.wrench.torque.z = pd[2];
+  wrench_msg.wrench.force.x  = pd[3];
+  wrench_msg.wrench.force.y  = pd[4];
+  wrench_msg.wrench.force.z  = pd[5];
+  desiredwrenchpub.publish(wrench_msg);
+}
+
+void simtraj(vector<MbsState> &zs, vector<double> &ts_sensor, VectorXd &p) //N is the number of segments
+{
+  //Add Zs and ts_sensor support: #TODO
 	cout<<"Sim Traj called"<<endl;
 	int N = us.size();
 	double h = tfinal/N; // time-step
@@ -93,6 +167,8 @@ void simtraj(const ros::TimerEvent &event) //N is the number of segments
 	int nb = mbsmodel->nb;
 	//cout<<"nb: "<<nb<<endl;
 	Vector6d bpose;
+
+  int sensor_index = 0;
 
 	gcop::SE3::Instance().g2q(bpose,gposeroot_i*xs[0].gs[0]);
 	rpy2transform(trajectory.statemsg[0].basepose,bpose);
@@ -106,8 +182,20 @@ void simtraj(const ros::TimerEvent &event) //N is the number of segments
 	for (int i = 0; i < N; ++i) 
 	{
 //		cout<<"i "<<i<<endl;
-		mbsmodel->Step(xs[i+1], i*h, xs[i], us[i], h);
-		//getchar();
+		mbsmodel->Step(xs[i+1], i*h, xs[i], us[i], h, &p);
+
+    //Fill Sensor output:
+    if((ts_sensor[sensor_index] - ts[i])>= 0 && (ts_sensor[sensor_index] - ts[i+1]) < 0)
+    {
+      int near_index = (ts_sensor[sensor_index] - ts[i]) > -(ts_sensor[sensor_index] - ts[i+1])?(i+1):i;
+      (*sensor)(zs[sensor_index], ts[near_index], xs[near_index], us[near_index]);
+      sensor_index = sensor_index < (ts_sensor.size()-1)?sensor_index+1:sensor_index;
+      //Print pose of zs to see if something meaningful is done:
+      gcop::SE3::Instance().g2q(bpose, gposeroot_i*xs[i+1].gs[0]);
+      cout<<"zs["<<sensor_index<<"]: "<<bpose.transpose()<<endl;
+    }
+
+    //Fill trajectory message:
 		gcop::SE3::Instance().g2q(bpose, gposeroot_i*xs[i+1].gs[0]);
 		rpy2transform(trajectory.statemsg[i+1].basepose,bpose);
 		for(int count1 = 0;count1 < nb-1;count1++)
@@ -120,7 +208,6 @@ void simtraj(const ros::TimerEvent &event) //N is the number of segments
 			trajectory.ctrl[i].ctrlvec[count1] = us[i](count1);
 		}
 	}
-
 
 	trajectory.time = ts;
 
@@ -183,9 +270,11 @@ void simtraj(const ros::TimerEvent &event) //N is the number of segments
 int main(int argc, char** argv)
 {
 	ros::init(argc, argv, "chainload");
-	ros::NodeHandle n("mbsddp");
+	ros::NodeHandle n("mbsdoep");
 	//Initialize publisher
 	trajpub = n.advertise<gcop_comm::CtrlTraj>("ctrltraj",1);
+  wrenchpub = n.advertise<geometry_msgs::WrenchStamped>("current_wrench",1);
+  desiredwrenchpub = n.advertise<geometry_msgs::WrenchStamped>("desired_wrench",1);
 	//get parameter for xml_string:
 	string xml_string, xml_filename;
 	if(!ros::param::get("/robot_description", xml_string))
@@ -193,17 +282,20 @@ int main(int argc, char** argv)
 		ROS_ERROR("Could not fetch xml file name");
 		return 0;
 	}
+  //Get End effector name:
+  n.getParam("frame_name",endeffector_framename);
+  //Get Base type:
 	n.getParam("basetype",mbstype);
 	assert((mbstype == "FIXEDBASE")||(mbstype == "AIRBASE")||(mbstype == "FLOATBASE"));
 	VectorXd xmlconversion;
 	Matrix4d gposei_root; //inital inertial frame wrt the joint frame
 	//Create Mbs system
-	mbsmodel = gcop_urdf::mbsgenerator(xml_string,gposei_root, mbstype);
+	mbsmodel = gcop_urdf::mbsgenerator(xml_string,gposei_root, mbstype, 6);
 	mbsmodel->U.bnd = false;
 	gcop::SE3::Instance().inv(gposeroot_i,gposei_root);
 	cout<<"Mbstype: "<<mbstype<<endl;
 	mbsmodel->ag << 0, 0, -0.05;
-	//get ag from parameters
+  //get ag from parameters
 	XmlRpc::XmlRpcValue ag_list;
 	if(n.getParam("ag", ag_list))
 		xml2vec(xmlconversion,ag_list);
@@ -214,7 +306,7 @@ int main(int argc, char** argv)
 	cout<<"mbsmodel->ag: "<<endl<<mbsmodel->ag<<endl;
 	//mbsmodel->ag = xmlconversion.head(3);
 
-	//Printing the mbsmodel params:
+  //Printing the mbsmodel params:
 	for(int count = 0;count<(mbsmodel->nb);count++)
 	{
 		cout<<"Ds["<<mbsmodel->links[count].name<<"]"<<endl<<mbsmodel->links[count].ds<<endl;
@@ -255,6 +347,81 @@ int main(int argc, char** argv)
 	cout<<"mbsmodel X.ub.vs[0]: "<<mbsmodel->X.ub.vs[0].transpose()<<endl;
 	//Initialize after setting everything up
 	mbsmodel->Init();
+
+  //Create Sensor
+  sensor.reset(new Sensor<MbsState>(mbsmodel->X));//Create a default sensor which just copies the MbsState over
+
+  //Create Sensor Cost:
+  //<Tx, nx, nu, nres, np, Tz, nz>
+  cost.reset(new LqSensorCost<MbsState, Dynamic, Dynamic, Dynamic, Dynamic, MbsState, Dynamic>(*mbsmodel, sensor->Z));
+
+  //Get parameters for cost:
+  {
+    cost->R.setIdentity();
+
+    //list of Sensor out cost :
+    XmlRpc::XmlRpcValue sensorcost_list;
+    if(n.getParam("R", sensorcost_list))
+    {
+      cout<<(sensor->Z.n)<<endl;
+      xml2vec(xmlconversion,sensorcost_list);
+      cout<<"conversion"<<endl<<xmlconversion<<endl;
+      ROS_ASSERT(xmlconversion.size() == sensor->Z.n);
+      cost->R = xmlconversion.asDiagonal();
+      cout<<"Cost.R"<<endl<<cost->R<<endl;
+    }
+    // Noise cost list:
+    XmlRpc::XmlRpcValue noisecost_list;
+    if(n.getParam("S", noisecost_list))
+    {
+      cout<<mbsmodel->X.n<<endl;
+      xml2vec(xmlconversion,noisecost_list);
+      cout<<"conversion"<<endl<<xmlconversion<<endl;
+      ROS_ASSERT(xmlconversion.size() == mbsmodel->X.n);
+      cost->S = xmlconversion.asDiagonal();
+      cout<<"Cost.S"<<endl<<cost->S<<endl;
+    }
+    else
+    {
+      cout<<"Mbsmodel->X.n"<<mbsmodel->X.n<<endl;
+      xmlconversion.resize(mbsmodel->X.n);
+      xmlconversion.setConstant(1000);
+      cost->S = xmlconversion.asDiagonal();
+      cout<<"Cost.S"<<endl<<cost->S<<endl;
+    }
+
+    //Parameter cost list:
+    XmlRpc::XmlRpcValue paramcost_list;
+    if(n.getParam("P", paramcost_list))
+    {
+      cout<<mbsmodel->P.n<<endl;
+      xml2vec(xmlconversion,paramcost_list);
+      ROS_ASSERT(xmlconversion.size() == mbsmodel->P.n);
+      cout<<"conversion"<<endl<<xmlconversion<<endl;
+      cost->P = xmlconversion.asDiagonal();
+    }
+    cout<<"Cost.P"<<endl<<cost->P<<endl;
+
+  }
+  //Update Gains after entering the costs above
+  cost->UpdateGains();
+
+  VectorXd mup(6);//Initial Prior for parameters
+
+  p0<<0,0,0,0,0,-0.05;//Initialization
+  pd<<0,0,0.05,0,0.1,-0.1;//Initialization
+  {
+    XmlRpc::XmlRpcValue p_list;
+    if(n.getParam("p0", p_list))
+      xml2vec(p0,p_list);
+    ROS_ASSERT(p0.size() == 6);
+
+    if(n.getParam("pd", p_list))
+      xml2vec(pd,p_list);
+    ROS_ASSERT(pd.size() == 6);
+  }
+  mup = p0;//Copy the initial guess to be the same as prior for the parameters
+
 
 	//Using it:
 	//define parameters for the system
@@ -306,7 +473,7 @@ int main(int argc, char** argv)
 	cout<<"Finding Biases"<<endl;
 	int n11 = mbsmodel->nb -1 + 6*(!mbsmodel->fixed);
 	VectorXd forces(n11);
-	mbsmodel->Bias(forces,0,x);
+	mbsmodel->Bias(forces,0,x, &pd);
 	cout<<"Bias computed: "<<forces.transpose()<<endl;
 
 	//forces = -1*forces;//Controls should be negative of the forces
@@ -338,6 +505,16 @@ int main(int argc, char** argv)
 	for (int k = 0; k <=N; ++k)
 		ts[k] = k*h;
 
+
+  //Create Sensor:
+  //Sensor
+  vector<MbsState> zs(N/2);//Same as ts_sensor
+  vector<double> ts_sensor(N/2);
+
+  //Set sensor times:
+  for (int k = 0; k <(N/2); ++k)
+    ts_sensor[k] = 2*k*h;
+ 
 	//Trajectory message initialization
 	trajectory.N = N;
 	trajectory.statemsg.resize(N+1);
@@ -354,17 +531,40 @@ int main(int argc, char** argv)
 		trajectory.statemsg[i+1].names.resize(nb-1);
 		trajectory.ctrl[i].ctrlvec.resize(mbsmodel->U.n);
 	}
-	//getchar();
-	
-	// Create timer for iterating	and publishing data
-	iteratetimer = n.createTimer(ros::Duration(0.1), simtraj, true);
-	iteratetimer.start();
-	//	Dynamic Reconfigure setup Callback ! immediately gets called with default values	
-	//dynamic_reconfigure::Server<gcop_ctrl::MbsSimInterfaceConfig> server;
-	//dynamic_reconfigure::Server<gcop_ctrl::MbsSimInterfaceConfig>::CallbackType f;
-	//f = boost::bind(&paramreqcallback, _1, _2);
-	//server.setCallback(f);
-	ros::spin();
+  ROS_INFO("Press any key to continue...");
+  getchar();
+  ROS_INFO("Desired trajectory");
+  simtraj(zs, ts_sensor, pd);//Fills zs with the right sensor data and publishes a trajectory
+  ros::spinOnce();
+  cost->SetReference(&zs, &mup);//Set reference for zs
+  getchar();
+  //Create GN Optimal estimation class:	
+  //<Tx, nx, nu, np, nres, Tz, nz, T1=T, nx1=nx>
+  GnDoep<MbsState, Dynamic, Dynamic, Dynamic, Dynamic, MbsState, Dynamic, MbsState, Dynamic> gn(*mbsmodel, *sensor, *cost, ts, xs, us, p0, ts_sensor);  
+  gn.debug = false;
+  //Publish the initial guessed trajectory:
+  ROS_INFO("Intial guess trajectory");
+  publishtraj();
+  ros::spinOnce();
+  getchar();
+  while(ros::ok())
+  {
+    cout<<"Iterating..."<<endl;
+    gn.Iterate();
+    cout<<"Done Iterating"<<endl;
+    cout<<"Cost: "<<(gn.J)<<endl;
+    cout << "Parameter: "<< p0 << endl;
+    publishtraj();
+    ros::spinOnce();
+    char c;
+    cin>>c;
+    while (c == 'a')
+    {
+      publishtraj();
+      ros::spinOnce();
+      cin>>c;
+    }
+  }
 	return 0;
 }
 
