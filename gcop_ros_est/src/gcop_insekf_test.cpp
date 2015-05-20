@@ -47,6 +47,7 @@ typedef KalmanCorrector<InsState, 15, 6, Dynamic, Vector3d, 3> InsGpsKalmanCorre
 //-----------------------------------------------------------------------------------
 sig_atomic_t g_shutdown_requested=0;
 gcop_ros_est::InsekfConfig g_config;
+ros::Timer* g_p_timer_send_tf;
 InsKalmanPredictor* g_p_kp_ins;
 InsImuKalmanCorrector* g_p_kc_insimu;
 InsGpsKalmanCorrector* g_p_kc_insgps;
@@ -142,15 +143,19 @@ void cbMsgImu(const sensor_msgs::Imu::ConstPtr& msg_imu)
 void cbMsgGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps)
 {
   //Update covariance
-  g_p_gps->R(0,0) = msg_gps->position_covariance[0];
-  g_p_gps->R(1,1) = msg_gps->position_covariance[3];
-  g_p_gps->R(2,2) = msg_gps->position_covariance[6];
+  //Normally the should remain the same and should be initialized once
+  //Todo: initialize all elements in single line
+  for(int i=0;i<3;i++)
+    for(int j=0;j<3;j++)
+      g_p_gps->R(i,j) = msg_gps->position_covariance[i*3+j]; //row major format
+
+  if(g_config.set_gps_z_cov0)
+  {
+    g_p_gps->R(2,2) =0.0001;
+  }
 
   double x_m_lcl, y_m_lcl, yaw_m_lcl; //local in reference to the LL point on the JHU map
   gis_common::gpsToLocal(x_m_lcl,y_m_lcl,msg_gps->latitude,msg_gps->longitude,g_config.lat0_deg, g_config.lon0_deg);
-
-  double rampage_yaw=0;
-  //gis_common::groundCourseToYaw(rampage_yaw,msg_gps->ground_course);
 
   if(!g_first_gps_received)//perform the pose initialization
   {
@@ -168,32 +173,17 @@ void cbMsgGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps)
     g_p_kc_insgps->Correct(g_x_temp, t, g_xs, g_u, zp);
     g_xs = g_x_temp;
   }
-
-
-  //fused visualization
-  tf::Transform trfm;
-  trfm.setOrigin( tf::Vector3(g_xs.p[0],g_xs.p[1], g_xs.p[2]) );
-
-//  Vector4d wxyz;
-//  gcop::SO3::Instance().g2quat(wxyz, g_xs.R);
-//  tf::Quaternion q(wxyz[1],wxyz[2],wxyz[3],wxyz[0]);
-
-  Vector3d rpy;
-  tf::Quaternion q;
-  q.setRPY(rpy[0],rpy[1],rampage_yaw);
-  gcop::SO3::Instance().g2q(rpy,g_xs.R);
-  trfm.setRotation(q);
-
   // Send GPS data for visualization
   tf::Transform trfm2;
   trfm2.setOrigin( tf::Vector3(x_m_lcl,y_m_lcl, 0.0) );
   tf::Quaternion q2;
-  q2.setRPY(0, 0, rampage_yaw);
+  q2.setRPY(0, 0, 0);
   trfm2.setRotation(q2);
 
   static tf::TransformBroadcaster br;
-  br.sendTransform(tf::StampedTransform(trfm, ros::Time::now(), "map", "rampage/base_link"));
-  br.sendTransform(tf::StampedTransform(trfm2, ros::Time::now(), "map", "rampage/gps"));
+  if(g_config.enable_tf_publisher)
+    br.sendTransform(tf::StampedTransform(trfm2, ros::Time::now(), g_config.name_map, g_config.name_gps_local));
+
 }
 
 void cbMsgMag(const sensor_msgs::MagneticField::ConstPtr& msg_mag)
@@ -224,25 +214,10 @@ inline long timer_us(struct timeval &timer)
   return (now.tv_sec - timer.tv_sec)*1000000 + now.tv_usec - timer.tv_usec;
 }
 
-void sendImu(const ros::TimerEvent&)
-{
-  sensor_msgs::Imu msg_imu_ros;
-  msg_imu_ros.angular_velocity.x    = g_u[0];
-  msg_imu_ros.angular_velocity.y    = g_u[1];
-  msg_imu_ros.angular_velocity.z    = g_u[2];
-  msg_imu_ros.linear_acceleration.x = g_u[3];
-  msg_imu_ros.linear_acceleration.y = g_u[4];
-  msg_imu_ros.linear_acceleration.z = g_u[5];
-
-  msg_imu_ros.header.frame_id = "rampage/base_link";
-
- g_pub_imu.publish(msg_imu_ros);
-}
-
 void cbReconfig(gcop_ros_est::InsekfConfig &config, uint32_t level)
 {
   static bool first_time=true;
-
+  static double period_tf_publish = config.period_tf_publish;
 
   if(first_time)
   {
@@ -258,16 +233,68 @@ void cbReconfig(gcop_ros_est::InsekfConfig &config, uint32_t level)
     config.reinitialize_filter=false;
     g_first_gps_received = false;
   }
+
+  if(period_tf_publish != config.period_tf_publish)
+  {
+    g_p_timer_send_tf->setPeriod(ros::Duration(config.period_tf_publish));
+    period_tf_publish = config.period_tf_publish;
+  }
+
   g_config = config;
 }
 
+void cbTimerSendImu(const ros::TimerEvent&)
+{
+  sensor_msgs::Imu msg_imu_ros;
+  msg_imu_ros.angular_velocity.x    = g_u[0];
+  msg_imu_ros.angular_velocity.y    = g_u[1];
+  msg_imu_ros.angular_velocity.z    = g_u[2];
+  msg_imu_ros.linear_acceleration.x = g_u[3];
+  msg_imu_ros.linear_acceleration.y = g_u[4];
+  msg_imu_ros.linear_acceleration.z = g_u[5];
 
+  msg_imu_ros.header.frame_id = g_config.name_base_link;
+
+ g_pub_imu.publish(msg_imu_ros);
+}
+
+void cbTimerPublishTF(const ros::TimerEvent&)
+{
+  //fused visualization
+  tf::Transform trfm;
+  trfm.setOrigin( tf::Vector3(g_xs.p[0],g_xs.p[1], g_xs.p[2]) );
+
+  Vector4d wxyz;
+  gcop::SO3::Instance().g2quat(wxyz, g_xs.R);
+  tf::Quaternion q_true(wxyz[1],wxyz[2],wxyz[3],wxyz[0]);
+
+  //TODO: yaw has to be set to something or use mag
+  double yaw=0;
+  Vector3d rpy;
+  tf::Quaternion q_hack;
+
+  if(g_config.enable_true_yaw)
+  {
+    trfm.setRotation(q_true);
+  }
+  else
+  {
+    gcop::SO3::Instance().g2q(rpy,g_xs.R);
+    q_hack.setRPY(rpy[0],rpy[1],yaw);
+    trfm.setRotation(q_hack);
+  }
+
+  static tf::TransformBroadcaster br;
+  if(g_config.enable_tf_publisher)
+    br.sendTransform(tf::StampedTransform(trfm, ros::Time::now(), g_config.name_map, g_config.name_base_link));
+
+}
 //-----------------------------------------------------------------------------------
 //-----------------------------------MAIN--------------------------------------------
 //-----------------------------------------------------------------------------------
 int main(int argc, char** argv)
 {
-  ros::init(argc,argv,"rampage_gcop_insekf_test",ros::init_options::NoSigintHandler);
+  ros::init(argc,argv,"gcop_insekf_test",ros::init_options::NoSigintHandler);
   signal(SIGINT,mySigIntHandler);
 
   ros::NodeHandle nh;
@@ -282,9 +309,12 @@ int main(int argc, char** argv)
   ros::Subscriber sub_gps = nh.subscribe<sensor_msgs::NavSatFix>("/gps",1000,cbMsgGps);
   ros::Subscriber sub_mag = nh.subscribe<sensor_msgs::MagneticField>("/mag",1000,cbMsgMag);
 
-  g_pub_imu = nh.advertise<sensor_msgs::Imu>("rampage_imu", 3);
+  g_pub_imu = nh.advertise<sensor_msgs::Imu>(g_config.name_topic_imu, 3);
 
-  ros::Timer timer_send_imu = nh.createTimer(ros::Duration(0.1), &sendImu);
+  ros::Timer timer_send_imu = nh.createTimer(ros::Duration(0.1), &cbTimerSendImu);
+  ros::Timer timer_send_tf = nh.createTimer(ros::Duration(g_config.period_tf_publish), &cbTimerPublishTF);
+
+  g_p_timer_send_tf = &timer_send_tf;
 
   Ins ins;
   InsGps<> gps;
