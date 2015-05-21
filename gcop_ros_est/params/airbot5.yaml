@@ -1,0 +1,29 @@
+## Controller Params
+mbsdoep/tf: 0.5 # Final Time
+mbsdoep/N:  50 # Number of segments
+
+                 #rpy                  #xyz            #vrpy            #vxyz
+mbsdoep/X0:   [0.0,0.0,0.0,   0.0,0.0,1.5,      0.0,0.0,0.0,      0.0,0.0,0.0]
+
+                  #rpy                   #xyz               #r        #w0                      #v0             #dr
+mbsdoep/R:   [10.0,10.0,10.0,         10.0,10.0,10.0,      10.0,10.0,      0.0,0.0,0.0,               0.0,0.0,0.0,      0.0,0.0]  #Sensor   data prior (Inverse covariance)
+mbsdoep/P:   [0.0, 0.0, 0.0,  0.0, 0.0, 0.0] #Parameter prior
+
+mbsdoep/ag: [0.0, 0.0, -9.81] # Gravity
+
+mbsdoep/J0: [1.59,0.0]
+
+mbsdoep/p0: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0] #Initial guess for parameter
+
+#mbsdoep/pd: [0.0, 0.0, 0.0, 0.0, 0.0, -0.2] #Initial guess for parameter
+mbsdoep/pd: [0.005, 0.0, 0.0, 0.0, 0.0, -0.2] #Initial guess for parameter
+
+mbsdoep/ulb: [-5.0, -5.0, -5.0, 0.0] # lower bound on base body controls
+
+mbsdoep/uub: [5.0, 5.0, 5.0, 30.0] # upper bound on base body controls
+
+mbsdoep/basetype: "AIRBASE"
+
+mbsdoep/mu: 0.0001
+
+#mbsdoep/Nit: 5

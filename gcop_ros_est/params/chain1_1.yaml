@@ -1,0 +1,25 @@
+## Controller Params
+mbsdoep/tf: 0.5 # Final Time
+mbsdoep/N: 50 # Number of segments
+
+             #rpy         #xyz            #vrpy       #vxyz
+mbsdoep/X0: [0.0,0.0,0.0, 0.0,0.0,0.0,  0.0,0.0,0.0, 0.0,0.0,0.0]
+                         #rpy            #xyz          #r             #w0             #v0     #dr
+mbsdoep/R:    [10.0,10.0,10.0,       10.0,10.0,10.0, 10.0,10.0, 0.0,0.0,0.0, 0.0,0.0,0.0, 0.0,0.0]   #Sensor   data prior (Inverse covariance)
+mbsdoep/P:    [0.0, 0.0, 0.0 ,0.0, 0.0, 0.0] #Parameter Prior (Inverse covariance) (Wrench tx, ty, tz, fx, fy, fz)
+
+mbsdoep/ag: [0.0, 0.0, -9.81] # Gravity
+
+mbsdoep/J0: [0.1, 0.1]
+
+mbsdoep/p0: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0] #Initial guess for parameter
+
+mbsdoep/pd: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5] #Initial guess for parameter
+
+mbsdoep/basetype: "FLOATBASE"
+
+mbsdoep/frame_name: "movingrobot/link2"
+
+#mbsdoep/Nit: 10 
+
+#mbsdoep/mode: "user"

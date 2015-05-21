@@ -41,6 +41,8 @@ using namespace gcop;
  * But that is I think the same as a regular body3dsystem problem
  */
 
+//typedef Eigen::Matrix<double, 7, 1> Vector7d;
+
 
 //ros messages
 gcop_comm::CtrlTraj trajectory;
@@ -80,6 +82,8 @@ string endeffector_framename;//Frame name of the end effector
 VectorXd p0(6);///< Initial Guess for external forces
 VectorXd pd(6);///< True External forces
 
+bool trajectory_received_ = false;//receive default trajectory
+
 void rpy2transform(geometry_msgs::Transform &transformmsg, Vector6d &bpose)
 {
 	tf::Quaternion q;
@@ -104,6 +108,53 @@ void xml2vec(VectorXd &vec, XmlRpc::XmlRpcValue &my_list)
 				cout<<"my_list["<<i<<"]\t"<<my_list[i]<<endl;
 			  vec[i] =  (double)(my_list[i]);
 	}
+}
+
+void trajectoryCallback(gcop_comm::CtrlTraj::ConstPtr external_trajectory)
+{
+  ROS_INFO("Received External Trajectory");
+  trajectory_received_ = true;
+  int N =  external_trajectory->ctrl.size();
+	int csize = mbsmodel->U.n;
+	int nb = mbsmodel->nb;
+  double h = external_trajectory->time[1] - external_trajectory->time[0];
+  assert(csize == external_trajectory->ctrl[0].ctrlvec.size());
+
+  //Copy initial state and time:
+  ts.push_back(external_trajectory->time[0]);
+ 
+  Vector7d basepose_external;
+  const geometry_msgs::Transform &bpose  = external_trajectory->statemsg[0].basepose;
+  const geometry_msgs::Twist &btwist = external_trajectory->statemsg[0].basetwist;
+  Matrix4d basepose_matrix_external;
+  Matrix4d gposei_root;
+	gcop::SE3::Instance().inv(gposei_root,gposeroot_i);
+
+  basepose_external<<bpose.rotation.w,bpose.rotation.x,bpose.rotation.y,bpose.rotation.z,bpose.translation.x,bpose.translation.y,bpose.translation.z;
+	gcop::SE3::Instance().quatxyz2g(basepose_matrix_external, basepose_external);
+
+  MbsState x(nb,(mbstype == "FIXEDBASE"));//Create a state
+  x.dr.setZero();
+  x.gs[0] = gposei_root*basepose_matrix_external;
+  x.vs[0]<<btwist.angular.x,btwist.angular.y,btwist.angular.z,btwist.linear.x,btwist.linear.y,btwist.linear.z;
+  for(int j = 0;j < nb-1;j++)
+  {
+    x.r[j] = external_trajectory->statemsg[0].statevector[j];
+  }
+  mbsmodel->Rec(x, h);
+  xs.resize(N+1,x);
+
+  VectorXd utemp(mbsmodel->U.n);
+  for(int i = 0; i < N; i++)
+  {
+    for(int j = 0; j < csize; j++)
+    {
+      utemp(j) = external_trajectory->ctrl[i].ctrlvec[j];
+    }
+    us.push_back(utemp);
+    ts.push_back(external_trajectory->time[i+1]);
+  }
+  ROS_INFO("Completed copying trajectory");
 }
 
 void publishtraj()
@@ -433,77 +484,108 @@ int main(int argc, char** argv)
 	n.getParam("N",N);
 	double h = tfinal/N; // time-step
 
-	//Define the initial state mbs
-	MbsState x(nb,(mbstype == "FIXEDBASE"));
-	x.gs[0].setIdentity();
-	x.vs[0].setZero();
-	x.dr.setZero();
-	x.r.setZero();
+  bool use_external_trajectory = false;
+  //Check if using external trajectory to initialize the system:
+  if(n.hasParam("use_external_trajectory"))
+  {
+    n.getParam("use_external_trajectory", use_external_trajectory);
+    if(use_external_trajectory)
+    {
+      ros::Subscriber trajectory_subscriber = n.subscribe("ctrltraj",10, trajectoryCallback);
+      ros::Time start_time = ros::Time::now();
+      ROS_INFO("Waiting for external trajectory for 1 minute...");
+      while(ros::ok() && !trajectory_received_)
+      {
+        ros::Time current_time = ros::Time::now();
+        if((current_time - start_time).toSec() > 60.0)//wait for 1 minute
+        {
+          ROS_WARN("Timed out since no external trajectory has been published");
+          use_external_trajectory = false;
+          break;
+        }
+        else
+        {
+         // ROS_INFO("Waiting for external trajectory. Number of publishers: %d", trajectory_subscriber.getNumPublishers());
+          ros::spinOnce();
+        }
+      }
+    }
+  }
 
-	// Get X0	 from params
-	XmlRpc::XmlRpcValue x0_list;
-	if(n.getParam("X0", x0_list))
-	{
-		xml2vec(xmlconversion,x0_list);
-		ROS_ASSERT(xmlconversion.size() == 12);
-		x.vs[0] = xmlconversion.tail<6>();
-		gcop::SE3::Instance().rpyxyz2g(x.gs[0],xmlconversion.head<3>(),xmlconversion.segment<3>(3)); 
-	}
-	x.gs[0] = gposei_root*x.gs[0];//new stuff with transformations
-	cout<<"x.gs[0]"<<endl<<x.gs[0]<<endl;
-  //list of joint angles:
-	XmlRpc::XmlRpcValue j_list;
-	if(n.getParam("J0", j_list))
-	{
-		xml2vec(x.r,j_list);
-	}
-	cout<<"x.r"<<endl<<x.r<<endl;
+  if(!use_external_trajectory)
+  {
+    //Define the initial state mbs
+    MbsState x(nb,(mbstype == "FIXEDBASE"));
+    x.gs[0].setIdentity();
+    x.vs[0].setZero();
+    x.dr.setZero();
+    x.r.setZero();
 
-	if(n.getParam("Jv0", j_list))
-	{
-		xml2vec(x.dr,j_list);
-		cout<<"x.dr"<<endl<<x.dr<<endl;
-	}
-	mbsmodel->Rec(x, h);
+    // Get X0	 from params
+    XmlRpc::XmlRpcValue x0_list;
+    if(n.getParam("X0", x0_list))
+    {
+      xml2vec(xmlconversion,x0_list);
+      ROS_ASSERT(xmlconversion.size() == 12);
+      x.vs[0] = xmlconversion.tail<6>();
+      gcop::SE3::Instance().rpyxyz2g(x.gs[0],xmlconversion.head<3>(),xmlconversion.segment<3>(3)); 
+    }
+    x.gs[0] = gposei_root*x.gs[0];//new stuff with transformations
+    cout<<"x.gs[0]"<<endl<<x.gs[0]<<endl;
+    //list of joint angles:
+    XmlRpc::XmlRpcValue j_list;
+    if(n.getParam("J0", j_list))
+    {
+      xml2vec(x.r,j_list);
+    }
+    cout<<"x.r"<<endl<<x.r<<endl;
 
-	// initial controls (e.g. hover at one place)
-	VectorXd u(mbsmodel->U.n);
-	u.setZero();
-	
-	cout<<"Finding Biases"<<endl;
-	int n11 = mbsmodel->nb -1 + 6*(!mbsmodel->fixed);
-	VectorXd forces(n11);
-	mbsmodel->Bias(forces,0,x, &pd);
-	cout<<"Bias computed: "<<forces.transpose()<<endl;
+    if(n.getParam("Jv0", j_list))
+    {
+      xml2vec(x.dr,j_list);
+      cout<<"x.dr"<<endl<<x.dr<<endl;
+    }
+    mbsmodel->Rec(x, h);
 
-	//forces = -1*forces;//Controls should be negative of the forces
+    // initial controls (e.g. hover at one place)
+    VectorXd u(mbsmodel->U.n);
+    u.setZero();
 
+    cout<<"Finding Biases"<<endl;
+    int n11 = mbsmodel->nb -1 + 6*(!mbsmodel->fixed);
+    VectorXd forces(n11);
+    mbsmodel->Bias(forces,0,x, &pd);
+    cout<<"Bias computed: "<<forces.transpose()<<endl;
 
-	//Set Controls to cancel the forces:
-	if(mbstype == "FLOATBASE")
-	{
-		assert(6 + mbsmodel->nb - 1 == forces.size());
-		u.head(6) = forces.head(6);
-	}
-	else if(mbstype == "AIRBASE")
-	{
-		u[0] = forces[0];
-		u[1] = forces[1];
-		u[2] = forces[2];
-		u[3] = forces[5];	
-	}
-	//Joint Torques:
-	u.tail(nb-1) = forces.tail(nb-1);
+    //forces = -1*forces;//Controls should be negative of the forces
 
 
+    //Set Controls to cancel the forces:
+    if(mbstype == "FLOATBASE")
+    {
+      assert(6 + mbsmodel->nb - 1 == forces.size());
+      u.head(6) = forces.head(6);
+    }
+    else if(mbstype == "AIRBASE")
+    {
+      u[0] = forces[0];
+      u[1] = forces[1];
+      u[2] = forces[2];
+      u[3] = forces[5];	
+    }
+    //Joint Torques:
+    u.tail(nb-1) = forces.tail(nb-1);
 
-	//Create states and controls
-	xs.resize(N+1,x);
-	us.resize(N,u);
 
-	ts.resize(N+1);
-	for (int k = 0; k <=N; ++k)
-		ts[k] = k*h;
+
+    //Create states and controls
+    xs.resize(N+1,x);
+    us.resize(N,u);
+
+    ts.resize(N+1);
+    for (int k = 0; k <=N; ++k)
+      ts[k] = k*h;
+  }
 
 
   //Create Sensor:
@@ -564,6 +646,8 @@ int main(int argc, char** argv)
       ros::spinOnce();
       cin>>c;
     }
+    if(c == 'q')
+      break;
   }
 	return 0;
 }
