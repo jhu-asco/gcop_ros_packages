@@ -47,7 +47,9 @@ VectorXd externalforce(6);///< External force on end effector in terms of parame
 
 string mbstype; // Type of system
 double tfinal = 20;   // time-horizon
-Matrix4d gposeroot_i; //inital inertial frame wrt the joint frame
+Matrix4d gposeroot_i; //inital inertial frame wrt the base frame
+Matrix4d gposei_root; //Base frame wrt inertial frame
+
 
 void rpy2transform(geometry_msgs::Transform &transformmsg, Vector6d &bpose)
 {
@@ -86,7 +88,8 @@ void simtraj(const ros::TimerEvent &event) //N is the number of segments
 	//cout<<"nb: "<<nb<<endl;
 	Vector6d bpose;
 
-	gcop::SE3::Instance().g2q(bpose,gposeroot_i*xs[0].gs[0]);
+	//gcop::SE3::Instance().g2q(bpose,gposeroot_i*xs[0].gs[0]);
+	gcop::SE3::Instance().g2q(bpose,xs[0].gs[0]*gposeroot_i);
 	rpy2transform(trajectory.statemsg[0].basepose,bpose);
 
 	for(int count1 = 0;count1 < nb-1;count1++)
@@ -100,7 +103,7 @@ void simtraj(const ros::TimerEvent &event) //N is the number of segments
 		//cout<<"i "<<i<<endl;
 		mbsmodel->Step(xs[i+1], i*h, xs[i], us[i], h, &externalforce);
 		//getchar();
-		gcop::SE3::Instance().g2q(bpose, gposeroot_i*xs[i+1].gs[0]);
+		gcop::SE3::Instance().g2q(bpose, xs[i+1].gs[0]*gposeroot_i);
 		rpy2transform(trajectory.statemsg[i+1].basepose,bpose);
 		for(int count1 = 0;count1 < nb-1;count1++)
 		{
@@ -123,7 +126,7 @@ void simtraj(const ros::TimerEvent &event) //N is the number of segments
 }
 
 
-void paramreqcallback(gcop_ctrl::MbsSimInterfaceConfig &config, uint32_t level) 
+void paramreqCallback(gcop_ctrl::MbsSimInterfaceConfig &config, uint32_t level) 
 {
 	int nb = mbsmodel->nb;
 
@@ -150,10 +153,39 @@ void paramreqcallback(gcop_ctrl::MbsSimInterfaceConfig &config, uint32_t level)
 		config.ui = us[0][config.i_u-1];
 	}
 
-/*	if(level & 0xffffffff)
-		config.N = N;
+	if(level == 0xffffffff)
+  {
+		Vector3d rpy;
+		Vector3d xyz;
+    if(mbstype != "FIXEDBASE")
+    {
+      // overwrite the config with values from initial state
+      config.vroll = xs[0].vs[0](0);
+      config.vpitch = xs[0].vs[0](1);
+      config.vyaw = xs[0].vs[0](2);
+      config.vx = xs[0].vs[0](3);
+      config.vy = xs[0].vs[0](4);
+      config.vz = xs[0].vs[0](5);
 
-	if(level & 0x00000004)
+      gcop::SE3::Instance().g2rpyxyz(rpy,xyz,xs[0].gs[0]*gposeroot_i);
+      config.roll = rpy(0);
+      config.pitch = rpy(1);
+      config.yaw = rpy(2);
+      config.x = xyz(0);
+      config.y = xyz(1);
+      config.z = xyz(2);
+    }
+
+    if(config.i_J > nb-1)
+      config.i_J = nb-1; 
+    else if(config.i_J < 1)
+      config.i_J = 1;
+
+    config.Ji = xs[0].r[config.i_J-1];     
+    config.Jvi = xs[0].dr[config.i_J-1];
+  }
+
+	/*if(level & 0x00000004)
 	{
 		cout<<"I am called"<<endl;
 		//resize
@@ -172,7 +204,7 @@ void paramreqcallback(gcop_ctrl::MbsSimInterfaceConfig &config, uint32_t level)
 			trajectory.ctrl[i].ctrlvec.resize(mbsmodel->U.n);
 		}
 	}
-	*/
+  */
 
 	int N = us.size();
 	double h = tfinal/N;
@@ -183,6 +215,7 @@ void paramreqcallback(gcop_ctrl::MbsSimInterfaceConfig &config, uint32_t level)
   if((mbstype == "FLOATBASE")||(mbstype == "AIRBASE"))
 	{
 		gcop::SE3::Instance().rpyxyz2g(xs[0].gs[0], Vector3d(config.roll,config.pitch,config.yaw), Vector3d(config.x,config.y,config.z));
+    xs[0].gs[0] = xs[0].gs[0]*gposei_root;
 		xs[0].vs[0]<<config.vroll, config.vpitch, config.vyaw, config.vx, config.vy, config.vz;
 	}
 
@@ -213,10 +246,10 @@ int main(int argc, char** argv)
 	n.getParam("basetype",mbstype);
 	assert((mbstype == "FIXEDBASE")||(mbstype == "AIRBASE")||(mbstype == "FLOATBASE"));
 	VectorXd xmlconversion;
-	Matrix4d gposei_root; //inital inertial frame wrt the joint frame
 	//Create Mbs system
-	mbsmodel = gcop_urdf::mbsgenerator(xml_string,gposei_root, mbstype);
-	mbsmodel->U.bnd = false;
+	mbsmodel = gcop_urdf::mbsgenerator(xml_string, mbstype);
+	gposei_root = mbsmodel->pose_inertia_base; //inital inertial frame wrt the joint frame
+  cout<<"gposei_root: "<<endl<<gposei_root<<endl;
 	gcop::SE3::Instance().inv(gposeroot_i,gposei_root);
 	cout<<"Mbstype: "<<mbstype<<endl;
 	mbsmodel->ag << 0, 0, -0.05;
@@ -240,8 +273,11 @@ int main(int argc, char** argv)
   externalforce<<0,0,0,0,0,0.0;//Default
 	XmlRpc::XmlRpcValue externalforce_list;
 	if(n.getParam("extf", externalforce_list))
+  {
 		xml2vec(externalforce,externalforce_list);
-	ROS_ASSERT(externalforce.size() == 6);
+    cout<<"external force: "<<externalforce.transpose()<<endl;
+    ROS_ASSERT(externalforce.size() == 6);
+  }
 
 
 	//Printing the mbsmodel params:
@@ -314,7 +350,7 @@ int main(int argc, char** argv)
 		x.vs[0] = xmlconversion.tail<6>();
 		gcop::SE3::Instance().rpyxyz2g(x.gs[0],xmlconversion.head<3>(),xmlconversion.segment<3>(3)); 
 	}
-	x.gs[0] = gposei_root*x.gs[0];//new stuff with transformations
+	x.gs[0] = x.gs[0]*gposei_root;//new stuff with transformations
 	cout<<"x.gs[0]"<<endl<<x.gs[0]<<endl;
   //list of joint angles:
 	XmlRpc::XmlRpcValue j_list;
@@ -379,6 +415,10 @@ int main(int argc, char** argv)
 	int n11 = mbsmodel->nb -1 + 6*(!mbsmodel->fixed);
 	VectorXd forces(n11);
 	mbsmodel->Bias(forces,0,x);
+  //Base Controls are to be given in base frame:
+  Matrix6d M_base_inertia;
+  gcop::SE3::Instance().Ad(M_base_inertia, gposeroot_i);
+  forces.head<6>() = M_base_inertia.transpose()*forces.head<6>();
 	cout<<"Bias computed: "<<forces.transpose()<<endl;
 
 	//forces = -1*forces;//Controls should be negative of the forces
@@ -434,7 +474,7 @@ int main(int argc, char** argv)
 	//	Dynamic Reconfigure setup Callback ! immediately gets called with default values	
 	dynamic_reconfigure::Server<gcop_ctrl::MbsSimInterfaceConfig> server;
 	dynamic_reconfigure::Server<gcop_ctrl::MbsSimInterfaceConfig>::CallbackType f;
-	f = boost::bind(&paramreqcallback, _1, _2);
+	f = boost::bind(&paramreqCallback, _1, _2);
 	server.setCallback(f);
 	ros::spin();
 	return 0;

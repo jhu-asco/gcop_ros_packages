@@ -74,7 +74,6 @@ int Nit = 1;//number of iterations for ddp
 int Nrobotstovisualize = 3;//Number of robots to visualize other than the moving robot
 string mbstype; // Type of system
 Matrix4d gposeroot_i; //inital inertial frame wrt the joint frame
-Matrix4d gposei_root; //joint frame wrt inital inertial frame
 gcop_comm::CtrlTraj current_traj;
 //int traj_size = 0;
 
@@ -136,7 +135,7 @@ void fill_mbsstate(MbsState &mbs_state,const gcop_comm::State &mbs_statemsg)
 	Vector7d wquatxyz;
 	wquatxyz<<(mbs_statemsg.basepose.rotation.w),(mbs_statemsg.basepose.rotation.x),(mbs_statemsg.basepose.rotation.y),(mbs_statemsg.basepose.rotation.z),(mbs_statemsg.basepose.translation.x),(mbs_statemsg.basepose.translation.y),(mbs_statemsg.basepose.translation.z);
 	gcop::SE3::Instance().quatxyz2g(mbs_state.gs[0], wquatxyz);
-	mbs_state.gs[0] = gposei_root*mbs_state.gs[0];//To move towards the inertial posn of the base
+	mbs_state.gs[0] = mbs_state.gs[0]*(mbsmodel->pose_inertia_base);//To move towards the inertial posn of the base
 
 	//Body Fixed Velocities Have to use adjoint to transform this to inertial Frame TODO (For now no problem for quadcopter)
 	msgtogcoptwist(mbs_statemsg.basetwist,mbs_state.vs[0]);
@@ -180,7 +179,7 @@ void filltraj(gcop_comm::CtrlTraj &trajectory, int N1, bool resize=true) //N1 is
 		}
 	}
 
-	gcop::SE3::Instance().g2q(bpose,gposeroot_i*mbsddp->xs[0].gs[0]);//Can convert to 7dof instead of 6dof to avoid singularities TODO
+	gcop::SE3::Instance().g2q(bpose,mbsddp->xs[0].gs[0]*gposeroot_i);//Can convert to 7dof instead of 6dof to avoid singularities TODO
 	q2transform(trajectory.statemsg[0].basepose , bpose);
 	gcoptwisttomsg(mbsddp->xs[0].vs[0],trajectory.statemsg[0].basetwist);//No conversion from inertial frame to the visual frame 
 
@@ -194,7 +193,7 @@ void filltraj(gcop_comm::CtrlTraj &trajectory, int N1, bool resize=true) //N1 is
 
 	for (int i = 0; i < N1; ++i) 
 	{
-		gcop::SE3::Instance().g2q(bpose, gposeroot_i*mbsddp->xs[i+1].gs[0]);
+		gcop::SE3::Instance().g2q(bpose, mbsddp->xs[i+1].gs[0]*gposeroot_i);
 		q2transform(trajectory.statemsg[i+1].basepose,bpose);
 		gcoptwisttomsg(mbsddp->xs[i+1].vs[0],trajectory.statemsg[i+1].basetwist);//No conversion from inertial frame to the visual frame 
 
@@ -211,7 +210,7 @@ void filltraj(gcop_comm::CtrlTraj &trajectory, int N1, bool resize=true) //N1 is
 		trajectory.time[i+1] = mbsddp->ts[i+1];
 	}
 	//final goal:
-	gcop::SE3::Instance().g2q(bpose, gposeroot_i*xf->gs[0]);
+	gcop::SE3::Instance().g2q(bpose, xf->gs[0]*gposeroot_i);
 	q2transform(trajectory.finalgoal.basepose,bpose);
 
 	for(int count1 = 0;count1 < nb-1;count1++)
@@ -233,7 +232,7 @@ void visualize_publish_traj()
 
 	for(int i =0;i<(N+1); i++)
 	{
-		gcop::SE3::Instance().g2q(bpose, gposeroot_i*mbsddp->xs[i].gs[0]);
+		gcop::SE3::Instance().g2q(bpose, mbsddp->xs[i].gs[0]*gposeroot_i);
 		trajectory_marker.points[i].x = bpose[3];
 		trajectory_marker.points[i].y = bpose[4];
 		trajectory_marker.points[i].z = bpose[5];
@@ -254,7 +253,7 @@ void visualize_publish_traj()
 			jointstate_vec[i].position[count1] = mbsddp->xs[indextoshow].r[count1];
 		}
 
-		gcop::SE3::Instance().g2q(bpose, gposeroot_i*mbsddp->xs[indextoshow].gs[0]);
+		gcop::SE3::Instance().g2q(bpose, mbsddp->xs[indextoshow].gs[0]*gposeroot_i);
 		q2transform(basetransform_msg[i].transform,bpose);
 
 		jointpub_vec[i].publish(jointstate_vec[i]);
@@ -267,7 +266,7 @@ void visualize_publish_traj()
 	basetransform_msg[Nrobotstovisualize].header.stamp = ros::Time::now();
 	jointstate_vec[Nrobotstovisualize].header.stamp = ros::Time::now();
 
-	gcop::SE3::Instance().g2q(bpose, gposeroot_i*xf->gs[0]);
+	gcop::SE3::Instance().g2q(bpose, xf->gs[0]*gposeroot_i);
 	q2transform(basetransform_msg[Nrobotstovisualize].transform,bpose);
 
 	jointpub_vec[Nrobotstovisualize].publish(jointstate_vec[Nrobotstovisualize]);//Final Goal
@@ -309,6 +308,10 @@ void iteration_request(const gcop_comm::Iteration_req &req)
 	int n11 = mbsmodel->nb -1 + 6*(!mbsmodel->fixed);
 	VectorXd forces(n11);
 	mbsmodel->Bias(forces,0,mbsddp->xs[0]);
+  //Base Controls are to be given in base frame:
+  Matrix6d M_base_inertia;
+  gcop::SE3::Instance().Ad(M_base_inertia, gposeroot_i);
+  forces.head<6>() = M_base_inertia.transpose()*forces.head<6>();
 	cout<<"Bias computed: "<<forces.transpose()<<endl;
 
 	//Set Controls to cancel the ext forces:
@@ -391,9 +394,9 @@ int main(int argc, char** argv)
 	assert((mbstype == "FIXEDBASE")||(mbstype == "AIRBASE")||(mbstype == "FLOATBASE"));
 	VectorXd xmlconversion;
 	//Create Mbs system
-	mbsmodel = gcop_urdf::mbsgenerator(xml_string,gposei_root, mbstype);
+	mbsmodel = gcop_urdf::mbsgenerator(xml_string, mbstype);
 	//[NOTE]mbsmodel->U.bnd = false;
-	gcop::SE3::Instance().inv(gposeroot_i,gposei_root);
+	gcop::SE3::Instance().inv(gposeroot_i,mbsmodel->pose_inertia_base);
 	cout<<"Mbstype: "<<mbstype<<endl;
 	mbsmodel->ag << 0, 0, -0.05;
 	//get ag from parameters
@@ -481,7 +484,7 @@ int main(int argc, char** argv)
 		xf->vs[0] = xmlconversion.tail<6>();
 		gcop::SE3::Instance().rpyxyz2g(xf->gs[0],xmlconversion.head<3>(),xmlconversion.segment<3>(3)); 
 	}
-	xf->gs[0] = gposei_root*xf->gs[0];//new stuff with transformations
+	xf->gs[0] = xf->gs[0]*(mbsmodel->pose_inertia_base);//new stuff with transformations
 	//list of joint angles:
 	XmlRpc::XmlRpcValue xfj_list;
 	if(n.getParam("JN", xfj_list))
@@ -554,7 +557,7 @@ int main(int argc, char** argv)
 		x0.vs[0] = xmlconversion.tail<6>();
 		gcop::SE3::Instance().rpyxyz2g(x0.gs[0],xmlconversion.head<3>(),xmlconversion.segment<3>(3)); 
 	}
-	x0.gs[0] = gposei_root*x0.gs[0];//new stuff with transformations
+	x0.gs[0] = x0.gs[0]*(mbsmodel->pose_inertia_base);//new stuff with transformations
 	//list of joint angles:
 	XmlRpc::XmlRpcValue j_list;
 	if(n.getParam("J0", j_list))
@@ -574,6 +577,10 @@ int main(int argc, char** argv)
 	int n11 = mbsmodel->nb -1 + 6*(!mbsmodel->fixed);
 	VectorXd forces(n11);
 	mbsmodel->Bias(forces,0,x0);
+  //Base Controls are to be given in base frame:
+  Matrix6d M_base_inertia;
+  gcop::SE3::Instance().Ad(M_base_inertia, gposeroot_i);
+  forces.head<6>() = M_base_inertia.transpose()*forces.head<6>();
 	cout<<"Bias computed: "<<forces.transpose()<<endl;
 
 	//Set Controls to cancel the ext forces:

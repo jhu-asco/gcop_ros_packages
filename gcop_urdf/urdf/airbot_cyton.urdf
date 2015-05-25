@@ -4,6 +4,7 @@
 <!-- |    EDITING THIS FILE BY HAND IS NOT RECOMMENDED                                 | -->
 <!-- =================================================================================== -->
 <robot name="airbot_cyton_gamma_1500" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!--<xacro:property name="base_offset_x" value="0.0"/>-->
   <link name="base_footprint">
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -19,12 +20,9 @@
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://gcop_urdf/meshes/quadrotor_base.dae" scale="3 3 1"/>
+        <mesh filename="package://gcop_urdf/meshes/dji-s1000.dae" scale="1 1 1"/>
         <!--box size="0.44 0.44 0.1632"/-->
       </geometry>
-      <material name="red">
-        <color rgba="0.8 0 0 1"/>
-      </material>
     </visual>
     <inertial>
       <mass value="4.2"/>
@@ -40,7 +38,7 @@
   <joint name="base_cyton_joint" type="fixed">
     <parent link="airbase"/>
     <child link="base_link"/>
-    <origin rpy="3.14159265359 0 1.57079632679" xyz="0.0732 0.0 -0.1"/>
+    <origin rpy="3.14159265359 0 1.57079632679" xyz="0.076 0.0 -0.12"/>
   </joint>
   <link name="base_link">
     <visual>
@@ -50,7 +48,8 @@
       </geometry>
     </visual>
     <inertial>
-      <origin xyz="0 0.0115 0.047"/>
+      <!--<origin xyz="0 0.0115 0.047"/>-->
+      <origin xyz="0 0 0.047"/>
       <mass value="0.24"/>
       <inertia ixx="0.0008033" ixy="0.0" ixz="0.0" iyy="0.00065104" iyz="0.0" izz="0.0011009"/>
     </inertial>
@@ -252,13 +251,10 @@
       </geometry>
     </collision>
   </link>
-  <!--<joint name="gripper_joint" type="prismatic">
+  <joint name="gripper_joint" type="fixed">
     <parent link="wrist_roll"/>
     <child link="gripper_finger1"/>
-    <origin rpy="0.0 0 0" xyz="-0.01331 0.00485 0.077225"/>
-    <limit effort="25.0" lower="-0.008" upper="0.008" velocity="1.0"/>
-    <axis xyz="1 0 0"/>
-    <dynamics damping="0.1" friction="0.0"/>
+    <origin rpy="0.0 0 0" xyz="-0.02 0.00485 0.077225"/>
   </joint>
   <link name="gripper_finger1">
     <visual>
@@ -279,13 +275,10 @@
       </geometry>
     </collision>
   </link>
-  <joint name="gripper_joint2" type="prismatic">
+  <joint name="gripper_joint2" type="fixed">
     <parent link="wrist_roll"/>
     <child link="gripper_finger2"/>
-    <origin rpy="0 0 0" xyz="0.0098 0.00485 0.077225"/>
-    <limit effort="25.0" lower="-0.008" upper="0.008" velocity="1.0"/>
-    <mimic joint="gripper_joint" multiplier="-1"/>
-    <axis xyz="1 0 0"/>
+    <origin rpy="0 0 0" xyz="0.02 0.00485 0.077225"/>
   </joint>
   <link name="gripper_finger2">
     <visual>
@@ -305,7 +298,7 @@
         <box size="0.015 0.0229 0.0475"/>
       </geometry>
     </collision>
-  </link>-->
+  </link>
   <joint name="virtual_endeffector_joint" type="fixed">
     <parent link="wrist_roll"/>
     <child link="virtual_endeffector"/>
@@ -327,5 +320,24 @@
       <inertia ixx="6.66666666667e-12" ixy="0.0" ixz="0.0" iyy="6.66666666667e-12" iyz="0.0" izz="6.66666666667e-12"/>
     </inertial>
   </link>
+  <!-- Add an electric drill visual at the end of gripper-->
+  <link name="target">
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="package://gcop_urdf/meshes/cordless_drill/cordless_drill.dae" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="1e-5"/>
+      <inertia ixx="6.66666666667e-12" ixy="0.0" ixz="0.0" iyy="6.66666666667e-12" iyz="0.0" izz="6.66666666667e-12"/>
+    </inertial>
+  </link>
+  <joint name="endeffector_target_joint" type="fixed">
+    <parent link="virtual_endeffector"/>
+    <child link="target"/>
+    <origin rpy="1.57079632679 0 3.14159265359" xyz="0 -0.22 0.06"/>
+  </joint>
 </robot>
 

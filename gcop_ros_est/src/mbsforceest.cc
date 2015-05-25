@@ -76,8 +76,7 @@ vector<double> ts;
 string mbstype; // Type of system
 double tfinal = 20;   // time-horizon
 Matrix4d gposeroot_i; //inital inertial frame wrt the joint frame
-
-string endeffector_framename;//Frame name of the end effector
+Matrix4d gposei_root;
 
 VectorXd p0(6);///< Initial Guess for external forces
 VectorXd pd(6);///< True External forces
@@ -127,7 +126,6 @@ void trajectoryCallback(gcop_comm::CtrlTraj::ConstPtr external_trajectory)
   const geometry_msgs::Transform &bpose  = external_trajectory->statemsg[0].basepose;
   const geometry_msgs::Twist &btwist = external_trajectory->statemsg[0].basetwist;
   Matrix4d basepose_matrix_external;
-  Matrix4d gposei_root;
 	gcop::SE3::Instance().inv(gposei_root,gposeroot_i);
 
   basepose_external<<bpose.rotation.w,bpose.rotation.x,bpose.rotation.y,bpose.rotation.z,bpose.translation.x,bpose.translation.y,bpose.translation.z;
@@ -164,12 +162,12 @@ void publishtraj()
 	int csize = mbsmodel->U.n;
 	int nb = mbsmodel->nb;
 	Vector6d bpose;
-	gcop::SE3::Instance().g2q(bpose,gposeroot_i*xs[0].gs[0]);
+	gcop::SE3::Instance().g2q(bpose,xs[0].gs[0]*gposeroot_i);
 	rpy2transform(trajectory.statemsg[0].basepose,bpose);
 	for (int i = 0; i < N; ++i) 
   {
     //Fill trajectory message:
-    gcop::SE3::Instance().g2q(bpose, gposeroot_i*xs[i+1].gs[0]);
+    gcop::SE3::Instance().g2q(bpose, xs[i+1].gs[0]*gposeroot_i);
     rpy2transform(trajectory.statemsg[i+1].basepose,bpose);
     for(int count1 = 0;count1 < nb-1;count1++)
     {
@@ -184,25 +182,56 @@ void publishtraj()
 	trajectory.time = ts;
 
 	trajpub.publish(trajectory);
-  //Also publish the desired and current wrenches:
+}
+void publishwrench()
+{
+  string frame_id = "/movingrobot/"+mbsmodel->end_effector_name;
+
+  static tf::TransformListener listener;
+  tf::StampedTransform end_effector_transform;
+  try{
+    listener.lookupTransform(frame_id, "world",
+        ros::Time(0), end_effector_transform);
+  }
+  catch (tf::TransformException ex){
+    ROS_ERROR("%s",ex.what());
+    return;
+  }
+  end_effector_transform.setOrigin(tf::Vector3(0,0,0));
+
+  tf::Vector3 temp_vector;
+
+
+  //Publish the desired and current wrenches:
   geometry_msgs::WrenchStamped wrench_msg;
   wrench_msg.header.stamp = ros::Time::now();
-  wrench_msg.header.frame_id = endeffector_framename;
+  wrench_msg.header.frame_id = frame_id;
   //Current_wrench:
-  wrench_msg.wrench.torque.x = p0[0];
-  wrench_msg.wrench.torque.y = p0[1];
-  wrench_msg.wrench.torque.z = p0[2];
-  wrench_msg.wrench.force.x  = p0[3];
-  wrench_msg.wrench.force.y  = p0[4];
-  wrench_msg.wrench.force.z  = p0[5];
+  temp_vector[0] = p0[0]; temp_vector[1] = p0[1]; temp_vector[2] = p0[2];
+  temp_vector = end_effector_transform*temp_vector;
+  wrench_msg.wrench.torque.x = temp_vector[0];
+  wrench_msg.wrench.torque.y = temp_vector[1];
+  wrench_msg.wrench.torque.z = temp_vector[2];
+
+  temp_vector[0] = p0[3]; temp_vector[1] = p0[4]; temp_vector[2] = p0[5];
+  temp_vector = end_effector_transform*temp_vector;
+  wrench_msg.wrench.force.x  = temp_vector[0];
+  wrench_msg.wrench.force.y  = temp_vector[1];
+  wrench_msg.wrench.force.z  = temp_vector[2];
   wrenchpub.publish(wrench_msg);
+
   //Desired wrench:
-  wrench_msg.wrench.torque.x = pd[0];
-  wrench_msg.wrench.torque.y = pd[1];
-  wrench_msg.wrench.torque.z = pd[2];
-  wrench_msg.wrench.force.x  = pd[3];
-  wrench_msg.wrench.force.y  = pd[4];
-  wrench_msg.wrench.force.z  = pd[5];
+  temp_vector[0] = pd[0]; temp_vector[1] = pd[1]; temp_vector[2] = pd[2];
+  temp_vector = end_effector_transform*temp_vector;
+  wrench_msg.wrench.torque.x = temp_vector[0];
+  wrench_msg.wrench.torque.y = temp_vector[1];
+  wrench_msg.wrench.torque.z = temp_vector[2];
+
+  temp_vector[0] = pd[3]; temp_vector[1] = pd[4]; temp_vector[2] = pd[5];
+  temp_vector = end_effector_transform*temp_vector;
+  wrench_msg.wrench.force.x  = temp_vector[0];
+  wrench_msg.wrench.force.y  = temp_vector[1];
+  wrench_msg.wrench.force.z  = temp_vector[2];
   desiredwrenchpub.publish(wrench_msg);
 }
 
@@ -221,7 +250,7 @@ void simtraj(vector<MbsState> &zs, vector<double> &ts_sensor, VectorXd &p) //N i
 
   int sensor_index = 0;
 
-	gcop::SE3::Instance().g2q(bpose,gposeroot_i*xs[0].gs[0]);
+	gcop::SE3::Instance().g2q(bpose,xs[0].gs[0]*gposeroot_i);
 	rpy2transform(trajectory.statemsg[0].basepose,bpose);
 
 	for(int count1 = 0;count1 < nb-1;count1++)
@@ -242,12 +271,12 @@ void simtraj(vector<MbsState> &zs, vector<double> &ts_sensor, VectorXd &p) //N i
       (*sensor)(zs[sensor_index], ts[near_index], xs[near_index], us[near_index]);
       sensor_index = sensor_index < (ts_sensor.size()-1)?sensor_index+1:sensor_index;
       //Print pose of zs to see if something meaningful is done:
-      gcop::SE3::Instance().g2q(bpose, gposeroot_i*xs[i+1].gs[0]);
+      gcop::SE3::Instance().g2q(bpose, xs[i+1].gs[0]*gposeroot_i);
       cout<<"zs["<<sensor_index<<"]: "<<bpose.transpose()<<endl;
     }
 
     //Fill trajectory message:
-		gcop::SE3::Instance().g2q(bpose, gposeroot_i*xs[i+1].gs[0]);
+		gcop::SE3::Instance().g2q(bpose, xs[i+1].gs[0]*gposeroot_i);
 		rpy2transform(trajectory.statemsg[i+1].basepose,bpose);
 		for(int count1 = 0;count1 < nb-1;count1++)
 		{
@@ -264,6 +293,32 @@ void simtraj(vector<MbsState> &zs, vector<double> &ts_sensor, VectorXd &p) //N i
 
 	trajpub.publish(trajectory);
 
+}
+char userloop()
+{
+  char c;
+  cout<<"============Menu================= \n Animate: a\nPublishwrench: w\nQuit: q\nIterate: anykey\n====================="<<endl;
+  cin>>c;
+  while (c != 'q')
+  {
+    if (c == 'a')
+    {
+      publishtraj();
+      ros::spinOnce();
+      cin>>c;
+    }
+    else if(c == 'w')
+    {
+      publishwrench();
+      ros::spinOnce();
+      cin>>c;
+    }
+    else
+    {
+      break;
+    }
+  }
+  return c;
 }
 
 
@@ -333,15 +388,13 @@ int main(int argc, char** argv)
 		ROS_ERROR("Could not fetch xml file name");
 		return 0;
 	}
-  //Get End effector name:
-  n.getParam("frame_name",endeffector_framename);
   //Get Base type:
 	n.getParam("basetype",mbstype);
 	assert((mbstype == "FIXEDBASE")||(mbstype == "AIRBASE")||(mbstype == "FLOATBASE"));
 	VectorXd xmlconversion;
-	Matrix4d gposei_root; //inital inertial frame wrt the joint frame
 	//Create Mbs system
-	mbsmodel = gcop_urdf::mbsgenerator(xml_string,gposei_root, mbstype, 6);
+	mbsmodel = gcop_urdf::mbsgenerator(xml_string, mbstype, 6);
+	Matrix4d &gposei_root = mbsmodel->pose_inertia_base; //inital inertial frame wrt the joint frame
 	mbsmodel->U.bnd = false;
 	gcop::SE3::Instance().inv(gposeroot_i,gposei_root);
 	cout<<"Mbstype: "<<mbstype<<endl;
@@ -473,6 +526,17 @@ int main(int argc, char** argv)
   }
   mup = p0;//Copy the initial guess to be the same as prior for the parameters
 
+  //If external parameter is provided, end effector frame name should also be provided
+  if(n.hasParam("frame_name"))
+  {
+    n.getParam("frame_name",(mbsmodel->end_effector_name));
+  }
+
+  if((n.hasParam("p0") ^ n.hasParam("frame_name"))!=0)
+  {
+    ROS_WARN("Provided external parameter but no end effector name parameter: frame_name provided");
+  }
+
 
 	//Using it:
 	//define parameters for the system
@@ -530,7 +594,7 @@ int main(int argc, char** argv)
       x.vs[0] = xmlconversion.tail<6>();
       gcop::SE3::Instance().rpyxyz2g(x.gs[0],xmlconversion.head<3>(),xmlconversion.segment<3>(3)); 
     }
-    x.gs[0] = gposei_root*x.gs[0];//new stuff with transformations
+    x.gs[0] = x.gs[0]*gposei_root;//new stuff with transformations
     cout<<"x.gs[0]"<<endl<<x.gs[0]<<endl;
     //list of joint angles:
     XmlRpc::XmlRpcValue j_list;
@@ -555,6 +619,10 @@ int main(int argc, char** argv)
     int n11 = mbsmodel->nb -1 + 6*(!mbsmodel->fixed);
     VectorXd forces(n11);
     mbsmodel->Bias(forces,0,x, &pd);
+    //Base Controls are to be given in base frame:
+    Matrix6d M_base_inertia;
+    gcop::SE3::Instance().Ad(M_base_inertia, gposeroot_i);
+    forces.head<6>() = M_base_inertia.transpose()*forces.head<6>();
     cout<<"Bias computed: "<<forces.transpose()<<endl;
 
     //forces = -1*forces;//Controls should be negative of the forces
@@ -628,7 +696,9 @@ int main(int argc, char** argv)
   ROS_INFO("Intial guess trajectory");
   publishtraj();
   ros::spinOnce();
-  getchar();
+  char c = userloop();
+  if(c == 'q')
+    return 0;
   while(ros::ok())
   {
     cout<<"Iterating..."<<endl;
@@ -638,14 +708,7 @@ int main(int argc, char** argv)
     cout << "Parameter: "<< p0 << endl;
     publishtraj();
     ros::spinOnce();
-    char c;
-    cin>>c;
-    while (c == 'a')
-    {
-      publishtraj();
-      ros::spinOnce();
-      cin>>c;
-    }
+    char c = userloop();
     if(c == 'q')
       break;
   }

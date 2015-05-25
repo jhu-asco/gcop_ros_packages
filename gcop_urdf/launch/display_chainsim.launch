@@ -4,6 +4,7 @@
   <arg name="model"/>
   <arg name="namespace" default="mbsddp"/>
 	<param name="/robot_description" textfile="$(arg model)"/>
+  <param name="/mbssim" value="true"/>
 
 	<group ns="movingrobot">
 	  <param name="tf_prefix" value="movingrobot" />
