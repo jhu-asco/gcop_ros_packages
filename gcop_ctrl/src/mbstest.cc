@@ -13,20 +13,33 @@
 #include <gcop/urdf_parser.h>
 #include "tf/transform_datatypes.h"
 #include <gcop/se3.h>
-#include "gcop/ddp.h" //gcop ddp header
 #include "gcop/lqcost.h" //gcop lqr header
 #include "gcop/rn.h"
 #include "gcop/mbscontroller.h"
 #include "gcop_ctrl/MbsDMocInterfaceConfig.h"
 #include <tf/transform_listener.h>
 #include <XmlRpcValue.h>
+
+#define USE_GN
+
+#ifdef USE_GN
+#include "gcop/gndocp.h" //gcop ddp header
+#include "gcop/controltparam.h"
+#else
+#include "gcop/ddp.h" //gcop ddp header
+#endif
 //#include <signal.h>
 
 using namespace std;
 using namespace Eigen;
 using namespace gcop;
 
-typedef Ddp<MbsState> MbsDdp;//defining chainddp
+
+#ifdef USE_GN
+  typedef GnDocp<MbsState> MbsGn;
+#else
+  typedef Ddp<MbsState> MbsDdp;//defining chainddp
+#endif
 
 
 //ros messages
@@ -42,7 +55,11 @@ ros::Timer iteratetimer;
 boost::shared_ptr<Mbs> mbsmodel;
 
 //Pointer for Optimal Controller
-boost::shared_ptr<MbsDdp> mbsddp;
+#ifdef USE_GN
+boost::shared_ptr<MbsGn> mbsopt;
+#else
+boost::shared_ptr<MbsDdp> mbsopt;
+#endif
 
 //MbsState final state
 boost::shared_ptr<MbsState> xf;
@@ -92,38 +109,38 @@ inline void gcoptwisttomsg(const Vector6d &in, geometry_msgs::Twist &out)
 }
 void pubtraj() //N is the number of segments
 {
-	if(!mbsddp)
+	if(!mbsopt)
 		return;
-	int N = mbsddp->us.size();
-	cout<<"N: "<<N<<endl;
+	int N = mbsopt->us.size();
+	//cout<<"N: "<<N<<endl;
 	int csize = mbsmodel->U.n;
-	cout<<"csize: "<<csize<<endl;
+	//cout<<"csize: "<<csize<<endl;
 	int nb = mbsmodel->nb;
-	cout<<"nb: "<<nb<<endl;
+	//cout<<"nb: "<<nb<<endl;
 	Vector6d bpose;
 
-	gcop::SE3::Instance().g2q(bpose,mbsddp->xs[0].gs[0]*gposeroot_i);
+	gcop::SE3::Instance().g2q(bpose,mbsopt->xs[0].gs[0]*gposeroot_i);
 	q2transform(trajectory.statemsg[0].basepose,bpose);
 
 	for(int count1 = 0;count1 < nb-1;count1++)
 	{
-		trajectory.statemsg[0].statevector[count1] = mbsddp->xs[0].r[count1];
+		trajectory.statemsg[0].statevector[count1] = mbsopt->xs[0].r[count1];
 		trajectory.statemsg[0].names[count1] = mbsmodel->joints[count1].name;
 	}
 
 	for (int i = 0; i < N; ++i) 
 	{
-		gcop::SE3::Instance().g2q(bpose, mbsddp->xs[i+1].gs[0]*gposeroot_i);
+		gcop::SE3::Instance().g2q(bpose, mbsopt->xs[i+1].gs[0]*gposeroot_i);
 		q2transform(trajectory.statemsg[i+1].basepose,bpose);
-		gcoptwisttomsg(mbsddp->xs[i+1].vs[0],trajectory.statemsg[i+1].basetwist);//No conversion from inertial frame to the visual frame 
+		gcoptwisttomsg(mbsopt->xs[i+1].vs[0],trajectory.statemsg[i+1].basetwist);//No conversion from inertial frame to the visual frame 
 		for(int count1 = 0;count1 < nb-1;count1++)
 		{
-			trajectory.statemsg[i+1].statevector[count1] = mbsddp->xs[i+1].r[count1];
+			trajectory.statemsg[i+1].statevector[count1] = mbsopt->xs[i+1].r[count1];
 			trajectory.statemsg[i+1].names[count1] = mbsmodel->joints[count1].name;
 		}
 		for(int count1 = 0;count1 < csize;count1++)
 		{
-			trajectory.ctrl[i].ctrlvec[count1] = mbsddp->us[i](count1);
+			trajectory.ctrl[i].ctrlvec[count1] = mbsopt->us[i](count1);
 		}
 	}
 	//final goal:
@@ -136,28 +153,29 @@ void pubtraj() //N is the number of segments
 		trajectory.finalgoal.names[count1] = mbsmodel->joints[count1].name;
 	}
 
-	trajectory.time = mbsddp->ts;
+	trajectory.time = mbsopt->ts;
 	trajpub.publish(trajectory);
 
 }
 void iterateCallback(const ros::TimerEvent & event)
 {
-	if(!mbsddp)
+	if(!mbsopt)
 		return;
 	ros::Time startime = ros::Time::now(); 
 	for (int count = 1;count <= Nit;count++)
 	{
-		mbsddp->Iterate();//Updates us and xs after one iteration
+		mbsopt->Iterate();//Updates us and xs after one iteration
 	}
 	double te = 1e6*(ros::Time::now() - startime).toSec();
 	cout << "Time taken " << te << " us." << endl;
+  cout<< "mbsopt->J "<<(mbsopt->J)<<endl;
 	//publish the message
 	pubtraj();
 }
 
 void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level) 
 {
-	if(!mbsddp)
+	if(!mbsopt)
 		return;
 	int nb = mbsmodel->nb;
 	Nit = config.Nit; 
@@ -211,20 +229,23 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 				config.i_J = 1;
 			config.Ji = xf->r[config.i_J-1];     
 			config.Jvi = xf->dr[config.i_J-1];     
+#ifdef USE_GN
+     mbsopt->Reset();
+#endif
 		}
 		else
 		{
 			if(mbstype != "FIXEDBASE")
 			{
 				// overwrite the config with values from initial state
-				config.vroll = mbsddp->xs[0].vs[0](0);
-				config.vpitch = mbsddp->xs[0].vs[0](1);
-				config.vyaw = mbsddp->xs[0].vs[0](2);
-				config.vx = mbsddp->xs[0].vs[0](3);
-				config.vy = mbsddp->xs[0].vs[0](4);
-				config.vz = mbsddp->xs[0].vs[0](5);
+				config.vroll = mbsopt->xs[0].vs[0](0);
+				config.vpitch = mbsopt->xs[0].vs[0](1);
+				config.vyaw = mbsopt->xs[0].vs[0](2);
+				config.vx = mbsopt->xs[0].vs[0](3);
+				config.vy = mbsopt->xs[0].vs[0](4);
+				config.vz = mbsopt->xs[0].vs[0](5);
 
-				gcop::SE3::Instance().g2rpyxyz(rpy,xyz,mbsddp->xs[0].gs[0]*gposeroot_i);
+				gcop::SE3::Instance().g2rpyxyz(rpy,xyz,mbsopt->xs[0].gs[0]*gposeroot_i);
 				config.roll = rpy(0);
 				config.pitch = rpy(1);
 				config.yaw = rpy(2);
@@ -238,10 +259,12 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 			else if(config.i_J < 1)
 				config.i_J = 1;
 
-			config.Ji = mbsddp->xs[0].r[config.i_J-1];     
-			config.Jvi = mbsddp->xs[0].dr[config.i_J-1];     
+			config.Ji = mbsopt->xs[0].r[config.i_J-1];     
+			config.Jvi = mbsopt->xs[0].dr[config.i_J-1];     
 		}
-		config.mu = mbsddp->mu;
+#ifndef USE_GN
+		config.mu = mbsopt->mu;
+#endif
 		config.tf = cost->tf;
 		if(config.iterate)
 		{
@@ -281,9 +304,9 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 	{
 		if(mbstype != "FIXEDBASE")
 		{
-			gcop::SE3::Instance().rpyxyz2g(mbsddp->xs[0].gs[0], Vector3d(config.roll,config.pitch,config.yaw), Vector3d(config.x,config.y,config.z));
-      mbsddp->xs[0].gs[0] = mbsddp->xs[0].gs[0]*gposei_root;
-			mbsddp->xs[0].vs[0]<<config.vroll, config.vpitch, config.vyaw, config.vx, config.vy, config.vz;
+			gcop::SE3::Instance().rpyxyz2g(mbsopt->xs[0].gs[0], Vector3d(config.roll,config.pitch,config.yaw), Vector3d(config.x,config.y,config.z));
+      mbsopt->xs[0].gs[0] = mbsopt->xs[0].gs[0]*gposei_root;
+			mbsopt->xs[0].vs[0]<<config.vroll, config.vpitch, config.vyaw, config.vx, config.vy, config.vz;
 		}
 
 		if(config.i_J > nb-1)
@@ -291,9 +314,9 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 		else if(config.i_J <= 0)
 			config.i_J = 1;
 
-		mbsddp->xs[0].r[config.i_J -1] = config.Ji;
-		mbsddp->xs[0].dr[config.i_J -1] = config.Jvi;
-		mbsmodel->Rec(mbsddp->xs[0], h);
+		mbsopt->xs[0].r[config.i_J -1] = config.Ji;
+		mbsopt->xs[0].dr[config.i_J -1] = config.Jvi;
+		mbsmodel->Rec(mbsopt->xs[0], h);
 	}
 	if(config.ureset)
   {
@@ -313,13 +336,13 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
         u[5] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
       cout<<"u[5]: "<<u[5]<<endl;
     }
-    int size = mbsddp->us.size();
+    int size = mbsopt->us.size();
     double t1;
 
     for(int count = 0;count < size;count++)
     {
-      mbsddp->us[count] = u;
-      mbsmodel->Step(mbsddp->xs[count+1], count*h, mbsddp->xs[count], mbsddp->us[count], h);
+      mbsopt->us[count] = u;
+      mbsmodel->Step(mbsopt->xs[count+1], count*h, mbsopt->xs[count], mbsopt->us[count], h);
     }
   }
 
@@ -341,7 +364,7 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 
   //Setting Values
 	for (int k = 0; k <=N; ++k)
-	mbsddp->ts[k] = k*h;
+	mbsopt->ts[k] = k*h;
 
 	cost->tf = config.tf;
 	
@@ -601,13 +624,45 @@ int main(int argc, char** argv)
 	vector<VectorXd> us(N,u);
 	vector<MbsState> xs(N+1,x0);
 
-  if(n.hasParam("p0"))
-    mbsddp.reset(new MbsDdp(*mbsmodel, *cost, ts, xs, us, &p0));
-  else
-    mbsddp.reset(new MbsDdp(*mbsmodel, *cost, ts, xs, us));
+#ifdef USE_GN
+  int Nk = 10;//Number of spline segments.
+  n.getParam("Nk",Nk);
+  //VectorXd tks(Nk+1);
+  vector<double> tks(Nk+1);
+  for(int k = 0; k <= Nk; ++k)
+  {
+    tks[k] = k*(tf/Nk);
+  }
+  int degree = 2;
+  n.getParam("degree", degree);
+  ControlTparam<MbsState> tp(*mbsmodel, tks);//Spline degree
+#endif
 
-	mbsddp->mu = 10.0;
-	n.getParam("mu",mbsddp->mu);
+  if(n.hasParam("p0"))
+  {
+#ifdef USE_GN
+    mbsopt.reset(new MbsGn(*mbsmodel, *cost, tp, ts, xs, us, &p0));
+#else
+    mbsopt.reset(new MbsDdp(*mbsmodel, *cost, ts, xs, us, &p0));
+#endif
+  }
+  else
+  {
+#ifdef USE_GN
+    mbsopt.reset(new MbsGn(*mbsmodel, *cost, tp, ts, xs, us));
+#else
+    mbsopt.reset(new MbsDdp(*mbsmodel, *cost, ts, xs, us));
+#endif
+  }
+
+#ifndef USE_GN
+	mbsopt->mu = 10.0;
+	n.getParam("mu",mbsopt->mu);
+#else
+  mbsopt->numdiff_stepsize = 1e-16;
+	n.getParam("stepsize",(mbsopt->numdiff_stepsize));
+  cout<<"step size: "<<(mbsopt->numdiff_stepsize)<<endl;
+#endif
 
 	//Trajectory message initialization
 	trajectory.N = N;
