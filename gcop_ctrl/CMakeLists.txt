@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(gcop_ctrl)
-
+set(CMAKE_BUILD_TYPE Release)
 add_definitions(-g -std=c++0x -pthread)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 ## Find catkin macros and libraries
@@ -15,7 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   tf
-	tf2_ros
+  tf2_ros
 )
 
 ## System dependencies are found with CMake's conventions
@@ -91,6 +91,7 @@ generate_dynamic_reconfigure_options(
 	cfg/mbssim.cfg
 	cfg/paramedit.cfg
 	cfg/mbsnode.cfg
+	cfg/gcar_ddp.cfg
 )
 ###################################
 ## catkin specific configuration ##
@@ -131,25 +132,29 @@ include_directories(
 #target_link_libraries(chainload ${LIBS} ${catkin_LIBRARIES})
 #add_dependencies(chainload ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
-add_executable(mbstest src/mbstest.cc)
-target_link_libraries(mbstest ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(mbstest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
-
-add_executable(mbsnode src/mbsnode.cc)
-target_link_libraries(mbsnode ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(mbsnode ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
-
-add_executable(mbssim src/mbssim.cc)
-target_link_libraries(mbssim ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(mbssim ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
-
+#add_executable(mbstest src/mbstest.cc)
+#target_link_libraries(mbstest ${LIBS} ${catkin_LIBRARIES})
+#add_dependencies(mbstest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+#
+#add_executable(mbsnode src/mbsnode.cc)
+#target_link_libraries(mbsnode ${LIBS} ${catkin_LIBRARIES})
+#add_dependencies(mbsnode ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+#
+#add_executable(mbssim src/mbssim.cc)
+#target_link_libraries(mbssim ${LIBS} ${catkin_LIBRARIES})
+#add_dependencies(mbssim ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+#
 add_executable(rcctrl src/rccartest.cc)
 target_link_libraries(rcctrl ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(rcctrl ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
-add_executable(rcctrlsub src/rccarsub.cc)
-target_link_libraries(rcctrlsub ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(rcctrlsub ${PROJECT_NAME}_gencfg)
+add_executable(rccar_ddp_lcl_planner src/rccar_ddp_lcl_planner.cpp)
+target_link_libraries(rccar_ddp_lcl_planner ${LIBS} ${catkin_LIBRARIES})
+add_dependencies(rccar_ddp_lcl_planner ${PROJECT_NAME}_gencfg)
+
+add_executable(gcar_ddp_planner src/gcar_ddp_planner.cpp)
+target_link_libraries(gcar_ddp_planner ${LIBS} ${catkin_LIBRARIES})
+add_dependencies(gcar_ddp_planner ${PROJECT_NAME}_gencfg)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes

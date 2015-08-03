@@ -4,3 +4,4 @@ State xf #Final State
 float64 t0 #Initial time
 float64 tf #Final time
 uint32 N #Number of segments to return
+uint32 Niter

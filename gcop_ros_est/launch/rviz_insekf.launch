@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<launch>
+  <include file="$(find rampage_logger)/launch/rampage_mapserver.launch"/>
+  
+  <!--<node name="worldtomap_tfpub" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 1 /world /map 100"/>-->
+  
+  <!--<node name="rampage_rviz" pkg="rviz" type="rviz" args="-d $(find rampage_logger)/rampage_rviz.rviz" output="screen" />-->
+  <node name="rampage_rviz" pkg="rviz" type="rviz" args="-d $(find gcop_ros_est)/launch/insekf.rviz" output="screen" />
+</launch>
+

@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="gcop_ros_est" type="ekf_imu_mag_gps" name="ekf_imu_mag_gps"  output="screen">
+  <rosparam command="load" file="$(find gcop_ros_est)/params/insmag_ekf_mavros.yaml"/>
+  </node>
+</launch>

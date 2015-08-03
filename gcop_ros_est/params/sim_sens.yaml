@@ -1,0 +1,70 @@
+
+# Output format/sensor msg type
+# (un-modifiable in reconfigure)
+#   0:Vector3Stamped
+#   1:RosDefault
+type_sensor_msg: 1
+
+tmax: -1 # Time for which you want to produce data. Negative number keeps it running
+
+# Noise parameters
+# (modifiable in reconfigure)
+cov_mag: 1e-4 #covariance of the magnetometer where the readings lie on a unit sphere
+cov_acc: 1e-4
+cov_gyro: 0.1
+cov_gps_xy: 4.0
+cov_gps_z: 1.0
+
+# Data rate
+# (modifiable in reconfigure)
+rate_gps:   10.0
+rate_mag:   20.0
+rate_imu:   50.0
+rate_acc:   50.0  
+rate_gyro:  50.0
+
+# Lat, Lon and Alt of origin
+# (un-modifiable in reconfigure)
+lat0_deg: 39.3257305556
+lon0_deg: -76.6223472222
+alt0_m: 0
+
+# Mag reference
+#   http://www.ngdc.noaa.gov/geomag-web/#igrfwmm
+# (un-modifiable in reconfigure)
+m0x: -4045.4
+m0y: 20503.7
+m0z: -47202.3
+
+# Acc reference
+# (un-modifiable in reconfigure)
+a0x: 0.0
+a0y: 0.0
+a0z: 9.81
+
+# Gyro bias 
+bgx: 0.0
+bgy: 0.0
+bgz: 0.0
+
+# Acc bias
+bax: 0.0
+bay: 0.0
+baz: 0.0
+
+# Topic name
+strtop_gps: "/simsens/gps"
+
+strtop_imu: "/simsens/imu/imu"
+strtop_mag: "/simsens/imu/mag"
+
+strtop_mag_v3s: "/simsens/imu/mag_v3s"
+strtop_acc_v3s: "/simsens/imu/acc_v3s"
+strtop_gyro_v3s: "/simsens/imu/gyro_v3s"
+
+# Trajectory type
+#   0:fixed inputs
+#   1:Randomly sampled controls
+#   2:Car moving in a circle
+#   3:Car movign in a figure 8 motion
+type_traj: 0

@@ -1,0 +1,30 @@
+#parameters to be used with gcop_insmagekf_test.cpp
+
+# Sensor format
+# (un-modifiable in reconfigure)
+#   0:Vector3Stamped
+#   1:RosDefault
+type_sensor_msg: 1
+
+
+# Topic name
+#   (un-modifiable in reconfigure)
+
+strtop_imu: "/simsens/imu/imu"
+strtop_mag: "/simsens/imu/mag"
+
+strtop_mag_v3s: "/multisense/imu/magnetometer_vector"
+strtop_acc_v3s: "/multisense/imu/accelerometer_vector"
+
+# Magnetometer calibration parameter
+#   (un-modifiable in reconfigure)
+#   linear and translation refers to components for Eigen::Transform
+#   The transform takes the raw magnetometer reading translates to origin and scales
+#     it along appropriate eigen vectors such that all readings lie on a unit sphere
+#     and puts them into the right hand coordinate system( many mag sensors don't)    
+#     which is in the frame of the robot(thats is why there is no robot2mag param above)       
+magcal_linear:    [0.034536596975320  , 3.069733122958818 , -0.103880262558144,
+                  -0.024735495399356  ,-0.103880262558144 ,  2.505440373398652,
+                  -3.191912847253495  ,-0.034536596975320 ,  0.024735495399356]
+                  
+magcal_translation: [0.842982236993421, 0.347266529162023, 0.000208168402332]  

@@ -1,8 +1,0 @@
-<?xml version="1.0"?>
-<launch>
-  <node pkg="gcop_ros_est" type="gcop_insekf_test" name="gcop_insekf_test" args="manager" output="screen">
-  	<remap from="imu" to="/mavros/imu/data_raw"/>
-  	<remap from="gps" to="/mavros/gps/fix"/>
-    <remap from="mag" to="/mavros/imu/mag"/>  
-  </node>
-</launch>

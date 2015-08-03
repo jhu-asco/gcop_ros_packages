@@ -13,10 +13,13 @@ camera_calibration_parsers cv_bridge image_transport nodelet roscpp sensor_msgs 
 gis_common
 gps_common
 dynamic_reconfigure
+visualization_msgs
 )
 
 generate_dynamic_reconfigure_options(
   cfg/Insekf.cfg
+  cfg/SimSens.cfg
+  cfg/Calibrator.cfg
   )
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -179,11 +182,27 @@ target_link_libraries(cam_est ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${catkin_LIBRARIE
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
 
-add_executable(gcop_insekf_test src/gcop_insekf_test.cpp)
-target_link_libraries(gcop_insekf_test 
+add_executable(sim_ins_mag_gps src/sim_ins_mag_gps.cpp)
+target_link_libraries(sim_ins_mag_gps 
 		      ${GCOP_LIBRARIES}
 		      ${OpenCV_LIBRARIES}
 	      ${TINYXML_LIBRARIES}
-	      ${catkin_LIBRARIES}
-)
-add_dependencies(gcop_insekf_test ${PROJECT_NAME}_gencfg )
+	      ${catkin_LIBRARIES})
+add_dependencies(sim_ins_mag_gps ${PROJECT_NAME}_gencfg )
+
+add_executable(ekf_imu_mag_gps src/ekf_imu_mag_gps.cpp)
+target_link_libraries(ekf_imu_mag_gps 
+		      ${GCOP_LIBRARIES}
+		      ${OpenCV_LIBRARIES}
+	      ${TINYXML_LIBRARIES}
+	      ${catkin_LIBRARIES})
+add_dependencies(ekf_imu_mag_gps ${PROJECT_NAME}_gencfg )
+
+add_executable(calibrator src/calibrator.cpp)
+target_link_libraries(calibrator 
+		      ${GCOP_LIBRARIES}
+		      ${OpenCV_LIBRARIES}
+	      ${TINYXML_LIBRARIES}
+	      ${catkin_LIBRARIES})
+add_dependencies(calibrator ${PROJECT_NAME}_gencfg )
+

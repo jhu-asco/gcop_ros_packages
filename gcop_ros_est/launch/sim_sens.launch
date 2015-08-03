@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="gcop_ros_est" type="sim_ins_mag_gps" name="sim_sens" output="screen">
+    <rosparam command="load" file="$(find gcop_ros_est)/params/sim_sens.yaml" />
+  </node>
+</launch>

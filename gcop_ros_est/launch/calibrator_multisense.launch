@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+  <include file="$(gcop_ros_est)/launch/multisense.launch"
+  <node pkg="gcop_ros_est" type="calibrator" name="calibrator"  output="screen">
+  <rosparam command="load" file="$(find gcop_ros_est)/params/calibrator_multisense.yaml"/>
+  </node>
+</launch>

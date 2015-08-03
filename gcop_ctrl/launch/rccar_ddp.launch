@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+	<node name="dmoc_rc" pkg="gcop_ctrl" type="rccar_ddp_lcl_planner" output="screen" launch-prefix=""/>
+	<node name="rcreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" />
+	<include file="$(find gcop_urdf)/launch/display_rccar.launch"/>
+
+</launch>
