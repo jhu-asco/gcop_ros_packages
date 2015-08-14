@@ -87,11 +87,15 @@ message("GCOP LIBS: ${GCOP_LIBRARIES}")
 #   geometry_msgs
 # )
 generate_dynamic_reconfigure_options(
-	cfg/mbsparamedit.cfg
-	cfg/mbssim.cfg
-	cfg/paramedit.cfg
-	cfg/mbsnode.cfg
-	cfg/gcar_ddp.cfg
+	#cfg/mbsparamedit.cfg
+	#cfg/mbssim.cfg
+	#cfg/paramedit.cfg
+	#cfg/mbsnode.cfg
+	#cfg/gcar_ddp.cfg
+	cfg/MbsDMocInterface.cfg
+	cfg/MbsSimInterface.cfg
+	cfg/DMocInterface.cfg
+	cfg/MbsNodeInterface.cfg
 )
 ###################################
 ## catkin specific configuration ##

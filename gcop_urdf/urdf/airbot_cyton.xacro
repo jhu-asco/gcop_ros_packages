@@ -1,0 +1,74 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="airbot_cyton_gamma_1500">
+	<xacro:property name="pi" value="3.1415926535897931" />
+  <xacro:include filename="$(find cyton_gamma_1500_description)/cyton_gamma_1500_macros.urdf.xacro"/>
+  <xacro:property name="mass_airbot" value="4.2"/>
+  <xacro:property name="base_offset_x" value="0.076"/>
+  <!--<xacro:property name="base_offset_x" value="0.0"/>-->
+  <xacro:property name="base_offset_z" value="-0.12"/>
+  <xacro:macro name="cylinder_inertia" params="mass d h">
+        <inertia
+        ixx="${mass*(3*d*d/4 + h*h)/12.0}"
+        ixy="0.0"
+        ixz="0.0"
+        iyy="${mass*(3*d*d/4 + h*h)/12.0}"
+        iyz="0.0"
+        izz="${mass*(d*d)/8.0}"/>
+    </xacro:macro>
+
+  <link name="base_footprint">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.001"/>
+      </geometry>
+      <material name="white">
+        <color rgba="1 1 1 1"/>
+      </material>
+    </visual>
+  </link>
+  <link name="airbase">
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="package://gcop_urdf/meshes/dji-s1000.dae" scale="1 1 1"/>
+        <!--box size="0.44 0.44 0.1632"/-->
+      </geometry>
+    </visual>
+    <inertial>
+      <mass value="${mass_airbot}"/>
+			<xacro:cylinder_inertia mass="${mass_airbot}" d="1.045" h="0.2"/>
+    </inertial>
+  </link>
+  <!-- Joints -->
+  <joint name="basetoairbase" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="airbase"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+  </joint>
+  <joint name="base_cyton_joint" type="fixed">
+      <parent link="airbase" />
+      <child link="base_link" />
+      <origin xyz="${base_offset_x} 0.0 ${base_offset_z}" rpy="${pi} 0 ${pi/2}" />
+  </joint>
+  <xacro:cyton_gamma_1500 prefix="" virtual_ee="true"/>
+  <!-- Add an electric drill visual at the end of gripper-->
+  <link name="target">
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="package://gcop_urdf/meshes/cordless_drill/cordless_drill.dae" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="1e-5"/>
+      <inertia ixx="6.66666666667e-12" ixy="0.0" ixz="0.0" iyy="6.66666666667e-12" iyz="0.0" izz="6.66666666667e-12"/>
+    </inertial>
+  </link>
+  <joint name="endeffector_target_joint" type="fixed">
+      <parent link="virtual_endeffector" />
+      <child link="target" />
+      <origin xyz="0 -0.22 0.06" rpy="${pi/2} 0 ${pi}" />
+  </joint>
+</robot>

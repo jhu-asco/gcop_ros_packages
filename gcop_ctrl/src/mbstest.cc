@@ -13,20 +13,33 @@
 #include <gcop/urdf_parser.h>
 #include "tf/transform_datatypes.h"
 #include <gcop/se3.h>
-#include "gcop/ddp.h" //gcop ddp header
 #include "gcop/lqcost.h" //gcop lqr header
 #include "gcop/rn.h"
 #include "gcop/mbscontroller.h"
 #include "gcop_ctrl/MbsDMocInterfaceConfig.h"
 #include <tf/transform_listener.h>
 #include <XmlRpcValue.h>
+
+#define USE_GN
+
+#ifdef USE_GN
+#include "gcop/gndocp.h" //gcop ddp header
+#include "gcop/controltparam.h"
+#else
+#include "gcop/ddp.h" //gcop ddp header
+#endif
 //#include <signal.h>
 
 using namespace std;
 using namespace Eigen;
 using namespace gcop;
 
-typedef Ddp<MbsState> MbsDdp;//defining chainddp
+
+#ifdef USE_GN
+  typedef GnDocp<MbsState> MbsGn;
+#else
+  typedef Ddp<MbsState> MbsDdp;//defining chainddp
+#endif
 
 
 //ros messages
@@ -42,7 +55,11 @@ ros::Timer iteratetimer;
 boost::shared_ptr<Mbs> mbsmodel;
 
 //Pointer for Optimal Controller
-boost::shared_ptr<MbsDdp> mbsddp;
+#ifdef USE_GN
+boost::shared_ptr<MbsGn> mbsopt;
+#else
+boost::shared_ptr<MbsDdp> mbsopt;
+#endif
 
 //MbsState final state
 boost::shared_ptr<MbsState> xf;
@@ -55,6 +72,7 @@ int Nit = 1;//number of iterations for ddp
 int N = 100;      // discrete trajectory segments
 string mbstype; // Type of system
 Matrix4d gposeroot_i; //inital inertial frame wrt the joint frame
+Matrix4d gposei_root; //inverse of gposeroot_i
 
 void q2transform(geometry_msgs::Transform &transformmsg, Vector6d &bpose)
 {
@@ -91,42 +109,42 @@ inline void gcoptwisttomsg(const Vector6d &in, geometry_msgs::Twist &out)
 }
 void pubtraj() //N is the number of segments
 {
-	if(!mbsddp)
+	if(!mbsopt)
 		return;
-	int N = mbsddp->us.size();
-	cout<<"N: "<<N<<endl;
+	int N = mbsopt->us.size();
+	//cout<<"N: "<<N<<endl;
 	int csize = mbsmodel->U.n;
-	cout<<"csize: "<<csize<<endl;
+	//cout<<"csize: "<<csize<<endl;
 	int nb = mbsmodel->nb;
-	cout<<"nb: "<<nb<<endl;
+	//cout<<"nb: "<<nb<<endl;
 	Vector6d bpose;
 
-	gcop::SE3::Instance().g2q(bpose,gposeroot_i*mbsddp->xs[0].gs[0]);
+	gcop::SE3::Instance().g2q(bpose,mbsopt->xs[0].gs[0]*gposeroot_i);
 	q2transform(trajectory.statemsg[0].basepose,bpose);
 
 	for(int count1 = 0;count1 < nb-1;count1++)
 	{
-		trajectory.statemsg[0].statevector[count1] = mbsddp->xs[0].r[count1];
+		trajectory.statemsg[0].statevector[count1] = mbsopt->xs[0].r[count1];
 		trajectory.statemsg[0].names[count1] = mbsmodel->joints[count1].name;
 	}
 
 	for (int i = 0; i < N; ++i) 
 	{
-		gcop::SE3::Instance().g2q(bpose, gposeroot_i*mbsddp->xs[i+1].gs[0]);
+		gcop::SE3::Instance().g2q(bpose, mbsopt->xs[i+1].gs[0]*gposeroot_i);
 		q2transform(trajectory.statemsg[i+1].basepose,bpose);
-		gcoptwisttomsg(mbsddp->xs[i+1].vs[0],trajectory.statemsg[i+1].basetwist);//No conversion from inertial frame to the visual frame 
+		gcoptwisttomsg(mbsopt->xs[i+1].vs[0],trajectory.statemsg[i+1].basetwist);//No conversion from inertial frame to the visual frame 
 		for(int count1 = 0;count1 < nb-1;count1++)
 		{
-			trajectory.statemsg[i+1].statevector[count1] = mbsddp->xs[i+1].r[count1];
+			trajectory.statemsg[i+1].statevector[count1] = mbsopt->xs[i+1].r[count1];
 			trajectory.statemsg[i+1].names[count1] = mbsmodel->joints[count1].name;
 		}
 		for(int count1 = 0;count1 < csize;count1++)
 		{
-			trajectory.ctrl[i].ctrlvec[count1] = mbsddp->us[i](count1);
+			trajectory.ctrl[i].ctrlvec[count1] = mbsopt->us[i](count1);
 		}
 	}
 	//final goal:
-	gcop::SE3::Instance().g2q(bpose, gposeroot_i*xf->gs[0]);
+	gcop::SE3::Instance().g2q(bpose, xf->gs[0]*gposeroot_i);
 	q2transform(trajectory.finalgoal.basepose,bpose);
 
 	for(int count1 = 0;count1 < nb-1;count1++)
@@ -135,28 +153,29 @@ void pubtraj() //N is the number of segments
 		trajectory.finalgoal.names[count1] = mbsmodel->joints[count1].name;
 	}
 
-	trajectory.time = mbsddp->ts;
+	trajectory.time = mbsopt->ts;
 	trajpub.publish(trajectory);
 
 }
 void iterateCallback(const ros::TimerEvent & event)
 {
-	if(!mbsddp)
+	if(!mbsopt)
 		return;
 	ros::Time startime = ros::Time::now(); 
 	for (int count = 1;count <= Nit;count++)
 	{
-		mbsddp->Iterate();//Updates us and xs after one iteration
+		mbsopt->Iterate();//Updates us and xs after one iteration
 	}
 	double te = 1e6*(ros::Time::now() - startime).toSec();
 	cout << "Time taken " << te << " us." << endl;
+  cout<< "mbsopt->J "<<(mbsopt->J)<<endl;
 	//publish the message
 	pubtraj();
 }
 
 void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level) 
 {
-	if(!mbsddp)
+	if(!mbsopt)
 		return;
 	int nb = mbsmodel->nb;
 	Nit = config.Nit; 
@@ -195,7 +214,7 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 				config.vy = xf->vs[0](4);
 				config.vz = xf->vs[0](5);
 
-				gcop::SE3::Instance().g2rpyxyz(rpy,xyz,xf->gs[0]);
+				gcop::SE3::Instance().g2rpyxyz(rpy,xyz,xf->gs[0]*gposeroot_i);
 				config.roll = rpy(0);
 				config.pitch = rpy(1);
 				config.yaw = rpy(2);
@@ -210,20 +229,23 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 				config.i_J = 1;
 			config.Ji = xf->r[config.i_J-1];     
 			config.Jvi = xf->dr[config.i_J-1];     
+#ifdef USE_GN
+     mbsopt->Reset();
+#endif
 		}
 		else
 		{
 			if(mbstype != "FIXEDBASE")
 			{
 				// overwrite the config with values from initial state
-				config.vroll = mbsddp->xs[0].vs[0](0);
-				config.vpitch = mbsddp->xs[0].vs[0](1);
-				config.vyaw = mbsddp->xs[0].vs[0](2);
-				config.vx = mbsddp->xs[0].vs[0](3);
-				config.vy = mbsddp->xs[0].vs[0](4);
-				config.vz = mbsddp->xs[0].vs[0](5);
+				config.vroll = mbsopt->xs[0].vs[0](0);
+				config.vpitch = mbsopt->xs[0].vs[0](1);
+				config.vyaw = mbsopt->xs[0].vs[0](2);
+				config.vx = mbsopt->xs[0].vs[0](3);
+				config.vy = mbsopt->xs[0].vs[0](4);
+				config.vz = mbsopt->xs[0].vs[0](5);
 
-				gcop::SE3::Instance().g2rpyxyz(rpy,xyz,mbsddp->xs[0].gs[0]);
+				gcop::SE3::Instance().g2rpyxyz(rpy,xyz,mbsopt->xs[0].gs[0]*gposeroot_i);
 				config.roll = rpy(0);
 				config.pitch = rpy(1);
 				config.yaw = rpy(2);
@@ -237,10 +259,12 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 			else if(config.i_J < 1)
 				config.i_J = 1;
 
-			config.Ji = mbsddp->xs[0].r[config.i_J-1];     
-			config.Jvi = mbsddp->xs[0].dr[config.i_J-1];     
+			config.Ji = mbsopt->xs[0].r[config.i_J-1];     
+			config.Jvi = mbsopt->xs[0].dr[config.i_J-1];     
 		}
-		config.mu = mbsddp->mu;
+#ifndef USE_GN
+		config.mu = mbsopt->mu;
+#endif
 		config.tf = cost->tf;
 		if(config.iterate)
 		{
@@ -264,6 +288,7 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 		if(mbstype != "FIXEDBASE")
 		{
 			gcop::SE3::Instance().rpyxyz2g(xf->gs[0], Vector3d(config.roll,config.pitch,config.yaw), Vector3d(config.x,config.y,config.z));
+      xf->gs[0] = xf->gs[0]*gposei_root;
 			xf->vs[0]<<config.vroll, config.vpitch, config.vyaw, config.vx, config.vy, config.vz;
 		}
 
@@ -279,8 +304,9 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 	{
 		if(mbstype != "FIXEDBASE")
 		{
-			gcop::SE3::Instance().rpyxyz2g(mbsddp->xs[0].gs[0], Vector3d(config.roll,config.pitch,config.yaw), Vector3d(config.x,config.y,config.z));
-			mbsddp->xs[0].vs[0]<<config.vroll, config.vpitch, config.vyaw, config.vx, config.vy, config.vz;
+			gcop::SE3::Instance().rpyxyz2g(mbsopt->xs[0].gs[0], Vector3d(config.roll,config.pitch,config.yaw), Vector3d(config.x,config.y,config.z));
+      mbsopt->xs[0].gs[0] = mbsopt->xs[0].gs[0]*gposei_root;
+			mbsopt->xs[0].vs[0]<<config.vroll, config.vpitch, config.vyaw, config.vx, config.vy, config.vz;
 		}
 
 		if(config.i_J > nb-1)
@@ -288,12 +314,13 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 		else if(config.i_J <= 0)
 			config.i_J = 1;
 
-		mbsddp->xs[0].r[config.i_J -1] = config.Ji;
-		mbsddp->xs[0].dr[config.i_J -1] = config.Jvi;
-		mbsmodel->Rec(mbsddp->xs[0], h);
+		mbsopt->xs[0].r[config.i_J -1] = config.Ji;
+		mbsopt->xs[0].dr[config.i_J -1] = config.Jvi;
+		mbsmodel->Rec(mbsopt->xs[0], h);
 	}
 	if(config.ureset)
   {
+    //#TODO Use Biases to reset controls
     //cout<<"Hello"<<endl;
     VectorXd u(mbsmodel->U.n);
     u.setZero();
@@ -309,13 +336,13 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
         u[5] += (mbsmodel->links[count].m)*(-mbsmodel->ag(2));
       cout<<"u[5]: "<<u[5]<<endl;
     }
-    int size = mbsddp->us.size();
+    int size = mbsopt->us.size();
     double t1;
 
     for(int count = 0;count < size;count++)
     {
-      mbsddp->us[count] = u;
-      mbsmodel->Step(mbsddp->xs[count+1], count*h, mbsddp->xs[count], mbsddp->us[count], h);
+      mbsopt->us[count] = u;
+      mbsmodel->Step(mbsopt->xs[count+1], count*h, mbsopt->xs[count], mbsopt->us[count], h);
     }
   }
 
@@ -337,7 +364,7 @@ void paramreqcallback(gcop_ctrl::MbsDMocInterfaceConfig &config, uint32_t level)
 
   //Setting Values
 	for (int k = 0; k <=N; ++k)
-	mbsddp->ts[k] = k*h;
+	mbsopt->ts[k] = k*h;
 
 	cost->tf = config.tf;
 	
@@ -360,9 +387,13 @@ int main(int argc, char** argv)
 	n.getParam("basetype",mbstype);
 	assert((mbstype == "FIXEDBASE")||(mbstype == "AIRBASE")||(mbstype == "FLOATBASE"));
 	VectorXd xmlconversion;
-	Matrix4d gposei_root;
 	//Create Mbs system
-	mbsmodel = gcop_urdf::mbsgenerator(xml_string,gposei_root, mbstype);
+  if(n.hasParam("p0"))
+    mbsmodel = gcop_urdf::mbsgenerator(xml_string, mbstype, 6);
+  else
+    mbsmodel = gcop_urdf::mbsgenerator(xml_string, mbstype);
+
+	gposei_root = mbsmodel->pose_inertia_base;
 	gcop::SE3::Instance().inv(gposeroot_i,gposei_root);
 	cout<<"Mbstype: "<<mbstype<<endl;
 	mbsmodel->ag << 0, 0, -0.05;
@@ -451,7 +482,7 @@ int main(int argc, char** argv)
 		xf->vs[0] = xmlconversion.tail<6>();
 		gcop::SE3::Instance().rpyxyz2g(xf->gs[0],xmlconversion.head<3>(),xmlconversion.segment<3>(3)); 
 	}
-	xf->gs[0] = gposei_root*xf->gs[0];//new stuff with transformations
+	xf->gs[0] = xf->gs[0]*gposei_root;//new stuff with transformations
 	//list of joint angles:
 	XmlRpc::XmlRpcValue xfj_list;
 	if(n.getParam("JN", xfj_list))
@@ -499,7 +530,31 @@ int main(int argc, char** argv)
 		cost->R = xmlconversion.asDiagonal();
 	}
 	cout<<"Cost.R"<<endl<<cost->R<<endl;
+  cost->UpdateGains();
 	//
+
+  //Define external parameters:
+  VectorXd p0(6);///< Initial Guess for external forces on end effector
+  p0<<0,0,0,0,0,0;//Initialization
+  XmlRpc::XmlRpcValue param_list;
+  if(n.getParam("p0", param_list))
+  {
+		xml2vec(p0,param_list);
+		ROS_ASSERT(p0.size() == 6);
+		cout<<"parameter: "<<endl<<p0<<endl;
+  }
+
+  //If external parameter is provided, end effector frame name should also be provided
+  if(n.hasParam("frame_name"))
+  {
+    n.getParam("frame_name",(mbsmodel->end_effector_name));
+    ROS_INFO("End effector name: %s",(mbsmodel->end_effector_name.c_str()));
+  }
+
+  if((n.hasParam("p0") ^ n.hasParam("frame_name"))!=0)
+  {
+    ROS_WARN("Provided external parameter but no end effector name parameter: frame_name provided");
+  }
 
 
 	//Define the initial state mbs
@@ -518,7 +573,7 @@ int main(int argc, char** argv)
 		x0.vs[0] = xmlconversion.tail<6>();
 		gcop::SE3::Instance().rpyxyz2g(x0.gs[0],xmlconversion.head<3>(),xmlconversion.segment<3>(3)); 
 	}
-	x0.gs[0] = gposei_root*x0.gs[0];//new stuff with transformations
+	x0.gs[0] = x0.gs[0]*gposei_root;//new stuff with transformations
 	//list of joint angles:
 	XmlRpc::XmlRpcValue j_list;
 	if(n.getParam("J0", j_list))
@@ -537,7 +592,14 @@ int main(int argc, char** argv)
 	cout<<"Finding Biases"<<endl;
 	int n11 = mbsmodel->nb -1 + 6*(!mbsmodel->fixed);
 	VectorXd forces(n11);
-	mbsmodel->Bias(forces,0,x0);
+  if(n.hasParam("p0"))
+    mbsmodel->Bias(forces,0,x0, &p0);
+  else
+    mbsmodel->Bias(forces,0,x0);
+  //Base Controls are to be given in base frame:
+  Matrix6d M_base_inertia;
+  gcop::SE3::Instance().Ad(M_base_inertia, gposeroot_i);
+  forces.head<6>() = M_base_inertia.transpose()*forces.head<6>();
 	cout<<"Bias computed: "<<forces.transpose()<<endl;
 
 	//Set Controls to cancel the forces:
@@ -562,10 +624,45 @@ int main(int argc, char** argv)
 	vector<VectorXd> us(N,u);
 	vector<MbsState> xs(N+1,x0);
 
-	mbsddp.reset(new MbsDdp(*mbsmodel, *cost, ts, xs, us));
+#ifdef USE_GN
+  int Nk = 10;//Number of spline segments.
+  n.getParam("Nk",Nk);
+  //VectorXd tks(Nk+1);
+  vector<double> tks(Nk+1);
+  for(int k = 0; k <= Nk; ++k)
+  {
+    tks[k] = k*(tf/Nk);
+  }
+  int degree = 2;
+  n.getParam("degree", degree);
+  ControlTparam<MbsState> tp(*mbsmodel, tks);//Spline degree
+#endif
 
-	mbsddp->mu = 10.0;
-	n.getParam("mu",mbsddp->mu);
+  if(n.hasParam("p0"))
+  {
+#ifdef USE_GN
+    mbsopt.reset(new MbsGn(*mbsmodel, *cost, tp, ts, xs, us, &p0));
+#else
+    mbsopt.reset(new MbsDdp(*mbsmodel, *cost, ts, xs, us, &p0));
+#endif
+  }
+  else
+  {
+#ifdef USE_GN
+    mbsopt.reset(new MbsGn(*mbsmodel, *cost, tp, ts, xs, us));
+#else
+    mbsopt.reset(new MbsDdp(*mbsmodel, *cost, ts, xs, us));
+#endif
+  }
+
+#ifndef USE_GN
+	mbsopt->mu = 10.0;
+	n.getParam("mu",mbsopt->mu);
+#else
+  mbsopt->numdiff_stepsize = 1e-16;
+	n.getParam("stepsize",(mbsopt->numdiff_stepsize));
+  cout<<"step size: "<<(mbsopt->numdiff_stepsize)<<endl;
+#endif
 
 	//Trajectory message initialization
 	trajectory.N = N;

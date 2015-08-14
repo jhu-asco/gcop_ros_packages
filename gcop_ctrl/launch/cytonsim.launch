@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<launch>	
+  <arg name="control" default="false"/>
+	<arg name="parameters" default="$(find gcop_ctrl)/params/cyton.yaml"/>
+
+  <group unless="$(arg control)">
+    <include file="$(find gcop_urdf)/launch/display_chainsim.launch">
+      <arg name="model" default="$(find cyton_gamma_1500_description)/cyton_gamma_1500_inertial.urdf"/>
+    </include>
+   </group>
+
+  <group if="$(arg control)">
+    <include file="$(find gcop_urdf)/launch/display_chain.launch">
+      <arg name="model" default="$(find cyton_gamma_1500_description)/cyton_gamma_1500_inertial.urdf"/>
+    </include>
+   </group>
+  <!--launch-prefix="gdb --><!--args"-->
+  <rosparam command="load" file="$(arg parameters)" />
+	<node name="mbs_sim" pkg="gcop_ctrl" type="mbssim" output="screen" unless="$(arg control)"/>
+	<node name="dmoc_mbs" pkg="gcop_ctrl" type="mbstest" output="screen" if="$(arg control)"/>
+
+</launch>

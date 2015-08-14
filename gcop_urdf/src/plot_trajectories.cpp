@@ -71,7 +71,11 @@ void trajectory_Callback(const gcop_comm::CtrlTraj::ConstPtr& trajectory)
 		}
 		
 		cout<<"Memory Allocation done "<<endl;
-		pls->star( 2, usize/2 );//Assuming usize is even
+    //Denote number of subcolumns based on usize:
+    if(usize%2 == 0)
+      pls->star( 2, usize/2 );
+    else
+      pls->star( 2, usize/2+1 );
 	}
 	for(int count = 0;count < N; ++count)
 	{

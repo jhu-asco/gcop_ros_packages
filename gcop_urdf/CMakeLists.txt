@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(gcop_urdf)
 
-option(BUILD_PLOTTER "builds plotter needs plplot library" off)
+#option(BUILD_PLOTTER "builds plotter needs plplot library" on)
+set(BUILD_PLOTTER OFF)
 
 #set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
 ## Find catkin macros and libraries

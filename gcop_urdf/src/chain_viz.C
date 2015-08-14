@@ -9,6 +9,7 @@
 
 
 ros::Subscriber traj_sub;
+ros::Publisher traj_pub;
 ros::Publisher joint_pub;
 ros::Publisher finaljoint_pub;
 tf::TransformBroadcaster *broadcaster;
@@ -19,6 +20,7 @@ geometry_msgs::TransformStamped global_trans;
 geometry_msgs::TransformStamped finalgoal_trans;
 sensor_msgs::JointState joint_state;
 sensor_msgs::JointState finaljoint_state;
+visualization_msgs::Marker line_strip;
 
 bool recvdmsg = false;
 bool sim = false;
@@ -51,6 +53,14 @@ void joint_publish(const gcop_comm::CtrlTraj::ConstPtr& trajectory)
 	global_trans.transform = trajectory->statemsg[0].basepose;
 
 	broadcaster->sendTransform(global_trans);//send 0 posn
+
+  //Resize line strip
+	line_strip.header.stamp  = ros::Time::now();
+	line_strip.points.resize(trajectory->N + 1);
+
+  line_strip.points[0].x = trajectory->statemsg[0].basepose.translation.x;
+  line_strip.points[0].y = trajectory->statemsg[0].basepose.translation.y;
+  line_strip.points[0].z = trajectory->statemsg[0].basepose.translation.z;
 
 	//std::cout<<"Simulation parameter"<<sim<<std::endl;
 
@@ -90,7 +100,13 @@ void joint_publish(const gcop_comm::CtrlTraj::ConstPtr& trajectory)
 
 		//send the transform
 		broadcaster->sendTransform(global_trans);
+
+    //assign line strip:
+    line_strip.points[i].x = trajectory->statemsg[i].basepose.translation.x;
+    line_strip.points[i].y = trajectory->statemsg[i].basepose.translation.y;
+    line_strip.points[i].z = trajectory->statemsg[i].basepose.translation.z;
 	}
+	traj_pub.publish(line_strip);
 	recvdmsg = true;
 }
 int main(int argc, char** argv) {
@@ -109,6 +125,7 @@ int main(int argc, char** argv) {
 
 	joint_pub = n.advertise<sensor_msgs::JointState>("/movingrobot/joint_states", 1);
 	finaljoint_pub = n.advertise<sensor_msgs::JointState>("/goalrobot/joint_states", 1);
+	traj_pub = n.advertise<visualization_msgs::Marker>("optimal_traj", 1);
 
 	//initialize global transform 
 	global_trans.header.frame_id = "world";
@@ -120,7 +137,17 @@ int main(int argc, char** argv) {
 	finalgoal_trans.header.frame_id = "world";
 	finalgoal_trans.child_frame_id = "/goalrobot/baselink";
 	finaljoint_state.header.frame_id = "goalrobot";
-
+  
+  //initialize Base trajectory:
+  line_strip.header.frame_id = "/world";
+	line_strip.ns = "traj";
+	line_strip.action = visualization_msgs::Marker::ADD;
+	line_strip.pose.orientation.w = 1.0;
+	line_strip.id = 1;
+	line_strip.type = visualization_msgs::Marker::LINE_STRIP;
+	line_strip.scale.x = 0.05;
+	line_strip.color.b = 1.0;
+	line_strip.color.a = 1.0;
 
 	ros::Rate loop_rate(100);
 	while(ros::ok())

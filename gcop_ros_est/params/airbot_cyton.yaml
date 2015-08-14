@@ -1,0 +1,32 @@
+## Controller Params
+mbsdoep/tf: 1.0 # Final Time
+mbsdoep/N: 1000 # Number of segments
+
+             #rpy         #xyz            #vrpy       #vxyz
+mbsdoep/X0: [0.0,0.0,0.0, 0.0,0.0,1.0,  0.0,0.0,0.0, 0.0,0.0,0.0]
+                        #rpy         #xyz                             #r         #w0          #v0                          #dr
+mbsdoep/R:   [10.0,10.0,10.0, 20.0,20.0,20.0, 5.0,5.0,5.0,5.0,5.0,5.0,5.0, 0.0,0.0,0.0, 0.0,0.0,0.0, 0.0,0.0,0.0,0.0,0.0,0.0,0.0]   #   Final   Cost
+mbsdoep/P:   [0.0, 0.0, 0.0,  0.0, 0.0, 0.0] #Parameter prior
+
+#mbsdoep/Qf:   [10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0, 10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0]   #   Final   Cost
+#mbsdoep/Q:    [1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0, 1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]   #   State   Cost
+#mbsdoep/R:    [0.001,0.001,0.001,0.05,0.05,0.05,0.05,0.1,0.1] #Control Cost
+
+mbsdoep/ag: [0.0, 0.0, -9.81] # Gravity
+
+mbsdoep/J0: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+mbsdoep/p0: [0.1, 1.5, 0.1, 0.1, 0.1, -3.0] #Initial guess for parameter
+#mbsdoep/pd: [0.0, 0.05, 0.0, 0.0, 0.0, 2.0] #Initial guess for parameter
+#mbsdoep/pd: [0.0, 0.0, 0.0, 0.0, 0.0, -5.0] #Initial guess for parameter
+mbsdoep/pd: [0.0, 1.0, 0.0, 0.0, 0.0, -5.0] #Initial guess for parameter
+
+mbsdoep/frame_name: "wrist_roll"
+
+mbsdoep/basetype: "AIRBASE"
+
+mbsdoep/mu: 0.001 
+
+mbsdoep/Nit: 1 
+
+mbsdoep/use_external_trajectory: true

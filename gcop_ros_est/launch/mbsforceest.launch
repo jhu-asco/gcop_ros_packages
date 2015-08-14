@@ -2,13 +2,14 @@
 <launch>	
 	<!--arg name="parameters" default="$(find gcop_ctrl)/params/chain1_4.yaml"/-->
   <arg name="model" default="chain1_1"/>
-	<arg name="parameters" default="$(find gcop_ctrl)/params/$(arg model).yaml"/>
+	<arg name="parameters" default="$(find gcop_ros_est)/params/$(arg model).yaml"/>
 
 	<include file="$(find gcop_urdf)/launch/display_chainsim.launch">
 		<arg name="model" default="$(find gcop_urdf)/urdf/$(arg model).urdf"/>
+    <arg name="namespace" value="mbsdoep"/>
 	</include>
 
   <rosparam command="load" file="$(arg parameters)" />
-	<node name="mbs_sim" pkg="gcop_ctrl" type="mbssim" output="screen"/>
+	<node name="mbs_forceest" pkg="gcop_ros_est" type="mbsforceest" output="screen"/>
 	<!--node name="mbsreconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" /-->
 </launch>
