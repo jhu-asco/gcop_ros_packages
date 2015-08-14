@@ -29,11 +29,6 @@
 #include <visualization_msgs/Marker.h>
 #include <std_msgs/String.h>
 
-// ROS rampage messages
-//#include "rampage_msgs/UavCmds.h"
-#include "rampage_msgs/GpsSimple.h"
-#include "rampage_msgs/WheelOdometry.h"
-
 //Other includes
 #include <iostream>
 #include <signal.h>
