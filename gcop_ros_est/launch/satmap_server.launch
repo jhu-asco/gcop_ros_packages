@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<launch>
+  <node name="satmap_server" pkg="gcop_ros_est" type="satmap_server" output="screen" />
+</launch>
+

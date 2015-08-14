@@ -1,0 +1,133 @@
+#parameters to be used with ekf_imu_mag_gps.cpp
+
+# InsState initialization
+# sometimes position relative to gps is not necessary
+# gravity compensated frame is probably good enough 
+#   Rotation matrix init
+x0_R_cov:  [0.1 , 0.1 , 0.1]             
+#   Gyro bias init
+#   "average": Average the readings for t_bg seconds
+x0_bg: "average"
+x0_bg_cov: [0.002 , 0.002 , 0.002]
+#   Accelerometer bias init
+x0_ba: [0.0 , 0.0 , 0.0]
+x0_ba_cov: [1e-10 , 1e-10 , 1e-10]
+#   Position init
+#   "gps":         Init from gps 
+#   [0.0,0.0,0.0]: Initialized by value 
+x0_p:  "gps"         
+x0_ba_cov: [4.0 , 4.0 , 1.0] #ignored when "gps" is selected
+#   Velocity init
+#   "gps":         Initialized from gps
+#   [0.0,0.0,0.0]: Initialized by value
+x0_v:  "gps"
+x0_v_cov: [0.04 , 0.04 , 0.04]
+
+# Sensor format
+# (un-modifiable in reconfigure)
+#   0:Vector3Stamped
+#   1:RosDefault
+type_sensor_msg: 1
+
+# Topic name
+#   (un-modifiable in reconfigure)
+strtop_gps: "/gps" #common to both sensor format0 and format1
+
+strtop_imu: "/simsens/imu/imu" #sensor format 1
+strtop_mag: "/simsens/imu/mag" #sensor format 1
+
+strtop_mag_v3s: "/simsens/imu/magnetometer_vector"  #sensor format 0
+strtop_acc_v3s: "/simsens/imu/accelerometer_vector" #sensor format 0
+strtop_gyr_v3s: "/simsens/imu/gyroscope_vector"     #sensor format 0
+
+
+# frame names
+#   (un-modifiable in reconfigure)
+#   strfrm_map:     The frame of origin of world
+#   strfrm_robot:   The frame of origin of robot
+#   strfrm_gps_lcl: The gps location with respect to map frame
+strfrm_map: "/map"          
+strfrm_robot: "/base_link"  
+strfrm_gps_lcl: "/gps_lcl"
+
+# Sensor relative position type
+# (un-modifiable in reconfigure)
+#   0:information using tf(unimplemented)
+#   1:from a file/parameters
+type_rel_tf: 0
+
+#   TF:(Sensor relative position type 0)
+frame_id_robot: "/multisense/head"
+frame_id_imu:   ""
+frame_id_gyr:   "multisense_gyr"
+frame_id_acc:   "multisense_accel"
+frame_id_mag:   "multisense_mag"
+frame_id_gps:   "gps"
+
+
+#   from file(Sensor relative position type 1)
+#   [x y z qx qy qz qw]
+robot2imu:  [ 0.0 , 0.0 , 0.0 , 0.000 , 0.000 , 0.000 , 1.000]
+robot2gyr:  [ 0.0 , 0.0 , 0.0 ,-0.500 , 0.500 ,-0.500 , 0.500]
+robot2acc:  [ 0.0 , 0.0 , 0.0 , 0.000 , 0.707 , 0.000 , 0.707]
+robot2gps:  [ 0.0 , 0.0 , 0.0 , 0.000 , 0.000 , 0.000 , 1.000]
+
+# Noise parameters
+#   (modifiable in reconfigure)
+#cov_sel:    0    #0: selection from params/reconfigure 1: selection from sensor message when available
+#cov_mag:    1e-1 #covariance of the magnetometer where the readings lie on a unit sphere
+#cov_acc:    1e-2
+#cov_gyr:    0.0002
+#cov_gps_xy: 4.0
+#cov_gps_z:  1.0
+
+cov_sel:    0    #0: selection from params/reconfigure 1: selection from sensor message when available
+cov_mag:    1e-4 #covariance of the magnetometer where the readings lie on a unit sphere
+cov_acc:    1e-2
+cov_gyr:    "est" #estimated at beginning else give a value 
+cov_gps_xy: 4.0
+cov_gps_z:  0.1
+
+#scaling to convert the imu readings to si units
+scale2si_gyr: 0.01745329251 #pi/180
+scale2si_acc: 9.80665
+
+# Origin of map frame in [lat(deg) , lon(deg) , alt(m)]
+# (un-modifiable in reconfigure)
+map0: [39.3257305556 , -76.6223472222 , 0.0]
+
+# Mag reference
+#   In the frame of the robot
+#   (un-modifiable in reconfigure)
+#   http://www.ngdc.noaa.gov/geomag-web/#igrfwmm
+m0: [-4045.4 , 20503.7, -47202.3]
+
+# Acc reference
+#   In the frame of the robots
+#   (un-modifiable in reconfigure)
+a0: [0.0 , 0.0 , 9.80665]
+
+# Magnetometer calibration parameter
+#   (un-modifiable in reconfigure)
+#   linear and translation refers to components for Eigen::Transform
+#   The transform takes the raw magnetometer reading translates to origin and scales
+#     it along appropriate eigen vectors such that all readings lie on a unit sphere
+#     and puts them into the right hand coordinate system( many mag sensors don't)    
+#     which is in the frame of the robot(thats is why there is no robot2mag param above)       
+magcal_linear:    [0.034536596975320  , 3.069733122958818 , -0.103880262558144,
+                  -0.024735495399356  ,-0.103880262558144 ,  2.505440373398652,
+                  -3.191912847253495  ,-0.034536596975320 ,  0.024735495399356]
+                  
+magcal_translation: [0.842982236993421, 0.347266529162023, 0.000208168402332]  
+
+# Accelerometer calibration parameter
+#   (un-modifiable in reconfigure)
+#   linear and translation refers to components for Eigen::Transform
+#   The transform takes the raw magnetometer reading translates to origin and scales
+#     it along appropriate eigen vectors such that all readings lie on a unit sphere
+#     assuming that the accelerometer gives reading in units of g
+acccal_linear:  [0.971611407904773 , -0.000820915220433 ,  0.000778412214922,
+                -0.000820915220433 ,  0.985891072947463 , -0.000211736405367,
+                 0.000778412214922 , -0.000211736405367 ,  0.965471268022928]
+    
+acccal_translation: [-0.007418045344934 , -0.040701211637869 , -0.069864932729539]

@@ -1,0 +1,177 @@
+#parameters to be used with gcop_insmagekf_test.cpp
+
+###################################
+pause:    false #if true then it will pause at the first step of kalman filtering 
+debug_on: true  # Print important data on cout
+mag_on:   true # Perform mag update step
+gps_on:   true  # Preform gps update step
+diag_on:  true  # Publish diagnostics information on a topic
+tf_on:    true  # Display poses as tf data
+
+###################################
+# Number of readings for mean and cov computation
+n_avg: 100
+
+###################################
+# InsState initialization 
+#   (not modifiable in dynamic reconfigure)
+#   cov: ["yaml", 0.1 , 0.1 , 0.1] 
+#     Load the covariance from this yaml file.
+#   cov: ["est"]
+#     Estimate upon startup. Note that the sensor has to be still for first 2 seconds
+#   Rotation matrix init
+#x0_R: ['yaml',1.0, 0.0, 0.0,
+#              0.0, 1.0, 0.0,
+#              0.0, 0.0, 1.0]
+#x0_R_cov: ['yaml',0.1, 0.1 , 0.1]
+x0_R: ["est"]   #estimated from acc and mag readings                     
+x0_R_cov:  ["est"] # 
+         
+#   Gyro bias init
+#   "average": Average the readings for t_bg seconds
+x0_bg:   ["est"]
+x0_bg_cov: ["est"]  #set to gyro cov
+#x0_bg: ['yaml',0.0, 0.0, 0.0]
+#x0_bg_cov: ["yaml", 7.83654e-06 , 1.95854e-05 ,  1.61591e-05]
+
+#   Accelerometer bias init
+x0_ba: ["yaml",0.0 , 0.0 , 0.0]
+x0_ba_cov: ["yaml",1.0e-6 , 1.0e-6 , 1.0e-6]
+
+#   Position init
+#x0_p:     ["yaml", 0.0     , 0.0     , 0.0]
+#x0_p_cov: ["yaml", 1.0 , 1.0 , 0.4]
+x0_p:  ["est"] #It will be initialized with gps reading relative to map0 param(find below)      
+x0_p_cov: ["est"] # Will be initialized with gps cov
+
+#   Velocity init
+x0_v: ["yaml", 0.0, 0.0, 0.0]
+x0_v_cov: ["yaml", 1.0e-4 , 1.0e-4 , 1.0e-4]
+
+###################################
+# Sensor format
+# (un-modifiable in reconfigure)
+#   0:Vector3Stamped
+#   1:RosDefault
+type_sensor_msg: 1
+
+###################################
+# Topic name
+#   (un-modifiable in reconfigure)
+#strtop_gps: "/mavros/global_position/raw/fix"
+strtop_gps: "/mavros/global_position/raw/fix" #common to both sensor format0 and format1
+
+strtop_imu: "/mavros/imu/data_raw" #sensor format 1
+strtop_mag: "/mavros/imu/mag" #sensor format 1
+
+strtop_mag_v3s: ""  #sensor format 0
+strtop_acc_v3s: ""  #sensor format 0
+strtop_gyr_v3s: ""  #sensor format 0
+
+###################################
+# frame names
+#   (un-modifiable in reconfigure)
+#   strfrm_map:     The frame of origin of world
+#   strfrm_robot:   The frame of origin of robot
+#   strfrm_gps_lcl: The gps location with respect to map frame
+strfrm_map: "/map"          
+strfrm_robot: "/base_link"  
+strfrm_gps_lcl: "/gps_lcl"
+
+###################################
+# Sensor relative position 
+#   (un-modifiable in reconfigure)
+#   robot2sensor: [x y z qx qy qz qw]
+robot2gyr:  [ 0.0 , 0.0 , 0.0 , 0.000 , 0.000 , 0.000 , 1.000]
+robot2acc:  [ 0.0 , 0.0 , 0.0 , 0.000 , 0.000 , 0.000 , 1.000]
+
+###################################
+# Control Noise Parameter
+#   Options: 
+#   cov: ["dyn", cov_x, cov_y, cov_z]
+#     Use the mentioned cov which is also modifiable in dynamic reconfigure
+#   cov: ["msg"]
+#     Use covariance provided in the sensor msgs
+#   cov: ["est"]
+#     Evaluate the covariance upon startup. Note that the sensor has to be still for first 2 seconds
+
+ 
+cov_ctrl_gyr:  ["dyn",4.89057e-07, 4.43908e-07, 4.01957e-07]
+#cov_ctrl_gyr: ["msg"]
+#cov_ctrl_gyr: ["est"]
+cov_ctrl_acc:  ["dyn",0.5 , 0.5 , 0.5] 
+#cov_ctrl_acc: ["msg"]
+#cov_ctrl_acc: ["est"]
+cov_ctrl_su: ["dyn",9.0e-16,9.0e-16,9.0e-16]  # gyro bias rate-of-change white noise stdev (spectral density)
+cov_ctrl_sa: ["dyn",9.0e-16,9.0e-16,9.0e-16]  #acceleration bias rate-of-change white noise stdev (spectral density)
+    
+###################################
+# Sensor Noise parameters
+#   Options: 
+#   cov: ["dyn", cov_x, cov_y, cov_z]
+#     Use the mentioned cov which is also modifiable in dynamic reconfigure
+#   cov: ["msg"]
+#     Use covariance provided in the sensor msgs
+#   cov: ["est"]
+#     Evaluate the covariance upon startup. Note that the sensor has to be still for first 2 seconds
+cov_sens_mag:  ["dyn",1.0e-1,1.0e-1,1.0e-1] #covariance of the magnetometer where the readings lie on a unit sphere
+#cov_sens_mag: ["msg"]
+#cov_sens_mag: ["est"]
+cov_sens_acc:  ["dyn", 1.0e-2,1.0e-2,1.0e-2]
+#cov_sens_acc: ["msg"]
+#cov_sens_acc: ["est"]
+#cov_sens_gps: ["dyn",4.0,4.0,1.0]
+cov_sens_gps: ["msg"]
+#cov_sens_gps: ["est"]
+
+
+###################################
+#scaling to convert the imu readings to si units
+#  for gyro: rads/sec and for acc:m/se^2
+scale2si_gyr: 1.0 #already in si
+scale2si_acc: 1.0 #already in si
+
+###################################
+# Origin of map frame in [lat(deg) , lon(deg) , alt(m)]
+# (un-modifiable in reconfigure)
+map0: [39.3257305556 , -76.6223472222 , 0.0]
+
+# Mag reference
+#   For the above map0
+#   In the frame of the robot
+#   (un-modifiable in reconfigure)
+#   http://www.ngdc.noaa.gov/geomag-web/#igrfwmm
+m0: [-4045.4 , 20503.7, -47202.3]
+
+# Acc reference
+#   In the frame of the robots
+#   (un-modifiable in reconfigure)
+a0: [0.0 , 0.0 , 9.80665]
+
+a0_tol: 0.4 # An acceleration reading with magnitude a0_tol more than a0.norm wont be used in correction step
+
+###################################
+# Magnetometer calibration parameter
+#   (un-modifiable in reconfigure)
+#   linear and translation refers to components for Eigen::Transform
+#   The transform takes the raw magnetometer reading translates to origin and scales
+#     it along appropriate eigen vectors such that all readings lie on a unit sphere
+#     and puts them into the right hand coordinate system( many mag sensors don't)    
+#     which is in the frame of the robot(thats is why there is no robot2mag param above)       
+magcal_linear:      [-0.062949872640317e+4 , 2.273324797353632e+4 , 0.001240242291801e+4,
+                     -2.154178589047590e+4 , 0.062949872640317e+4 , 0.034343121079356e+4,
+                     -0.034343121079356e+4 , 0.001240242291801e+4 , 2.468964306660896e+4]
+                  
+magcal_translation: [-0.284005441644962   , 0.201320273998919   , 0.333901512305726]  
+
+# Accelerometer calibration parameter
+#   (un-modifiable in reconfigure)
+#   linear and translation refers to components for Eigen::Transform
+#   The transform takes the raw magnetometer reading translates to origin and scales
+#     it along appropriate eigen vectors such that all readings lie on a unit sphere
+#     assuming that the accelerometer gives reading in units of g
+acccal_linear:    [1.0 , 0.0 , 0.0,
+                   0.0 , 1.0 , 0.0,
+                   0.0 , 0.0 , 1.0]
+                  
+acccal_translation: [0.0 , 0.0 , 0.0]

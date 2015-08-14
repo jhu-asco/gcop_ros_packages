@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(gcop_ros_est)
 
-add_definitions(-g -std=c++0x -pthread)
+set(CMAKE_BUILD_TYPE Debug)
+add_definitions(-g -std=c++0x -pthread )
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules)
 
@@ -14,6 +15,7 @@ gis_common
 gps_common
 dynamic_reconfigure
 visualization_msgs
+message_generation
 )
 
 generate_dynamic_reconfigure_options(
@@ -31,6 +33,17 @@ find_package(Eigen3 REQUIRED)
 #find_package(GLUT REQUIRED)
 
 
+add_message_files(
+    FILES
+    InsekfDiag.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  geometry_msgs
+ )
+ 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
 ## See http://ros.org/doc/api/catkin/html/user_guide/setup_dot_py.html
@@ -101,6 +114,7 @@ catkin_package(
 #  LIBRARIES gcop_est
 #  CATKIN_DEPENDS camera_calibration_parsers image_transport nodelet roscpp tf
 #  DEPENDS system_lib
+CATKIN_DEPENDS message_runtime
 )
 
 ###########
@@ -182,21 +196,24 @@ target_link_libraries(cam_est ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${catkin_LIBRARIE
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
 
-add_executable(sim_ins_mag_gps src/sim_ins_mag_gps.cpp)
-target_link_libraries(sim_ins_mag_gps 
-		      ${GCOP_LIBRARIES}
-		      ${OpenCV_LIBRARIES}
-	      ${TINYXML_LIBRARIES}
-	      ${catkin_LIBRARIES})
-add_dependencies(sim_ins_mag_gps ${PROJECT_NAME}_gencfg )
+add_executable(satmap_server src/satmap_server.cpp)
+target_link_libraries(satmap_server ${catkin_LIBRARIES})
 
-add_executable(ekf_imu_mag_gps src/ekf_imu_mag_gps.cpp)
-target_link_libraries(ekf_imu_mag_gps 
+add_executable(simsens src/simsens.cpp)
+target_link_libraries(simsens 
 		      ${GCOP_LIBRARIES}
 		      ${OpenCV_LIBRARIES}
 	      ${TINYXML_LIBRARIES}
 	      ${catkin_LIBRARIES})
-add_dependencies(ekf_imu_mag_gps ${PROJECT_NAME}_gencfg )
+add_dependencies(simsens ${PROJECT_NAME}_gencfg )
+
+add_executable(insekf src/insekf.cpp)
+target_link_libraries(insekf 
+		      ${GCOP_LIBRARIES}
+		      ${OpenCV_LIBRARIES}
+	      ${TINYXML_LIBRARIES}
+	      ${catkin_LIBRARIES})
+add_dependencies(insekf ${PROJECT_NAME}_gencfg )
 
 add_executable(calibrator src/calibrator.cpp)
 target_link_libraries(calibrator 
