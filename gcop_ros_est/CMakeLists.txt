@@ -223,8 +223,6 @@ target_link_libraries(calibrator
 	      ${catkin_LIBRARIES})
 add_dependencies(calibrator ${PROJECT_NAME}_gencfg )
 
-add_dependencies(gcop_insekf_test ${PROJECT_NAME}_gencfg )
-
 add_executable(mbsforceest src/mbsforceest.cc)
 target_link_libraries(mbsforceest 
                       ${GCOP_LIBRARIES}

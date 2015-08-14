@@ -39,6 +39,11 @@
 #include <signal.h>
 
 //-------------------------------------------------------------------------
+//-----------------------NAME SPACES ---------------------------------
+//-------------------------------------------------------------------------
+using namespace std;
+
+//-------------------------------------------------------------------------
 //-----------------------GLOBAL VARIABLES ---------------------------------
 //-------------------------------------------------------------------------
 sig_atomic_t g_shutdown_requested=0;
@@ -88,9 +93,11 @@ ros::init(argc,argv,"rampage_map_server",ros::init_options::NoSigintHandler);
 signal(SIGINT,mySigIntHandler);
 
 ros::NodeHandle nh;
+ros::NodeHandle nh_p("~");
 
-std::string image_path = ros::package::getPath("rampage_logger");
-cv::Mat mat_jhu1 = cv::imread(image_path + "/rosbag_files/jhu_map.jpg",CV_LOAD_IMAGE_GRAYSCALE);
+string satmap_file;nh_p.getParam("satmap_file",satmap_file);
+cout<<"satmap_file:"<<satmap_file<<endl;
+cv::Mat mat_jhu1 = cv::imread(satmap_file,CV_LOAD_IMAGE_GRAYSCALE);
 if(mat_jhu1.data==NULL)
   ROS_ERROR("Couldn't read the map image");
 

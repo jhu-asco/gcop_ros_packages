@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <launch>
-  <include file="$(find rampage_logger)/launch/rampage_mapserver.launch"/>
+  <include file="$(find gcop_ros_est)/launch/satmap_server.launch"/>
   
-  <node name="rampage_rviz" pkg="rviz" type="rviz" args="-d $(find gcop_ros_est)/launch/insekf.rviz" output="screen" />
+  <node name="rviz_insekf" pkg="rviz" type="rviz" args="-d $(find gcop_ros_est)/launch/insekf.rviz" output="screen" />
 </launch>
 
