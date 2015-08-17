@@ -91,7 +91,7 @@ generate_dynamic_reconfigure_options(
 	#cfg/mbssim.cfg
 	#cfg/paramedit.cfg
 	#cfg/mbsnode.cfg
-	#cfg/gcar_ddp.cfg
+	cfg/gcar_ddp.cfg
 	cfg/MbsDMocInterface.cfg
 	cfg/MbsSimInterface.cfg
 	cfg/DMocInterface.cfg
