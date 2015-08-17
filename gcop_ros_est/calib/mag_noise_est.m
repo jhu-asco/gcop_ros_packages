@@ -5,8 +5,8 @@
 % file='/home/subhransu/gcop_ros_est/calib/mavros_mag_noise.dat';
 % R = [0 1 0; -1 0 0; 0 0 1];
 
-file='/home/subhransu/gcop_ros_est/calib/mag_3dm.dat';
-R = [0 1 0; 0 1 0; 0 0 1];
+% file='/home/subhransu/gcop_ros_est/calib/mag_3dm.dat';
+% R = [1 0 0; 0 1 0; 0 0 1];
 
 fid = fopen(file,'r');fgetl(fid);
 data = textscan(fid,'%*u64 %*u32 %*u64 %*s %f64 %f64 %f64 %*f %*f %*f %*f %*f %*f %*f %*f %*f','Delimiter',',');

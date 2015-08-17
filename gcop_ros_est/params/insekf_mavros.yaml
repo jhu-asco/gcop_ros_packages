@@ -158,11 +158,11 @@ a0_tol: 0.4 # An acceleration reading with magnitude a0_tol more than a0.norm wo
 #     it along appropriate eigen vectors such that all readings lie on a unit sphere
 #     and puts them into the right hand coordinate system( many mag sensors don't)    
 #     which is in the frame of the robot(thats is why there is no robot2mag param above)       
-magcal_linear:      [-0.062949872640317e+4 , 2.273324797353632e+4 , 0.001240242291801e+4,
-                     -2.154178589047590e+4 , 0.062949872640317e+4 , 0.034343121079356e+4,
-                     -0.034343121079356e+4 , 0.001240242291801e+4 , 2.468964306660896e+4]
-                  
-magcal_translation: [-0.284005441644962   , 0.201320273998919   , 0.333901512305726]  
+magcal_linear:      [1.917973456987121e+4  , 0.046148909761611e+4  , 0.001863868183506e+4,
+                     0.046148909761611e+4  , 1.810764279284445e+4   ,0.027279958875691e+4,
+                     0.001863868183506e+4  , 0.027279958875691e+4  , 1.972436129808711e+4]  
+                                     
+magcal_translation: [0.007528437143003 , -0.017742751179346  ,-0.011088445040672]  
 
 # Accelerometer calibration parameter
 #   (un-modifiable in reconfigure)

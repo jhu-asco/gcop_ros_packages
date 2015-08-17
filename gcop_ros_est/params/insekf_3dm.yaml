@@ -63,8 +63,8 @@ type_sensor_msg: 1
 #   (un-modifiable in reconfigure)
 strtop_gps: "/mavros/global_position/raw/fix" #common to both sensor format0 and format1
 
-strtop_imu: "/imu_3ds/imu" #sensor format 1
-strtop_mag: "/imu_3ds/magnetic_field" #sensor format 1
+strtop_imu: "/imu_3dm/imu" #sensor format 1
+strtop_mag: "/imu_3dm/magnetic_field" #sensor format 1
 
 strtop_mag_v3s: "" #sensor format 0
 strtop_acc_v3s: "" #sensor format 0
@@ -157,11 +157,11 @@ a0_tol: 0.4 # An acceleration reading with magnitude a0_tol more than a0.norm wo
 #     it along appropriate eigen vectors such that all readings lie on a unit sphere
 #     and puts them into the right hand coordinate system( many mag sensors don't)    
 #     which is in the frame of the robot(thats is why there is no robot2mag param above)       
-magcal_linear: [3.0258 , -0.0161 ,  0.0261,
-               -0.0161 ,  3.0376 , -0.0430,
-                0.0261 , -0.0430 ,  3.0905]
+magcal_linear: [ 2.055806304956569 , -0.001600512428434 , -0.001561780474196,
+                -0.001600512428434 ,  2.065625437112922 , -0.001906772438880,
+                -0.001561780474196 , -0.001906772438880 ,  2.069067781541600]
                   
-magcal_translation: [-0.0152 , 0.0031 , 0.0185 ]
+magcal_translation: [-0.014150482239228 , -0.051927554201718  , 0.013123589846202]
 
 # Accelerometer calibration parameter
 #   (un-modifiable in reconfigure)
