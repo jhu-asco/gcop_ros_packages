@@ -17,6 +17,7 @@
 // ROS standard messages
 #include <std_msgs/String.h>
 #include <visualization_msgs/Marker.h>
+#include <nav_msgs/Odometry.h>
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -25,6 +26,7 @@
 #include <sensor_msgs/MagneticField.h>
 #include <gcop_ros_est/InsekfDiag.h>
 
+
 //gcop_comm msgs
 #include <gcop_comm/State.h>
 #include <gcop_comm/CtrlTraj.h>
@@ -32,6 +34,9 @@
 
 // gps, utm, local coord conversions
 #include <gis_common/gps_to_local.h>
+
+// utils
+#include <eigen_ros_conv.h>
 
 //GCOP includes
 #include <gcop/utils.h>
@@ -285,6 +290,20 @@ public:
     const InsState& state(void) const
     {
       return x0_;
+    }
+    //delete this function later
+    void setAllType(int val)
+    {
+//      type_R_     =val;
+//      type_R_cov_ =val;
+//      type_bg_    =val;
+//      type_bg_cov_=val;
+      type_ba_    =val;
+      type_ba_cov_=val;
+      type_p_     =val;
+      type_p_cov_ =val;
+      type_v_     =val;
+      type_v_cov_ =val;
     }
 
     virtual
@@ -554,7 +573,7 @@ public:
         type_ba_cov_=0;
         Matrix3d cov; cov.setZero();
         cov.diagonal() = vars;
-        setBaAndCov(val,cov);
+        setBgAndCov(val,cov);
       }
       else if(!type_val.compare("est"))
       {
@@ -564,7 +583,6 @@ public:
       else
         assert(0);
     }
-
     void setpAndCov(const Vector3d& p,const Matrix3d& cov)
     {
       if(type_p_ < 0 || type_p_cov_< 0)
@@ -574,36 +592,13 @@ public:
       }
       if(!is_ready_p_and_cov_)
       {
-        x0_.p = p;
-        x0_.P.block<3,3>(9,9) = cov;
-        is_ready_p_and_cov_=true;
+
+      x0_.p = p;
+      x0_.P.block<3,3>(9,9) = cov;
+      is_ready_p_and_cov_=true;
       }
       else
         cout<<"p and its cov already set"<<endl;
-    }
-
-    void initpAndCov(const string& type_val,const Vector3d& val,const string& type_vars, const Vector3d& vars)
-    {
-      if(type_val.compare(type_vars))
-      {
-        cout<<"Selection method for p and it's covariance is not the same"<<endl;
-        assert(0);
-      }
-      if(!type_val.compare("yaml"))
-      {
-        type_p_=0;
-        type_p_cov_=0;
-        Matrix3d cov; cov.setZero();
-        cov.diagonal() = vars;
-        setpAndCov(val,cov);
-      }
-      else if(!type_val.compare("est"))
-      {
-        type_p_=1;
-        type_p_cov_=1;
-      }
-      else
-        assert(0);
     }
 
     void setvAndCov(const Vector3d& v,const Matrix3d& cov)
@@ -623,29 +618,6 @@ public:
         cout<<"v and its cov already set"<<endl;
     }
 
-    void initvAndCov(const string& type_val,const Vector3d& val,const string& type_vars, const Vector3d& vars)
-    {
-      if(type_val.compare(type_vars))
-      {
-        cout<<"Selection method for v and it's covariance is not the same"<<endl;
-        assert(0);
-      }
-      if(!type_val.compare("yaml"))
-      {
-        type_v_=0;
-        type_v_cov_=0;
-        Matrix3d cov; cov.setZero();
-        cov.diagonal() = vars;
-        setvAndCov(val,cov);
-      }
-      else if(!type_val.compare("est"))
-      {
-        type_v_=1;
-        type_v_cov_=1;
-      }
-      else
-        assert(0);
-    }
 };
 
 /**
@@ -882,9 +854,8 @@ public:
   ~CallBackInsEkf();
 
 private:
+  void cbTimerPubTFCov(const ros::TimerEvent& event);
   void cbTimerGeneral(const ros::TimerEvent& event);
-  void cbTimerFakeGPS(const ros::TimerEvent& event);
-  void cbTimerPublishTF(const ros::TimerEvent& event);
   void cbSubGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps);
   void cbSubImu(const sensor_msgs::Imu::ConstPtr& msg_imu);
   void cbSubMag(const sensor_msgs::MagneticField::ConstPtr& msg_mag);
@@ -896,7 +867,6 @@ private:
   void setFromParamsConfig(void);
 
   void initRvizMarkers(void);
-  void sendMarkersAndTF(Vector3d xyz_gps);
 
   void setupTopicsAndNames(void);
   void initSubsPubsAndTimers(void);
@@ -917,11 +887,13 @@ private:
   ros::Timer timer_general_, timer_send_tf_;
   ros::Timer timer_fake_gps_;
 
-  ros::Publisher pub_viz_cov_;
-  ros::Publisher pub_diag_;
+  ros::Publisher pub_odom_, pub_diag_, pub_viz_cov_;
+  string strtop_odom_, strtop_diag_, strtop_marker_cov_;
 
   visualization_msgs::Marker marker_cov_gps_lcl_, marker_cov_base_link_;
   string strfrm_map_, strfrm_robot_, strfrm_gps_lcl_;
+
+
 
   int type_sensor_msg_;
   ros::Subscriber sub_gps_;
@@ -937,6 +909,8 @@ private:
   //ins state evolution and sensor messages
   SelInitState x0_;
   InsState x_,x_temp_;
+  ros::Time t_ep_x_, t_ep_gps_;
+  Vector3d xyz_gps_;
   Vector6d u_;
   Ins ins_;
   double t_;
@@ -1007,6 +981,13 @@ CallBackInsEkf::CallBackInsEkf():
   loadYamlParams();
   cout<<"loaded yaml params"<<endl;
 
+  //setup x0
+  x0_.setAllType(0);
+  //x0_.setRAndCov(Matrix3d::Identity(),0.1*Matrix3d::Identity());
+  x0_.setvAndCov(Vector3d::Zero(),0.0001*Matrix3d::Identity());
+  x0_.setBaAndCov(Vector3d::Zero(),1e-5*Matrix3d::Identity());
+  cout<<"assigned some initial values to the state"<<endl;
+
   //Setup Readiness object
   fr_.check_ready_.push_back(&cov_ctrl_gyr_);
   fr_.check_ready_.push_back(&cov_ctrl_acc_);
@@ -1017,7 +998,6 @@ CallBackInsEkf::CallBackInsEkf():
   fr_.check_ready_.push_back(&cov_sens_acc_);
   fr_.check_ready_.push_back(&cov_sens_gps_);
   fr_.check_ready_.push_back(&x0_);
-  cout<<"Pushed back all readiness check to fr_"<<endl;
 
   //Fake a GPS message
   // Say that gps is reading origin
@@ -1031,36 +1011,69 @@ CallBackInsEkf::~CallBackInsEkf()
 
 }
 
+
 void
-CallBackInsEkf::cbTimerFakeGPS(const ros::TimerEvent& event)
+CallBackInsEkf::cbTimerPubTFCov(const ros::TimerEvent& event)
 {
-  Matrix3d cov_mag;cov_mag.setZero();cov_mag.diagonal() << 4.0, 4.0, 0.1;
-  static sensor_msgs::NavSatFix::Ptr msg_gps(new sensor_msgs::NavSatFix);
-  msg_gps->latitude  = map0_(0);
-  msg_gps->longitude = map0_(1);
-  msg_gps->altitude  = map0_(2);
-  msg_gps->header.frame_id="/multisense";
-  msg_gps->header.stamp = ros::Time::now();
-  Map<Matrix3d>((double*)msg_gps->position_covariance.data()) = cov_mag;
-  nh_p_.getParam("cov_gps_xy",msg_gps->position_covariance[0]);
-  nh_p_.getParam("cov_gps_xy",msg_gps->position_covariance[4]);
-  nh_p_.getParam("cov_gps_z" ,msg_gps->position_covariance[8]);
-  cbSubGps((sensor_msgs::NavSatFix::ConstPtr)msg_gps);
+  static tf::TransformBroadcaster br;
+
+  //send gps tf
+  if(config_.dyn_tf_on && cov_sens_gps_.ready())
+  {
+    // Send GPS data for visualization
+    tf::Transform trfm2;
+    trfm2.setOrigin( tf::Vector3(xyz_gps_(0),xyz_gps_(1),xyz_gps_(2)) );
+    tf::Quaternion q2;
+    q2.setRPY(0, 0, 0);
+    trfm2.setRotation(q2);
+
+    br.sendTransform(tf::StampedTransform(trfm2, t_ep_gps_, strfrm_map_,strfrm_gps_lcl_));
+  }
+
+  //Send gps cov
+  if(config_.dyn_enable_cov_disp_gps && cov_sens_gps_.ready())
+  {
+    marker_cov_gps_lcl_.header.stamp = t_ep_gps_;
+    marker_cov_gps_lcl_.scale.x = sens_gps_.R.diagonal()(0);
+    marker_cov_gps_lcl_.scale.y = sens_gps_.R.diagonal()(1);
+    marker_cov_gps_lcl_.scale.z = 0.1;
+    marker_cov_gps_lcl_.color.a = config_.dyn_alpha_cov; // Don't forget to set the alpha!
+    pub_viz_cov_.publish( marker_cov_gps_lcl_ );
+  }
+
+  //Sen base_link TF
+  if(fr_.isReady())
+  {
+    Vector4d wxyz;
+    SO3::Instance().g2quat(wxyz, x_.R);
+    tf::Quaternion q_true(wxyz[1],wxyz[2],wxyz[3],wxyz[0]);
+
+    tf::Transform trfm;
+    trfm.setOrigin( tf::Vector3(x_.p[0],x_.p[1], x_.p[2]) );
+    trfm.setRotation(q_true);
+
+    if(config_.dyn_tf_on)
+      br.sendTransform(tf::StampedTransform(trfm, ros::Time::now(), strfrm_map_, strfrm_robot_));
+
+    // Send base_link cov
+    if(config_.dyn_enable_cov_disp_est)
+    {
+      marker_cov_base_link_.header.stamp = ros::Time();
+      marker_cov_base_link_.scale.x = x_.P(9,9);//hack. TODO: set to corresponding eigen values of P
+      marker_cov_base_link_.scale.y = x_.P(10,10);//hack. TODO: set to corresponding eigen values of P
+      marker_cov_base_link_.scale.z = x_.P(11,11);//hack. TODO: set to corresponding eigen values of P
+      marker_cov_base_link_.color.a = config_.dyn_alpha_cov; // Don't forget to set the alpha!
+      pub_viz_cov_.publish( marker_cov_base_link_ );
+    }
+  }
 }
+
 
 void
 CallBackInsEkf::cbTimerGeneral(const ros::TimerEvent& event)
 {
 
-  if(config_.dyn_enable_cov_disp_est)
-  {
-    marker_cov_base_link_.header.stamp = ros::Time();
-    marker_cov_base_link_.scale.x = sqrt(x_.P(9,9));//hack. TODO: set to corresponding eigen values of P
-    marker_cov_base_link_.scale.y = sqrt(x_.P(10,10));//hack. TODO: set to corresponding eigen values of P
-    marker_cov_base_link_.scale.z = sqrt(x_.P(11,11));//hack. TODO: set to corresponding eigen values of P
-    marker_cov_base_link_.color.a = config_.dyn_alpha_cov; // Don't forget to set the alpha!
-    pub_viz_cov_.publish( marker_cov_base_link_ );
-  }
+
 
 }
 
@@ -1093,7 +1106,6 @@ CallBackInsEkf::initRvizMarkers(void)
   marker_cov_gps_lcl_.color.b = 0.0;
   marker_cov_gps_lcl_.lifetime = ros::Duration(1);
 
-
   //Marker for displaying covariance of estimate
   id++;
   nh_p_.getParam("strfrm_robot", marker_cov_base_link_.header.frame_id);
@@ -1113,34 +1125,8 @@ CallBackInsEkf::initRvizMarkers(void)
   marker_cov_base_link_.color.b = 0.0;
   marker_cov_gps_lcl_.lifetime = ros::Duration(1);
 }
-void
-CallBackInsEkf::sendMarkersAndTF(Vector3d xyz_gps)
-{
-  static tf::TransformBroadcaster br;
-  if(config_.dyn_tf_on)
-  {
-    // Send GPS data for visualization
-    tf::Transform trfm2;
-    trfm2.setOrigin( tf::Vector3(xyz_gps(0),xyz_gps(1),xyz_gps(2)) );
-    tf::Quaternion q2;
-    q2.setRPY(0, 0, 0);
-    trfm2.setRotation(q2);
-
-    br.sendTransform(tf::StampedTransform(trfm2, ros::Time::now(), strfrm_map_,strfrm_gps_lcl_));
-  }
-
-  if(config_.dyn_enable_cov_disp_gps)
-  {
-    marker_cov_gps_lcl_.header.stamp = ros::Time();
-    marker_cov_gps_lcl_.scale.x = sens_gps_.R.diagonal()(0);
-    marker_cov_gps_lcl_.scale.y = sens_gps_.R.diagonal()(1);
-    marker_cov_gps_lcl_.scale.z = 0.1;
-    marker_cov_gps_lcl_.color.a = config_.dyn_alpha_cov; // Don't forget to set the alpha!
-    pub_viz_cov_.publish( marker_cov_gps_lcl_ );
-  }
 
 
-}
 void
 CallBackInsEkf::cbSubGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps)
 {
@@ -1160,10 +1146,7 @@ CallBackInsEkf::cbSubGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps)
   if(!cov_sens_gps_.ready())
   {
     if(cov_sens_gps_.type() == 1) //cov from msg
-    {
       cov_sens_gps_.msgCovReady(true);
-      cov_sens_gps_.updateCov(cov_gps_msg);
-    }
     else if(cov_sens_gps_.type() == 2)//est cov
       cov_sens_gps_.tryEstCov(xyz_gps, first_call);
   }
@@ -1174,7 +1157,6 @@ CallBackInsEkf::cbSubGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps)
   if(!x0_.readypAndCov() && cov_sens_gps_.ready())
     x0_.setpAndCov(xyz_gps,cov_sens_gps_.cov());
 
-
   if(fr_.is_filtering_on_ && config_.dyn_gps_on)//perform a sensor update
   {
     InsState xs;
@@ -1182,10 +1164,13 @@ CallBackInsEkf::cbSubGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps)
     double t= (msg_gps->header.stamp - t_epoch_start_).toSec();
     kc_insgps_.Correct(x_temp_, t, x_, u_, zp);
     x_ = x_temp_;
+    t_ep_x_ = msg_gps->header.stamp;
   }
 
-  //Display the gps position and covariance value in rviz
-  sendMarkersAndTF(xyz_gps);
+
+  //Set the following variables for publishing tf and cov
+  xyz_gps_ = xyz_gps;
+  t_ep_gps_= msg_gps->header.stamp;
 
    if(first_call)
      first_call = false;
@@ -1278,13 +1263,13 @@ CallBackInsEkf::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg_imu)
        cout << "initial state is as follows**************:"<<endl;
        cout << "R:\n"     << x_.R <<endl;
        cout << "R_cov:\n" << x_.P.block<3,3>(0,0)<<endl;
-       cout << "bg: "    << x_.bg.transpose()<<endl;
+       cout << "bg:\n"    << x_.bg.transpose()<<endl;
        cout << "bg_cov:\n"<< x_.P.block<3,3>(3,3)<<endl;
-       cout << "ba: "    << x_.ba.transpose()<<endl;
+       cout << "ba:\n"    << x_.ba.transpose()<<endl;
        cout << "ba_cov:\n"<< x_.P.block<3,3>(6,6)<<endl;
-       cout << "p: "     << x_.p.transpose()<<endl;
+       cout << "p:\n"     << x_.p.transpose()<<endl;
        cout << "p_cov:\n" << x_.P.block<3,3>(9,9)<<endl;
-       cout << "v: "     << x_.v.transpose()<<endl;
+       cout << "v:\n"     << x_.v.transpose()<<endl;
        cout << "v_cov:\n" << x_.P.block<3,3>(12,12)<<endl;
        cout <<"Initial Sens noise is as follows***********"<<endl;
        cout <<"sens_mag_.R:\n"<< sens_mag_.R <<endl;
@@ -1328,6 +1313,7 @@ CallBackInsEkf::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg_imu)
          cout<<"Acc of magnitude: "<< a.norm()<<" exceeded the a0_tol of "<<a0_tol<<". Skipping update step"<<endl;
          x_=x_temp_;
        }
+       t_ep_x_ = msg_imu->header.stamp;
 
        //Display suff
        Vector6d u_b; u_b << x_.bg, x_.ba;
@@ -1342,9 +1328,26 @@ CallBackInsEkf::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg_imu)
        cout << "position: " << x_.p.transpose() << endl;
        cout << "Estim attitude:\n" << x_.R << endl;
 
+       //Publishing odometric message
+       static nav_msgs::Odometry msg_odom;
+       static uint32_t seq=0;seq++;
+
+       msg_odom.header.frame_id= strfrm_map_;
+       msg_odom.header.seq = seq;
+       msg_odom.header.stamp = msg_imu->header.stamp;
+       msg_odom.child_frame_id = strfrm_robot_;
+       eig2PoseMsg(msg_odom.pose.pose,x_.R, x_.p);
+       eig2TwistMsg(msg_odom.twist.twist, gyr_-x_.bg, x_.R.transpose()*x_.v);
+       Map<Matrix6d>(msg_odom.pose.covariance.data()).block<3,3>(0,0).setZero();
+       Map<Matrix6d>(msg_odom.pose.covariance.data()).block<3,3>(0,0) = x_.P.block<3,3>(9,9);//pos cov
+       Map<Matrix6d>(msg_odom.pose.covariance.data()).block<3,3>(3,3) = x_.P.block<3,3>(0,0);//rot cov
+       Map<Matrix6d>(msg_odom.twist.covariance.data()).block<3,3>(0,0).setZero();
+       Map<Matrix6d>(msg_odom.twist.covariance.data()).block<3,3>(0,0) = x_.R.transpose()*x_.P.block<3,3>(12,12)*x_.R;//v cov
+       Map<Matrix6d>(msg_odom.twist.covariance.data()).block<3,3>(3,3) = cov_ctrl_gyr_.cov()+ x_.P.block<3,3>(3,3);//w cov
+       pub_odom_.publish(msg_odom);
 
        //publish for debugging
-       gcop_ros_est::InsekfDiag msg_diag;
+       static gcop_ros_est::InsekfDiag msg_diag;
        msg_diag.wx  = u(0);
        msg_diag.wy  = u(1);
        msg_diag.wz  = u(2);
@@ -1447,7 +1450,7 @@ CallBackInsEkf::cbSubMag(const sensor_msgs::MagneticField::ConstPtr& msg_mag)
   }
   else
     cov_sens_mag_.updateCov(cov_mag_msg);
-//  Matrix3d cov_mag0; cov_mag0.setZero();cov_mag0.diagonal()<<1e-4,1e-4,1.0;
+//  Matrix3d cov_mag0; cov_mag0.setZero();cov_mag0.diagonal()<<1.0,1.0,1e-4;
 //  sens_mag_.R = x_.R.transpose()*cov_mag0*x_.R.transpose();
 
   if(fr_.is_filtering_on_ && config_.dyn_mag_on)
@@ -1456,6 +1459,7 @@ CallBackInsEkf::cbSubMag(const sensor_msgs::MagneticField::ConstPtr& msg_mag)
     double t  = (msg_mag->header.stamp - t_epoch_start_).toSec();
     kc_insmag_.Correct(x_temp_, t, x_, u_, mag_);
     x_ = x_temp_;
+    t_ep_x_ = msg_mag->header.stamp;
   }
 
   if(first_call)
@@ -1503,33 +1507,12 @@ CallBackInsEkf::cbSubMagV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_m
      double t  = (msg_mag->header.stamp - t_epoch_start_).toSec();
      kc_insmag_.Correct(x_temp_, t, x_, u_, mag_);
      x_ = x_temp_;
+     t_ep_x_ = msg_mag->header.stamp;
    }
 
    if(first_call)
      first_call=false;
 }
-
-//void
-//CallBackInsEkf::cbSubGyrV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_gyr_v3s)
-//{
-//  if(!cov_gyr_.msg_recvd_)
-//    cov_gyr_.msg_recvd_ = true;
-//
-//  gyr_raw_ << msg_gyr_v3s->vector.x, msg_gyr_v3s->vector.y, msg_gyr_v3s->vector.z;
-//
-//  sensor_msgs::Imu::Ptr msg_imu(new sensor_msgs::Imu);
-//  msg_imu->header = msg_gyr_v3s->header;
-//  msg_imu->angular_velocity.x = gyr_raw_(0);
-//  msg_imu->angular_velocity.y = gyr_raw_(1);
-//  msg_imu->angular_velocity.z = gyr_raw_(2);
-//
-//  msg_imu->linear_acceleration.x = acc_raw_(0);
-//  msg_imu->linear_acceleration.y = acc_raw_(1);
-//  msg_imu->linear_acceleration.z = acc_raw_(2);
-//
-//  if(cov_acc_.msg_recvd_)
-//    cbSubImu((sensor_msgs::Imu::ConstPtr)msg_imu);
-//}
 
 void
 CallBackInsEkf::cbSubAccV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_acc_v3s)
@@ -1628,13 +1611,13 @@ CallBackInsEkf::cbSubGyrV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_g
      cout << "initial state is as follows**************:"<<endl;
      cout << "R:\n"     << x_.R <<endl;
      cout << "R_cov:\n" << x_.P.block<3,3>(0,0)<<endl;
-     cout << "bg: "    << x_.bg.transpose()<<endl;
+     cout << "bg:\n"    << x_.bg.transpose()<<endl;
      cout << "bg_cov:\n"<< x_.P.block<3,3>(3,3)<<endl;
-     cout << "ba: "    << x_.ba.transpose()<<endl;
+     cout << "ba:\n"    << x_.ba.transpose()<<endl;
      cout << "ba_cov:\n"<< x_.P.block<3,3>(6,6)<<endl;
-     cout << "p: "     << x_.p.transpose()<<endl;
+     cout << "p:\n"     << x_.p.transpose()<<endl;
      cout << "p_cov:\n" << x_.P.block<3,3>(9,9)<<endl;
-     cout << "v: "     << x_.v.transpose()<<endl;
+     cout << "v:\n"     << x_.v.transpose()<<endl;
      cout << "v_cov:\n" << x_.P.block<3,3>(12,12)<<endl;
      cout <<"Initial Sens noise is as follows***********"<<endl;
      cout <<"sens_mag_.R:\n"<< sens_mag_.R <<endl;
@@ -1678,6 +1661,7 @@ CallBackInsEkf::cbSubGyrV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_g
        cout<<"Acc of magnitude: "<< a.norm()<<" exceeded the a0_tol of "<<a0_tol<<". Skipping update step"<<endl;
        x_=x_temp_;
      }
+     t_ep_x_ = msg_gyr_v3s->header.stamp;
 
      //Display suff
      Vector6d u_b; u_b << x_.bg, x_.ba;
@@ -1692,8 +1676,26 @@ CallBackInsEkf::cbSubGyrV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_g
      cout << "position: " << x_.p.transpose() << endl;
      cout << "Estim attitude:\n" << x_.R << endl;
 
+     //Publishing odometric message
+     static nav_msgs::Odometry msg_odom;
+     static uint32_t seq=0;seq++;
+
+     msg_odom.header.frame_id= strfrm_map_;
+     msg_odom.header.seq = seq;
+     msg_odom.header.stamp = msg_gyr_v3s->header.stamp;
+     msg_odom.child_frame_id = strfrm_robot_;
+     eig2PoseMsg(msg_odom.pose.pose,x_.R, x_.p);
+     eig2TwistMsg(msg_odom.twist.twist, gyr_-x_.bg, x_.R*x_.v);
+     Map<Matrix6d>(msg_odom.pose.covariance.data()).block<3,3>(0,0).setZero();
+     Map<Matrix6d>(msg_odom.pose.covariance.data()).block<3,3>(0,0) = x_.P.block<3,3>(9,9);//pos cov
+     Map<Matrix6d>(msg_odom.pose.covariance.data()).block<3,3>(3,3) = x_.P.block<3,3>(0,0);//rot cov
+     Map<Matrix6d>(msg_odom.twist.covariance.data()).block<3,3>(0,0).setZero();
+     Map<Matrix6d>(msg_odom.twist.covariance.data()).block<3,3>(0,0) = x_.R.transpose()*x_.P.block<3,3>(12,12)*x_.R;//v cov
+     Map<Matrix6d>(msg_odom.twist.covariance.data()).block<3,3>(3,3) = cov_ctrl_gyr_.cov()+ x_.P.block<3,3>(3,3);//w cov
+     pub_odom_.publish(msg_odom);
+
      //publish for debugging
-     gcop_ros_est::InsekfDiag msg_diag;
+     static gcop_ros_est::InsekfDiag msg_diag;
      msg_diag.wx  = u(0);
      msg_diag.wy  = u(1);
      msg_diag.wz  = u(2);
@@ -1772,13 +1774,15 @@ CallBackInsEkf::setupTopicsAndNames(void)
   nh_p_.getParam("type_sensor_msg",type_sensor_msg_);
 
   nh_p_.getParam("strtop_gps",strtop_gps_);
-
   nh_p_.getParam("strtop_imu",strtop_imu_);
   nh_p_.getParam("strtop_mag",strtop_mag_);
-
   nh_p_.getParam("strtop_gyr_v3s",strtop_gyr_v3s_);
   nh_p_.getParam("strtop_acc_v3s",strtop_acc_v3s_);
   nh_p_.getParam("strtop_mag_v3s",strtop_mag_v3s_);
+
+  nh_p_.getParam("strtop_odom",strtop_odom_);
+  nh_p_.getParam("strtop_diag",strtop_diag_);
+  nh_p_.getParam("strtop_marker_cov",strtop_marker_cov_);
 
   nh_p_.getParam("strfrm_map",strfrm_map_);
   nh_p_.getParam("strfrm_robot",strfrm_robot_);
@@ -1787,28 +1791,31 @@ CallBackInsEkf::setupTopicsAndNames(void)
   if(config_.dyn_debug_on)
   {
     cout<<"Topics are:  "<<endl;
-
-    cout<<"strtop_gps:  "<<strtop_gps_<<endl;
-
-    cout<<"strtop_imu:  "<<strtop_imu_<<endl;
-    cout<<"strtop_mag:  "<<strtop_mag_<<endl;
-
-    cout<<"strtop_gyr_v3s:  "<<strtop_gyr_v3s_<<endl;
-    cout<<"strtop_acc_v3s:  "<<strtop_acc_v3s_<<endl;
-    cout<<"strtop_mag_v3s:  "<<strtop_mag_v3s_<<endl;
+    if(type_sensor_msg_==1)
+    {
+      cout<<"strtop_gps:  "<<strtop_gps_<<endl;
+      cout<<"strtop_imu:  "<<strtop_imu_<<endl;
+      cout<<"strtop_mag:  "<<strtop_mag_<<endl;
+    }
+    else if(type_sensor_msg_==0)
+    {
+      cout<<"strtop_gyr_v3s:  "<<strtop_gyr_v3s_<<endl;
+      cout<<"strtop_acc_v3s:  "<<strtop_acc_v3s_<<endl;
+      cout<<"strtop_mag_v3s:  "<<strtop_mag_v3s_<<endl;
+    }
+    cout<<"strtop_odom:  "<<strtop_odom_<<endl;
+    cout<<"strtop_diag:  "<<strtop_diag_<<endl;
+    cout<<"strtop_marker_cov:  "<<strtop_marker_cov_<<endl;
   }
-
-
 }
-
 
 void
 CallBackInsEkf::initSubsPubsAndTimers(void)
 {
   //Publishers
-  pub_viz_cov_ = nh_.advertise<visualization_msgs::Marker>( "visualization_marker", 0 );
-  pub_diag_ = nh_.advertise<gcop_ros_est::InsekfDiag>( "insekf_diag", 0 );
-
+  pub_viz_cov_ = nh_.advertise<visualization_msgs::Marker>( strtop_marker_cov_, 0 );
+  pub_diag_ = nh_.advertise<gcop_ros_est::InsekfDiag>( strtop_diag_, 0 );
+  pub_odom_ = nh_.advertise<nav_msgs::Odometry>( strtop_odom_, 0 );
 
 
   //Subscribers
@@ -1832,32 +1839,13 @@ CallBackInsEkf::initSubsPubsAndTimers(void)
   }
 
   //Timers
-  timer_general_ = nh_.createTimer(ros::Duration(0.1), &CallBackInsEkf::cbTimerGeneral, this);
-  timer_send_tf_   =  nh_.createTimer(ros::Duration(config_.dyn_period_tf_publish), &CallBackInsEkf::cbTimerPublishTF, this);
-  timer_general_.start();
+  //timer_general_ = nh_.createTimer(ros::Duration(1.0), &CallBackInsEkf::cbTimerGeneral, this);
+  //timer_general_.start();
+  double hz_tf;
+  nh_p_.getParam("hz_tf",hz_tf);
+  timer_send_tf_   =  nh_.createTimer(ros::Duration(1.0/hz_tf), &CallBackInsEkf::cbTimerPubTFCov, this);
   timer_send_tf_.start();
 
-}
-
-void
-CallBackInsEkf::cbTimerPublishTF(const ros::TimerEvent& event)
-{
-  static tf::TransformBroadcaster br;
-
-  if(fr_.isReady())
-  {
-    Vector4d wxyz;
-    SO3::Instance().g2quat(wxyz, x_.R);
-    tf::Quaternion q_true(wxyz[1],wxyz[2],wxyz[3],wxyz[0]);
-
-    tf::Transform trfm;
-    trfm.setOrigin( tf::Vector3(x_.p[0],x_.p[1], x_.p[2]) );
-//    trfm.setOrigin( tf::Vector3(0.0,0.0, 0.0) );
-    trfm.setRotation(q_true);
-
-    if(config_.dyn_tf_on)
-      br.sendTransform(tf::StampedTransform(trfm, ros::Time::now(), strfrm_map_, strfrm_robot_));
-  }
 }
 
 void
@@ -1875,52 +1863,22 @@ CallBackInsEkf::loadYamlParams(void)
   //InsState initialization
   Matrix3d rot;
   Vector3d vars,val;
-  string type_val, type_vars;
+  string type_rot, type_val, type_vars;
 
-  type_val = rosParam2StringMat(rot,"x0_R");
+  type_rot = rosParam2StringMat(rot,"x0_R");
   type_vars = rosParam2StringMat(vars,"x0_R_cov");
-  cout<<"type_rot:"<<type_val<<endl;
-  cout<<"type_vars:"<<type_vars<<endl;
-  if(type_val.compare("invalid") && type_vars.compare("invalid"))
-    x0_.initRAndCov(type_val,rot,type_vars,vars);
+  if(type_rot.compare("invalid") && type_vars.compare("invalid"))
+    x0_.initRAndCov(type_rot,rot,type_vars,vars);
   else
     assert(0);
 
   type_val = rosParam2StringMat(val,"x0_bg");
   type_vars = rosParam2StringMat(vars,"x0_bg_cov");
-  cout<<"type_val:"<<type_val<<endl;
-  cout<<"type_vars:"<<type_vars<<endl;
   if(type_val.compare("invalid") && type_vars.compare("invalid"))
     x0_.initBgAndCov(type_val,val,type_vars,vars);
   else
     assert(0);
 
-  type_val = rosParam2StringMat(val,"x0_ba");
-  type_vars = rosParam2StringMat(vars,"x0_ba_cov");
-  cout<<"type_val:"<<type_val<<endl;
-  cout<<"type_vars:"<<type_vars<<endl;
-  if(type_val.compare("invalid") && type_vars.compare("invalid"))
-    x0_.initBaAndCov(type_val,val,type_vars,vars);
-  else
-    assert(0);
-
-  type_val = rosParam2StringMat(val,"x0_p");
-  type_vars = rosParam2StringMat(vars,"x0_p_cov");
-  cout<<"type_val:"<<type_val<<endl;
-  cout<<"type_vars:"<<type_vars<<endl;
-  if(type_val.compare("invalid") && type_vars.compare("invalid"))
-    x0_.initpAndCov(type_val,val,type_vars,vars);
-  else
-    assert(0);
-
-  type_val = rosParam2StringMat(val,"x0_v");
-  type_vars = rosParam2StringMat(vars,"x0_v_cov");
-  cout<<"type_val:"<<type_val<<endl;
-  cout<<"type_vars:"<<type_vars<<endl;
-  if(type_val.compare("invalid") && type_vars.compare("invalid"))
-    x0_.initvAndCov(type_val,val,type_vars,vars);
-  else
-    assert(0);
 
   //Set reference
   //a0: accelerometer, m0:magnetometer, map0_:gps(lat0(deg), lon0(deg), alt0(m)

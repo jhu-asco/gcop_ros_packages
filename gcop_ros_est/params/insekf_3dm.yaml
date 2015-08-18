@@ -9,8 +9,75 @@ diag_on:  true  # Publish diagnostics information on a topic
 tf_on:    true  # Display poses as tf data
 
 ###################################
-# Number of readings for mean and cov computation
-n_avg: 100
+
+n_avg: 100 # Number of readings for mean and cov computation
+
+###################################
+# frame names
+#   (un-modifiable in reconfigure)
+#   strfrm_map:     The frame of origin of world
+#   strfrm_robot:   The frame of origin of robot
+#   strfrm_gps_lcl: The gps location with respect to map frame
+strfrm_map: "/map"          
+strfrm_robot: "/base_link"  
+strfrm_gps_lcl: "/gps_lcl"
+
+###################################
+# Sensor format
+# (un-modifiable in reconfigure)
+#   0:Vector3Stamped
+#   1:RosDefault
+type_sensor_msg: 1
+
+###################################
+# Topic name(Input)
+#   (un-modifiable in reconfigure)
+strtop_gps: "/mavros/global_position/raw/fix" #common to both sensor format0 and format1
+
+strtop_imu: "/imu_3dm/imu" #sensor format 1
+strtop_mag: "/imu_3dm/magnetic_field" #sensor format 1
+
+strtop_mag_v3s: "" #sensor format 0
+strtop_acc_v3s: "" #sensor format 0
+strtop_gyr_v3s: "" #sensor format 0
+
+###################################
+# Topic name(Output)
+#   (un-modifiable in reconfigure)
+strtop_odom:       "/insekf/odom"
+strtop_diag:       "/insekf/diag"
+strtop_marker_cov: "/visualization_marker"
+
+###################################
+# hz_var: frequency at which a message will be published
+#   value=0 will result in the data to be sent at the max freq
+#   value<0 will disable puslishing the data 
+hz_tf:   10  # TF for gps_lcl and gps and their ellipsoid of 1SD
+
+###################################
+# Origin of map frame in [lat(deg) , lon(deg) , alt(m)]
+# (un-modifiable in reconfigure)
+map0: [39.3257305556 , -76.6223472222 , 0.0]
+
+# Mag reference
+#   In the frame of the robot
+#   (un-modifiable in reconfigure)
+#   http://www.ngdc.noaa.gov/geomag-web/#igrfwmm
+m0: [-4045.4 , 20503.7, -47202.3]
+
+# Acc reference
+#   In the frame of the robots
+#   (un-modifiable in reconfigure)
+a0: [0.0 , 0.0 , 9.80665]
+
+a0_tol: 0.4 # An acceleration reading with magnitude a0_tol more than a0.norm wont be used in correction step
+
+###################################
+# Sensor relative position 
+#   (un-modifiable in reconfigure)
+#   robot2sensor: [x y z qx qy qz qw]
+robot2gyr:  [ 0.0 , 0.0 , 0.0 , 0.000 , 0.000 , 0.000 , 1.000]
+robot2acc:  [ 0.0 , 0.0 , 0.0 , 0.000 , 0.000 , 0.000 , 1.000]
 
 ###################################
 # InsState initialization 
@@ -51,41 +118,6 @@ x0_p_cov: ["est"] # Will be initialized with gps cov
 x0_v: ["yaml", 0.0, 0.0, 0.0]
 x0_v_cov: ["yaml", 1.0e-4 , 1.0e-4 , 1.0e-4]
 
-###################################
-# Sensor format
-# (un-modifiable in reconfigure)
-#   0:Vector3Stamped
-#   1:RosDefault
-type_sensor_msg: 1
-
-###################################
-# Topic name
-#   (un-modifiable in reconfigure)
-strtop_gps: "/mavros/global_position/raw/fix" #common to both sensor format0 and format1
-
-strtop_imu: "/imu_3dm/imu" #sensor format 1
-strtop_mag: "/imu_3dm/magnetic_field" #sensor format 1
-
-strtop_mag_v3s: "" #sensor format 0
-strtop_acc_v3s: "" #sensor format 0
-strtop_gyr_v3s: "" #sensor format 0
-
-###################################
-# frame names
-#   (un-modifiable in reconfigure)
-#   strfrm_map:     The frame of origin of world
-#   strfrm_robot:   The frame of origin of robot
-#   strfrm_gps_lcl: The gps location with respect to map frame
-strfrm_map: "/map"          
-strfrm_robot: "/base_link"  
-strfrm_gps_lcl: "/gps_lcl"
-
-###################################
-# Sensor relative position 
-#   (un-modifiable in reconfigure)
-#   robot2sensor: [x y z qx qy qz qw]
-robot2gyr:  [ 0.0 , 0.0 , 0.0 , 0.000 , 0.000 , 0.000 , 1.000]
-robot2acc:  [ 0.0 , 0.0 , 0.0 , 0.000 , 0.000 , 0.000 , 1.000]
 
 ###################################
 # Control Noise Parameter
@@ -130,24 +162,6 @@ cov_sens_gps: ["msg"]
 #scaling to convert the imu readings to si units
 scale2si_gyr: 1.0 #already in si
 scale2si_acc: 1.0 #already in si
-
-###################################
-# Origin of map frame in [lat(deg) , lon(deg) , alt(m)]
-# (un-modifiable in reconfigure)
-map0: [39.3257305556 , -76.6223472222 , 0.0]
-
-# Mag reference
-#   In the frame of the robot
-#   (un-modifiable in reconfigure)
-#   http://www.ngdc.noaa.gov/geomag-web/#igrfwmm
-m0: [-4045.4 , 20503.7, -47202.3]
-
-# Acc reference
-#   In the frame of the robots
-#   (un-modifiable in reconfigure)
-a0: [0.0 , 0.0 , 9.80665]
-
-a0_tol: 0.4 # An acceleration reading with magnitude a0_tol more than a0.norm wont be used in correction step
 
 ###################################
 # Magnetometer calibration parameter

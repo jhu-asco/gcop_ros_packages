@@ -10,7 +10,16 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-camera_calibration_parsers cv_bridge image_transport nodelet roscpp sensor_msgs tf
+camera_calibration_parsers 
+cv_bridge 
+image_transport 
+nodelet 
+roscpp 
+std_msgs
+sensor_msgs 
+geometry_msgs
+nav_msgs
+tf
 gis_common
 gps_common
 dynamic_reconfigure
@@ -126,7 +135,7 @@ CATKIN_DEPENDS message_runtime
 # include_directories(include)
 #message(" Hello ---- ${EIGEN3_INCLUDE_DIR}___")
 include_directories(
-  ${catkin_INCLUDE_DIRS} ${GCOP_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${CV_BRIDGE_INCLUDE_DIRS}
+include ${catkin_INCLUDE_DIRS} ${GCOP_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${CV_BRIDGE_INCLUDE_DIRS}
 )
 
 ## Declare a cpp library
