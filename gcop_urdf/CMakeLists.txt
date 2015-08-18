@@ -131,7 +131,7 @@ include_directories(
 ## Declare a cpp executable
 # add_executable(gcop_urdf_node src/gcop_urdf_node.cpp)
 add_executable(rctraj_viz src/rctraj_viz.C)
-
+add_executable(usvtraj_viz src/usvtraj_viz.C)
 add_executable(chain_viz src/chain_viz.C)
 
 if (BUILD_PLOTTER)
@@ -144,6 +144,9 @@ endif (BUILD_PLOTTER)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(rctraj_viz
+   ${catkin_LIBRARIES}
+)
+target_link_libraries(usvtraj_viz
    ${catkin_LIBRARIES}
 )
 target_link_libraries(chain_viz
