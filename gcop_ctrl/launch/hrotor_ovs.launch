@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<launch>	
+	<node name="hrotor_ovs" pkg="gcop_ctrl" type="hrotor_ovs" output="screen" >
+    <remap from="image" to="/mesh_localize/image" />
+    <remap from="camera_info" to="/mesh_localize/camera_info" />
+    <remap from="depth" to="/mesh_localize/depth" />
+    <param name="im_goal_filename" type="string" value="$(find gcop_ctrl)/data/goal_im.jpg" />
+  </node>
+</launch>
