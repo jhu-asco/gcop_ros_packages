@@ -18,6 +18,8 @@
 #include <dynamic_reconfigure/server.h>
 #include <gcop_ctrl/HrotorOVSConfig.h>
 
+#include <gcop_comm/CtrlTraj.h>
+
 class HrotorOVS
 {
 public:
@@ -45,8 +47,8 @@ private:
     std::vector<cv::Point2f>& ps1_out, 
     std::vector<cv::Point2f>& ps2_out);
   void getKeypointsAndDescriptors(cv::Mat& im, std::vector<cv::KeyPoint>& kps, 
-    cv::gpu::GpuMat& desc_gpu);
-  void generateAndSendTrajectory(cv::Mat im, cv::Mat depths, cv::Mat im_goal);
+    cv::Mat& desc_gpu);
+  void generateTrajectory(cv::Mat im, cv::Mat depths, cv::Mat im_goal);
 
   bool has_intrinsics;
 
@@ -66,6 +68,7 @@ private:
 
   dynamic_reconfigure::Server<gcop_ctrl::HrotorOVSConfig> dyn_server;
 
+  gcop_comm::CtrlTraj traj_msg;
 };
 
 #endif

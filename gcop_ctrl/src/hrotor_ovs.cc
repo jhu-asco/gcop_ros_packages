@@ -2,9 +2,9 @@
 #include "gcop_ctrl/imagecost.h"
 
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
-#include <opencv2/gpu/gpu.hpp>
-#include <opencv2/nonfree/gpu.hpp>
+#include <opencv2/nonfree/features2d.hpp>
 #include <cv_bridge/cv_bridge.h>
 
 #include <fstream>
@@ -17,8 +17,6 @@
 #include <gcop/flatoutputtparam.h>
 #include <gcop/gndocp.h>
 #include <gcop/body3dcost.h>
-
-#include <gcop_comm/CtrlTraj.h>
 
 #include <visualization_msgs/Marker.h>
 
@@ -37,10 +35,12 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
 {
   std::string im_goal_filename;
   if (!nh_private.getParam ("im_goal_filename", im_goal_filename))
-    im_goal_filename = "im_goal.png";
+    im_goal_filename = "im_goal.jpg";
 
   Mat im_goal_color = imread(im_goal_filename);
   cvtColor( im_goal_color, im_goal, CV_BGR2GRAY );
+  imshow("Goal Image", im_goal);
+  waitKey(10);
 
   cam_transform << 1,  0,  0, 0,
                    0,  0,  1, 0,
@@ -71,8 +71,13 @@ void HrotorOVS::cbReconfig(gcop_ctrl::HrotorOVSConfig &config, uint32_t level)
 {
   if(config.iterate)
   {
-    generateAndSendTrajectory(current_image, current_depth, im_goal); 
+    generateTrajectory(current_image, current_depth, im_goal); 
     config.iterate = false;
+  }
+  if(config.send_trajectory)
+  {
+    traj_pub.publish(traj_msg);
+    config.send_trajectory = false;
   }
 }
 
@@ -80,7 +85,7 @@ void HrotorOVS::handleDepth(const sensor_msgs::ImageConstPtr& msg)
 {
   if(has_intrinsics)
   {
-    cv_bridge::CvImageConstPtr cvImg = cv_bridge::toCvShare(msg);
+    cv_bridge::CvImageConstPtr cvImg = cv_bridge::toCvCopy(msg);
     current_depth = cvImg->image;
   }
 }
@@ -89,7 +94,7 @@ void HrotorOVS::handleImage(const sensor_msgs::ImageConstPtr& msg)
 {
   if(has_intrinsics)
   {
-    cv_bridge::CvImageConstPtr cvImg = cv_bridge::toCvShare(msg);
+    cv_bridge::CvImageConstPtr cvImg = cv_bridge::toCvCopy(msg);
     current_image = cvImg->image;
   }
 }
@@ -269,7 +274,7 @@ void HrotorOVS::ovsB3d(std::vector<Eigen::Vector3d> pts3d, std::vector<Eigen::Ve
 
   Body3dGn gn(sys, cost, ctp, ts, xs, us);
 
-  for (int i = 0; i < 300; ++i) 
+  for (int i = 0; i < 200; ++i) 
   {    
     std::clock_t start = std::clock();
     gn.Iterate();
@@ -280,13 +285,10 @@ void HrotorOVS::ovsB3d(std::vector<Eigen::Vector3d> pts3d, std::vector<Eigen::Ve
   cout << "done!" << endl;
 }
 
-void HrotorOVS::getKeypointsAndDescriptors(Mat& im, std::vector<KeyPoint>& kps, gpu::GpuMat& desc_gpu)
+void HrotorOVS::getKeypointsAndDescriptors(Mat& im, std::vector<KeyPoint>& kps, cv::Mat& desc_gpu)
 {
-  gpu::GpuMat kps_gpu, im_gpu(im);
-
-  gpu::SURF_GPU surf_gpu;
-  surf_gpu(im_gpu, gpu::GpuMat(), kps_gpu, desc_gpu);
-  surf_gpu.downloadKeypoints(kps_gpu, kps);
+  SURF surf_gpu;
+  surf_gpu(im, Mat(), kps, desc_gpu);
 }
 
 void HrotorOVS::filterKeypointMatches( std::vector < std::vector< DMatch > >& matches, 
@@ -328,16 +330,17 @@ void HrotorOVS::getFilteredFeatureMatches(Mat im1, Mat im2, std::vector<Point2f>
   ps2_out.clear();
 
   std::vector<KeyPoint> kps1, kps2;
-  gpu::GpuMat  desc_gpu1, desc_gpu2;
+  Mat  desc_gpu1, desc_gpu2;
   std::vector < std::vector< DMatch > > matches;
   std::vector< DMatch > good_matches;
 
   getKeypointsAndDescriptors(im1, kps1, desc_gpu1);
   getKeypointsAndDescriptors(im2, kps2, desc_gpu2);
+  std::cout << "Initial Kps: " << kps1.size() << " " << kps2.size() << std::endl;
 
-  gpu::BFMatcher_GPU matcher;
+  BFMatcher matcher;
   matcher.knnMatch(desc_gpu1, desc_gpu2, matches, 2);
-  filterKeypointMatches(matches, good_matches, 0.5);
+  filterKeypointMatches(matches, good_matches, 0.85);
 
   std::vector<Point2f> ps1, ps2;
   for(unsigned int i = 0; i < good_matches.size(); i++)
@@ -347,25 +350,44 @@ void HrotorOVS::getFilteredFeatureMatches(Mat im1, Mat im2, std::vector<Point2f>
     ps1.push_back(p1);
     ps2.push_back(p2);
   }
+  std::cout << "Ratio Test Matches: " << ps1.size() << " " << ps2.size() << std::endl;
 
   std::vector<Point2f> ps1_filt, ps2_filt;
   filterKeypointsEpipolarConstraint(ps1, ps2, ps1_filt, ps2_filt);
+  std::cout << "Epi Constraint Matches: " << ps1_filt.size() << " " << ps2_filt.size() << std::endl;
 
   ps1_out = ps1_filt;
   ps2_out = ps2_filt;
 }
 
-void HrotorOVS::generateAndSendTrajectory(Mat im, Mat depths, Mat im_goal)
+void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
 {
   vector<gcop::Body3dState> xs1, xs2;
   vector<Vector6d> us1, us2;
   vector<Vector4d> hr_us1, hr_us2;
   int N = 64;
   double tf = 8.0;
+  Eigen::Matrix4d attitude_transform;
+  attitude_transform.setIdentity();  
+
 
   // Match features between images
   std::vector<cv::Point2f> ps, ps_goal;
   getFilteredFeatureMatches(im, im_goal, ps, ps_goal);
+  // visualize matches 
+  Mat match_img;
+  std::vector<std::vector<cv::DMatch>> matches;
+  std::vector<cv::KeyPoint> kps, kps_goal;
+  matches.resize(ps.size());
+  for(int i = 0; i < ps.size(); i++)
+  {
+    kps.push_back(KeyPoint(ps[i].x, ps[i].y, 1));
+    kps_goal.push_back(KeyPoint(ps_goal[i].x, ps_goal[i].y, 1));
+    matches[i].push_back(cv::DMatch(i,i, 1));
+  }
+  drawMatches(im, kps, im_goal, kps_goal, matches, match_img); 
+  imshow("OVS Matches", match_img);
+  waitKey(10);
 
   // Backproject points in current image to 3D
   std::vector<Eigen::Vector3d> pts3d;
@@ -378,11 +400,15 @@ void HrotorOVS::generateAndSendTrajectory(Mat im, Mat depths, Mat im_goal)
 
   for(int i = 0; i < ps.size(); i++)
   {
-    double depth = depths.at<float>(ps[i].y, ps[i].x);
-    if(depth == 0)
+    int yidx = round(ps[i].y);
+    int xidx = round(ps[i].x);
+    if(yidx < 0 || yidx >= depths.rows || xidx < 0 || xidx >= depths.cols)
+      continue;
+    double depth = depths.at<float>(yidx, xidx);
+    if(depth == 0 || std::isnan(depth))
       continue; 
     Eigen::Vector4d pt3d(depth*(ps[i].x-cx)/fx, depth*(ps[i].y-cy)/fy, depth, 1);
-    pts3d.push_back((cam_transform*pt3d).head<3>());
+    pts3d.push_back((attitude_transform*cam_transform*pt3d).head<3>());
     pts2d.push_back(Eigen::Vector2d(ps_goal[i].x, ps_goal[i].y));
   }
 
@@ -393,11 +419,11 @@ void HrotorOVS::generateAndSendTrajectory(Mat im, Mat depths, Mat im_goal)
   // Transform traj with motion capture initial pos
   static tf::TransformListener tflistener;
   tf::StampedTransform start_tf;
-  tflistener.lookupTransform("pixhawk", "optitrak", ros::Time::now(), start_tf);
+  start_tf.setOrigin(tf::Vector3(0,0,0));
+  //tflistener.lookupTransform("pixhawk", "optitrak", ros::Time::now(), start_tf);
 
   // Publish trajectory message
-  gcop_comm::CtrlTraj traj_msg;
-  traj_msg.N = N;
+  traj_msg.N = xs1.size();
   for(int i = 0; i < xs1.size(); i++)
   {
     traj_msg.time.push_back(i*tf/N);
@@ -415,13 +441,12 @@ void HrotorOVS::generateAndSendTrajectory(Mat im, Mat depths, Mat im_goal)
     state.basetwist.linear.z = xs1[i].v(2);
     traj_msg.statemsg.push_back(state);
   }
-  traj_pub.publish(traj_msg);
 
   // Publish trajectory visualization
   visualization_msgs::Marker traj_marker_msg;
   traj_marker_msg.id = 1;
   traj_marker_msg.ns = "hrotor_ovs";
-  traj_marker_msg.points.resize(N);
+  traj_marker_msg.points.resize(xs1.size());
   traj_marker_msg.header.frame_id = "optitrak";
   traj_marker_msg.header.stamp = ros::Time::now();
   traj_marker_msg.action = visualization_msgs::Marker::ADD;
@@ -439,6 +464,7 @@ void HrotorOVS::generateAndSendTrajectory(Mat im, Mat depths, Mat im_goal)
   }
   
   traj_marker_pub.publish(traj_marker_msg);
+  ROS_INFO("Sent trajectory marker");
 }
 
 int main(int argc, char** argv)
