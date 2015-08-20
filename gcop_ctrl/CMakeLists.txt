@@ -16,6 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   tf
   tf2_ros
+  cv_bridge
+  tf_conversions
 )
 
 ## System dependencies are found with CMake's conventions
@@ -29,6 +31,10 @@ set(LIBS ${LIBS} ${TINYXML_LIBRARIES})
 
 find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
+
+find_package(OpenCV REQUIRED)
+include(${OpenCV_INCLUDE_DIRS})
+set(LIBS ${LIBS} ${OpenCV_LIBRARIES})
 
 message("GCOP LIBS: ${GCOP_LIBRARIES}")
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -91,7 +97,8 @@ generate_dynamic_reconfigure_options(
 	#cfg/mbssim.cfg
 	#cfg/paramedit.cfg
 	#cfg/mbsnode.cfg
-	cfg/gcar_ddp.cfg
+  cfg/HrotorOVS.cfg
+	cfg/GcarDDP.cfg
 	cfg/MbsDMocInterface.cfg
 	cfg/MbsSimInterface.cfg
 	cfg/DMocInterface.cfg
@@ -122,6 +129,7 @@ catkin_package(
 # include_directories(include)
 include_directories(
   ${catkin_INCLUDE_DIRS}
+  include
 )
 
 ## Declare a cpp library
@@ -148,6 +156,10 @@ include_directories(
 #target_link_libraries(mbssim ${LIBS} ${catkin_LIBRARIES})
 #add_dependencies(mbssim ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 #
+add_executable(hrotor_ovs src/hrotor_ovs.cc)
+target_link_libraries(hrotor_ovs ${LIBS} ${catkin_LIBRARIES})
+add_dependencies(hrotor_ovs ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp gcop_ctrl_generate_messages_cpp)
+
 add_executable(rcctrl src/rccartest.cc)
 target_link_libraries(rcctrl ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(rcctrl ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)

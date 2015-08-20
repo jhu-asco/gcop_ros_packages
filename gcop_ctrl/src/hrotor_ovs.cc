@@ -21,6 +21,7 @@
 #include <visualization_msgs/Marker.h>
 
 #include <tf/transform_listener.h>
+#include <tf_conversions/tf_eigen.h>
 
 using namespace std;
 using namespace Eigen;
@@ -42,10 +43,31 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
   imshow("Goal Image", im_goal);
   waitKey(10);
 
-  cam_transform << 1,  0,  0, 0,
-                   0,  0,  1, 0,
+  cam_transform << 0,  0,  1, 0.1,
+                  -1,  0,  0, 0,
                    0, -1,  0, 0,
                    0,  0,  0, 1;
+
+  static tf::TransformListener tflistener;
+  tf::StampedTransform cam_tf;
+  try
+  {
+    bool result = tflistener.waitForTransform("pixhawk", "camera",
+                                       ros::Time(0), ros::Duration(1.0));
+
+    tflistener.lookupTransform("pixhawk", "camera",
+                             ros::Time(0), cam_tf);
+    tf::Vector3 o =  cam_tf.getOrigin();
+    Eigen::Quaterniond qe;
+    tf::quaternionTFToEigen(cam_tf.getRotation(), qe);
+    cam_transform.topLeftCorner<3,3>() = qe.toRotationMatrix();
+    cam_transform.block<3,1>(0,3) = Vector3d(o.x(), o.y(), o.z());
+    std::cout << cam_transform << std::endl;
+  }
+  catch(tf::TransformException ex){
+    ROS_ERROR("%s",ex.what());
+    ros::Duration(1.0).sleep();
+  }
 
   //TODO: add param for ce or gn
 
@@ -69,15 +91,19 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
 
 void HrotorOVS::cbReconfig(gcop_ctrl::HrotorOVSConfig &config, uint32_t level)
 {
-  if(config.iterate)
+  final_time = config.final_time;
+  hrotor_iterations = config.hrotor_iterations;
+  b3d_iterations = config.b3d_iterations;
+  if(config.iterate && !config.send_trajectory)
   {
     generateTrajectory(current_image, current_depth, im_goal); 
     config.iterate = false;
   }
-  if(config.send_trajectory)
+  if(config.send_trajectory && !config.iterate)
   {
     traj_pub.publish(traj_msg);
     config.send_trajectory = false;
+    ROS_INFO("Sent trajectory");
   }
 }
 
@@ -96,6 +122,7 @@ void HrotorOVS::handleImage(const sensor_msgs::ImageConstPtr& msg)
   {
     cv_bridge::CvImageConstPtr cvImg = cv_bridge::toCvCopy(msg);
     current_image = cvImg->image;
+    img_time_stamp = msg->header.stamp;
   }
 }
 
@@ -120,6 +147,7 @@ void HrotorOVS::ovsHrotor(std::vector<Eigen::Vector3d> pts3d, std::vector<Eigen:
 
   // system
   gcop::Hrotor sys;
+  sys.m = 1.764;
 
   gcop::Body3dState xfs;
   xfs.R.setIdentity();
@@ -187,7 +215,7 @@ void HrotorOVS::ovsHrotor(std::vector<Eigen::Vector3d> pts3d, std::vector<Eigen:
   HrotorGn gn(sys, cost, ctp, ts, xs, us, NULL, false);
   gn.numdiff_stepsize = 4e-3;
 
-  for (int i = 0; i < 20; ++i) 
+  for (int i = 0; i < hrotor_iterations; ++i) 
   {    
     std::clock_t start = std::clock();
     gn.Iterate();
@@ -274,7 +302,7 @@ void HrotorOVS::ovsB3d(std::vector<Eigen::Vector3d> pts3d, std::vector<Eigen::Ve
 
   Body3dGn gn(sys, cost, ctp, ts, xs, us);
 
-  for (int i = 0; i < 200; ++i) 
+  for (int i = 0; i < b3d_iterations; ++i) 
   {    
     std::clock_t start = std::clock();
     gn.Iterate();
@@ -340,7 +368,7 @@ void HrotorOVS::getFilteredFeatureMatches(Mat im1, Mat im2, std::vector<Point2f>
 
   BFMatcher matcher;
   matcher.knnMatch(desc_gpu1, desc_gpu2, matches, 2);
-  filterKeypointMatches(matches, good_matches, 0.85);
+  filterKeypointMatches(matches, good_matches, 0.7);
 
   std::vector<Point2f> ps1, ps2;
   for(unsigned int i = 0; i < good_matches.size(); i++)
@@ -366,10 +394,9 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
   vector<Vector6d> us1, us2;
   vector<Vector4d> hr_us1, hr_us2;
   int N = 64;
-  double tf = 8.0;
+  double tf = final_time;
   Eigen::Matrix4d attitude_transform;
   attitude_transform.setIdentity();  
-
 
   // Match features between images
   std::vector<cv::Point2f> ps, ps_goal;
@@ -388,6 +415,38 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
   drawMatches(im, kps, im_goal, kps_goal, matches, match_img); 
   imshow("OVS Matches", match_img);
   waitKey(10);
+
+  // Transform traj with motion capture initial pose
+  static tf::TransformListener tflistener;
+  tf::StampedTransform start_tf;
+  start_tf.setOrigin(tf::Vector3(0,0,0));
+  start_tf.setRotation(tf::Quaternion(0,0,0,1));
+  try
+  {
+    bool result = tflistener.waitForTransform("optitrak", "pixhawk",
+                                       //img_time_stamp, ros::Duration(1.0));
+                                       ros::Time(0), ros::Duration(1.0));
+
+    tflistener.lookupTransform("optitrak", "pixhawk",
+                             //img_time_stamp, start_tf);
+                             ros::Time(0), start_tf);
+  }
+  catch(tf::TransformException ex){
+    ROS_ERROR("%s",ex.what());
+    ros::Duration(1.0).sleep();
+  }
+
+  // Put points in flat frame
+  tf::Matrix3x3 rotmat = start_tf.getBasis();
+  tf::Vector3 result(0,0,0);
+  rotmat.getEulerYPR(result[2], result[1], result[0]);
+
+  tf::Quaternion vs_in_opti(0, 0, result[2]);
+  Eigen::Quaterniond equat, vs_in_opti_eig;
+  tf::quaternionTFToEigen(vs_in_opti.inverse()*start_tf.getRotation(), equat);
+  tf::quaternionTFToEigen(vs_in_opti, vs_in_opti_eig);
+  
+  attitude_transform.topLeftCorner<3,3>() = equat.toRotationMatrix();
 
   // Backproject points in current image to 3D
   std::vector<Eigen::Vector3d> pts3d;
@@ -416,29 +475,37 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
   ovsB3d(pts3d, pts2d, K_eig, xs1, us1, N, tf);
   ovsHrotor(pts3d, pts2d, K_eig, xs1, hr_us1, N, tf);
 
-  // Transform traj with motion capture initial pos
-  static tf::TransformListener tflistener;
-  tf::StampedTransform start_tf;
-  start_tf.setOrigin(tf::Vector3(0,0,0));
-  //tflistener.lookupTransform("pixhawk", "optitrak", ros::Time::now(), start_tf);
-
   // Publish trajectory message
+  Eigen::Matrix4d vs_in_opti_tf;
+  vs_in_opti_tf.setIdentity();
+  vs_in_opti_tf.topLeftCorner<3,3>() = vs_in_opti_eig.toRotationMatrix();
+  vs_in_opti_tf.block<3,1>(0,3) = Eigen::Vector3d(start_tf.getOrigin().x(),  
+                                    start_tf.getOrigin().y(), start_tf.getOrigin().z());
   traj_msg.N = xs1.size();
+  std::vector<Eigen::Vector3d> tjpts;
   for(int i = 0; i < xs1.size(); i++)
   {
     traj_msg.time.push_back(i*tf/N);
+
     gcop_comm::State state;
-    state.basepose.translation.x = xs1[i].p(0) + start_tf.getOrigin().x();
-    state.basepose.translation.y = xs1[i].p(1) + start_tf.getOrigin().y();
-    state.basepose.translation.z = xs1[i].p(2) + start_tf.getOrigin().z();
+    Eigen::Vector3d tjpt =
+      (vs_in_opti_tf*Eigen::Vector4d(xs1[i].p(0), xs1[i].p(1), xs1[i].p(2), 1)).head<3>();
+    state.basepose.translation.x = tjpt(0);
+    state.basepose.translation.y = tjpt(1);
+    state.basepose.translation.z = tjpt(2);
+    tjpts.push_back(tjpt);
+
     Eigen::Quaterniond qx(xs1[i].R);
+    qx = vs_in_opti_eig*qx;
     state.basepose.rotation.w = qx.w();
     state.basepose.rotation.x = qx.x();
     state.basepose.rotation.y = qx.y();
     state.basepose.rotation.z = qx.z();
-    state.basetwist.linear.x = xs1[i].v(0);
-    state.basetwist.linear.y = xs1[i].v(1);
-    state.basetwist.linear.z = xs1[i].v(2);
+
+    Eigen::Vector3d v = vs_in_opti_eig.toRotationMatrix()*xs1[i].v;
+    state.basetwist.linear.x = v(0);
+    state.basetwist.linear.y = v(1);
+    state.basetwist.linear.z = v(2);
     traj_msg.statemsg.push_back(state);
   }
 
@@ -456,11 +523,11 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
   traj_marker_msg.color.b = 1;
   traj_marker_msg.color.a = 1;
 
-  for(int i = 0; i < xs1.size(); i++)
+  for(int i = 0; i < tjpts.size(); i++)
   {
-    traj_marker_msg.points.at(i).x = xs1[i].p(0) + start_tf.getOrigin().x();
-    traj_marker_msg.points.at(i).y = xs1[i].p(1) + start_tf.getOrigin().y();
-    traj_marker_msg.points.at(i).z = xs1[i].p(2) + start_tf.getOrigin().z();
+    traj_marker_msg.points.at(i).x = tjpts[i](0);
+    traj_marker_msg.points.at(i).y = tjpts[i](1);
+    traj_marker_msg.points.at(i).z = tjpts[i](2);
   }
   
   traj_marker_pub.publish(traj_marker_msg);
