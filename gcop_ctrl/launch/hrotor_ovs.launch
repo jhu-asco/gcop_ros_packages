@@ -4,6 +4,8 @@
     <remap from="image" to="/mesh_localize/image" />
     <remap from="camera_info" to="/mesh_localize/camera_info" />
     <remap from="depth" to="/mesh_localize/depth" />
-    <param name="im_goal_filename" type="string" value="$(find gcop_ctrl)/data/goal_im.jpg" />
+    <remap from="/hrotor_ovs/traj" to="/mbsddp/traj_resp" />
+    <remap from="/hrotor_ovs/traj_marker" to="/desired_traj" />
+    <param name="im_goal_filename" type="string" value="$(find gcop_ctrl)/data/frame0002.jpg" />
   </node>
 </launch>

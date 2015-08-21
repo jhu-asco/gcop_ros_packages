@@ -51,6 +51,7 @@ private:
   void generateTrajectory(cv::Mat im, cv::Mat depths, cv::Mat im_goal);
 
   bool has_intrinsics;
+  ros::Time img_time_stamp;
 
   cv::Mat current_image, current_depth, im_goal;
   cv::Mat K;
@@ -69,6 +70,10 @@ private:
   dynamic_reconfigure::Server<gcop_ctrl::HrotorOVSConfig> dyn_server;
 
   gcop_comm::CtrlTraj traj_msg;
+  
+  double final_time;
+  int b3d_iterations;
+  int hrotor_iterations;
 };
 
 #endif
