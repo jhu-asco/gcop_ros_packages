@@ -33,7 +33,8 @@
 #include <gcop_comm/Trajectory_req.h>
 
 // gps, utm, local coord conversions
-#include <gis_common/gps_to_local.h>
+#include "llh_enu_cov.h"
+#include <enu/enu.h>  // ROS wrapper for conversion functions
 
 // utils
 #include <eigen_ros_conv.h>
@@ -998,12 +999,8 @@ CallBackInsEkf::CallBackInsEkf():
   fr_.check_ready_.push_back(&cov_sens_acc_);
   fr_.check_ready_.push_back(&cov_sens_gps_);
   fr_.check_ready_.push_back(&x0_);
+  cout<<"Pushed readiness check to FilterReadiness.check_ready_ member "<<endl;
 
-  //Fake a GPS message
-  // Say that gps is reading origin
-  //timer_fake_gps_ = nh_.createTimer(ros::Duration(0.1), &CallBackInsEkf::cbTimerFakeGPS, this);
-  //timer_fake_gps_.start();
-  //cbTimerFakeGPS(ros::TimerEvent());
 }
 
 CallBackInsEkf::~CallBackInsEkf()
@@ -1135,9 +1132,11 @@ CallBackInsEkf::cbSubGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps)
   Map<Matrix3d>cov_gps_msg((double*)msg_gps->position_covariance.data());
 
   //Get local coordinates(with map0_ being origin and X-Y-Z axis being East-North-Up
-  double x_m_lcl, y_m_lcl, yaw_m_lcl; //local in reference to the LL point on the JHU map
-  gis_common::gpsToLocal(x_m_lcl,y_m_lcl,msg_gps->latitude,msg_gps->longitude,map0_(0),map0_(1));
-  Vector3d xyz_gps;xyz_gps << x_m_lcl,y_m_lcl, 0;
+
+  Vector3d llh;     llh  << msg_gps->latitude*M_PI/180.0,msg_gps->longitude*M_PI/180.0, msg_gps->altitude ;
+  Vector3d llh0;    llh0 << map0_(0)*M_PI/180.0         ,map0_(1)*M_PI/180.0          , msg_gps->altitude ;
+  Vector3d xyz_gps; llhSI2EnuSI(xyz_gps, llh, llh0);
+
 
   //filter ready stuff
   if(!cov_sens_gps_.msg_recvd_)

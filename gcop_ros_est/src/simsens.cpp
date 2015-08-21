@@ -28,9 +28,6 @@
 #include <gcop_comm/CtrlTraj.h>
 #include <gcop_comm/Trajectory_req.h>
 
-// gps, utm, local coord conversions
-#include <gis_common/gps_to_local.h>
-
 //GCOP includes
 #include <gcop/utils.h>
 #include <gcop/so3.h>
@@ -40,6 +37,9 @@
 #include <gcop/insimu.h>
 #include <gcop/insgps.h>
 #include <gcop/insmag.h>
+
+//GIS
+#include "llh_enu_cov.h"
 
 //Other includes
 #include <iostream>
@@ -242,9 +242,14 @@ CallBackSimSens::cbTimerGps(const ros::TimerEvent& event)
   msg_gps.header.stamp =t_epoch_start_ + ros::Duration(t_);
 
   msg_gps.altitude = x_.p(2) + config_.dyn_alt0_m;
-  gis_common::localToGps(msg_gps.latitude, msg_gps.longitude,
-             x_.p(0),x_.p(1),
-             config_.dyn_lat0_deg,config_.dyn_lon0_deg);
+
+  Vector3d llh0_ddm; llh0_ddm << config_.dyn_lat0_deg,config_.dyn_lon0_deg,0.0;
+  Vector3d enu;      enu << x_.p(0),x_.p(1),0;
+  Vector3d llh_ddm;  enuSI2llhDDM(llh_ddm, llh0_ddm, enu);
+
+  msg_gps.latitude = llh_ddm(0);
+  msg_gps.longitude= llh_ddm(1);
+
   pub_gps_.publish(msg_gps);
 }
 void

@@ -20,12 +20,13 @@ sensor_msgs
 geometry_msgs
 nav_msgs
 tf
-gis_common
 gps_common
 dynamic_reconfigure
 visualization_msgs
 message_generation
+enu
 )
+
 
 generate_dynamic_reconfigure_options(
   cfg/Insekf.cfg
@@ -40,7 +41,7 @@ find_package(OpenCV REQUIRED core highgui imgproc calib3d)
 find_package(Eigen3 REQUIRED)
 #find_package(GLU REQUIRED)
 #find_package(GLUT REQUIRED)
-
+find_library(SWIFTNAV swiftnav)
 
 add_message_files(
     FILES
@@ -210,18 +211,18 @@ target_link_libraries(satmap_server ${catkin_LIBRARIES})
 
 add_executable(simsens src/simsens.cpp)
 target_link_libraries(simsens 
-		      ${GCOP_LIBRARIES}
-		      ${OpenCV_LIBRARIES}
-	      ${TINYXML_LIBRARIES}
-	      ${catkin_LIBRARIES})
+		              ${GCOP_LIBRARIES}
+	                  ${TINYXML_LIBRARIES}
+	                  ${catkin_LIBRARIES}
+	      	          ${SWIFTNAV})
 add_dependencies(simsens ${PROJECT_NAME}_gencfg )
 
 add_executable(insekf src/insekf.cpp)
 target_link_libraries(insekf 
 		      ${GCOP_LIBRARIES}
-		      ${OpenCV_LIBRARIES}
 	      ${TINYXML_LIBRARIES}
-	      ${catkin_LIBRARIES})
+	      ${catkin_LIBRARIES}
+	      ${SWIFTNAV})
 add_dependencies(insekf ${PROJECT_NAME}_gencfg )
 
 add_executable(calibrator src/calibrator.cpp)
