@@ -946,7 +946,7 @@ public:
 
 CallBackInsEkf::CallBackInsEkf():
     nh_p_("~"),
-    loop_rate_(500),
+    loop_rate_(1000),
     t_(0),
     kp_ins_(ins_),
     kc_insimu_(ins_.X, sens_acc_),
