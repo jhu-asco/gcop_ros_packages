@@ -64,8 +64,10 @@
 #include <algorithm>
 #include <XmlRpcValue.h>
 
+//Eigen Lib Includes
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
+#include <Eigen/Eigenvalues>
 
 
 //-------------------------------------------------------------------------
@@ -1013,6 +1015,7 @@ void
 CallBackInsEkf::cbTimerPubTFCov(const ros::TimerEvent& event)
 {
   static tf::TransformBroadcaster br;
+  static SelfAdjointEigenSolver<Matrix3d> eig_solver;
 
   //send gps tf
   if(config_.dyn_tf_on && cov_sens_gps_.ready())
@@ -1031,9 +1034,12 @@ CallBackInsEkf::cbTimerPubTFCov(const ros::TimerEvent& event)
   if(config_.dyn_enable_cov_disp_gps && cov_sens_gps_.ready())
   {
     marker_cov_gps_lcl_.header.stamp = t_ep_gps_;
-    marker_cov_gps_lcl_.scale.x = sens_gps_.R.diagonal()(0);
-    marker_cov_gps_lcl_.scale.y = sens_gps_.R.diagonal()(1);
-    marker_cov_gps_lcl_.scale.z = 0.1;
+    marker_cov_gps_lcl_.pose.position.x = xyz_gps_(0);
+    marker_cov_gps_lcl_.pose.position.y = xyz_gps_(1);
+    marker_cov_gps_lcl_.pose.position.z = xyz_gps_(2);
+    marker_cov_gps_lcl_.scale.x = 2*sqrt(sens_gps_.R.diagonal()(0));
+    marker_cov_gps_lcl_.scale.y = 2*sqrt(sens_gps_.R.diagonal()(1));
+    marker_cov_gps_lcl_.scale.z = 2*sqrt(sens_gps_.R.diagonal()(2));
     marker_cov_gps_lcl_.color.a = config_.dyn_alpha_cov; // Don't forget to set the alpha!
     pub_viz_cov_.publish( marker_cov_gps_lcl_ );
   }
@@ -1055,10 +1061,28 @@ CallBackInsEkf::cbTimerPubTFCov(const ros::TimerEvent& event)
     // Send base_link cov
     if(config_.dyn_enable_cov_disp_est)
     {
+
+
+      eig_solver.compute((x_.P.block<3,3>(9,9)).selfadjointView<Eigen::Upper>());
+      Vector3d eig_vals = eig_solver.eigenvalues();
+      Matrix3d eig_vecs = eig_solver.eigenvectors();
+      if((eig_vecs.determinant()) < 0) // Make sure the rotation matrix is right handed
+      {
+        eig_vecs.col(0).swap(eig_vecs.col(1));
+        eig_vals.row(0).swap(eig_vals.row(1));
+      }
+      Vector4d wxyz; SO3::Instance().g2quat(wxyz,eig_vecs);
       marker_cov_base_link_.header.stamp = ros::Time();
-      marker_cov_base_link_.scale.x = x_.P(9,9);//hack. TODO: set to corresponding eigen values of P
-      marker_cov_base_link_.scale.y = x_.P(10,10);//hack. TODO: set to corresponding eigen values of P
-      marker_cov_base_link_.scale.z = x_.P(11,11);//hack. TODO: set to corresponding eigen values of P
+      marker_cov_base_link_.scale.x = 2*sqrt(eig_vals(0));
+      marker_cov_base_link_.scale.y = 2*sqrt(eig_vals(1));
+      marker_cov_base_link_.scale.z = 2*sqrt(eig_vals(2));
+      marker_cov_base_link_.pose.position.x = x_.p[0];
+      marker_cov_base_link_.pose.position.y = x_.p[1];
+      marker_cov_base_link_.pose.position.z = x_.p[2];
+      marker_cov_base_link_.pose.orientation.w=wxyz(0);
+      marker_cov_base_link_.pose.orientation.x=wxyz(1);
+      marker_cov_base_link_.pose.orientation.y=wxyz(2);
+      marker_cov_base_link_.pose.orientation.z=wxyz(3);
       marker_cov_base_link_.color.a = config_.dyn_alpha_cov; // Don't forget to set the alpha!
       pub_viz_cov_.publish( marker_cov_base_link_ );
     }
@@ -1086,14 +1110,11 @@ CallBackInsEkf::initRvizMarkers(void)
   //Marker for path
   id++;
   //Marker for displaying gps covariance
-  nh_p_.getParam("strfrm_gps_lcl", marker_cov_gps_lcl_.header.frame_id);
+  nh_p_.getParam("strfrm_map", marker_cov_gps_lcl_.header.frame_id);
   marker_cov_gps_lcl_.ns = "insekf";
   marker_cov_gps_lcl_.id = id;
   marker_cov_gps_lcl_.type = visualization_msgs::Marker::SPHERE;
   marker_cov_gps_lcl_.action = visualization_msgs::Marker::ADD;
-  marker_cov_gps_lcl_.pose.position.x = 0;
-  marker_cov_gps_lcl_.pose.position.y = 0;
-  marker_cov_gps_lcl_.pose.position.z = 0;
   marker_cov_gps_lcl_.pose.orientation.x = 0.0;
   marker_cov_gps_lcl_.pose.orientation.y = 0.0;
   marker_cov_gps_lcl_.pose.orientation.z = 0.0;
@@ -1105,18 +1126,11 @@ CallBackInsEkf::initRvizMarkers(void)
 
   //Marker for displaying covariance of estimate
   id++;
-  nh_p_.getParam("strfrm_robot", marker_cov_base_link_.header.frame_id);
+  nh_p_.getParam("strfrm_map", marker_cov_base_link_.header.frame_id);
   marker_cov_base_link_.ns = "insekf";
   marker_cov_base_link_.id = id;
   marker_cov_base_link_.type = visualization_msgs::Marker::SPHERE;
   marker_cov_base_link_.action = visualization_msgs::Marker::ADD;
-  marker_cov_base_link_.pose.position.x = 0;
-  marker_cov_base_link_.pose.position.y = 0;
-  marker_cov_base_link_.pose.position.z = 0;
-  marker_cov_base_link_.pose.orientation.x = 0;
-  marker_cov_base_link_.pose.orientation.y = 0;
-  marker_cov_base_link_.pose.orientation.z = 0;
-  marker_cov_base_link_.pose.orientation.w = 1.0;
   marker_cov_base_link_.color.r = 1.0;
   marker_cov_base_link_.color.g = 0.0;
   marker_cov_base_link_.color.b = 0.0;
