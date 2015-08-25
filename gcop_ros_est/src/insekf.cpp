@@ -858,6 +858,8 @@ public:
 
 private:
   void cbTimerPubTFCov(const ros::TimerEvent& event);
+  void cbTimerPubOdom(const ros::TimerEvent& event);
+  void cbTimerPubDiag(const ros::TimerEvent& event);
   void cbTimerGeneral(const ros::TimerEvent& event);
   void cbSubGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps);
   void cbSubImu(const sensor_msgs::Imu::ConstPtr& msg_imu);
@@ -887,7 +889,7 @@ private:
   gcop_ros_est::InsekfConfig config_;
   dynamic_reconfigure::Server<gcop_ros_est::InsekfConfig> dyn_server_;
   bool dyn_write_;      //save config_ to config
-  ros::Timer timer_general_, timer_send_tf_;
+  ros::Timer timer_general_, timer_send_tf_, timer_send_odom_, timer_send_diag_;
   ros::Timer timer_fake_gps_;
 
   ros::Publisher pub_odom_, pub_diag_, pub_viz_cov_;
@@ -927,6 +929,9 @@ private:
   double scale2si_gyr_, scale2si_acc_;
   Transform<double,3, Affine> magcal_trfm_, acccal_trfm_;
   bool pause_getchar_;
+  nav_msgs::Odometry msg_odom_;
+  gcop_ros_est::InsekfDiag msg_diag_;
+  double hz_tf_, hz_odom_, hz_diag_;
 
   //Kalman filter
   InsKalmanPredictor kp_ins_;
@@ -1018,7 +1023,7 @@ CallBackInsEkf::cbTimerPubTFCov(const ros::TimerEvent& event)
   static SelfAdjointEigenSolver<Matrix3d> eig_solver;
 
   //send gps tf
-  if(config_.dyn_tf_on && cov_sens_gps_.ready())
+  if(hz_tf_>=0.0 && cov_sens_gps_.ready())
   {
     // Send GPS data for visualization
     tf::Transform trfm2;
@@ -1045,7 +1050,7 @@ CallBackInsEkf::cbTimerPubTFCov(const ros::TimerEvent& event)
   }
 
   //Sen base_link TF
-  if(fr_.isReady())
+  if(fr_.is_filtering_on_)
   {
     Vector4d wxyz;
     SO3::Instance().g2quat(wxyz, x_.R);
@@ -1055,7 +1060,7 @@ CallBackInsEkf::cbTimerPubTFCov(const ros::TimerEvent& event)
     trfm.setOrigin( tf::Vector3(x_.p[0],x_.p[1], x_.p[2]) );
     trfm.setRotation(q_true);
 
-    if(config_.dyn_tf_on)
+    if(hz_tf_>=0)
       br.sendTransform(tf::StampedTransform(trfm, ros::Time::now(), strfrm_map_, strfrm_robot_));
 
     // Send base_link cov
@@ -1089,6 +1094,38 @@ CallBackInsEkf::cbTimerPubTFCov(const ros::TimerEvent& event)
   }
 }
 
+
+void
+CallBackInsEkf::cbTimerPubOdom(const ros::TimerEvent& event)
+{
+  static int seq=0;
+  static ros::Time t_ep_prev;
+  bool cond_filt_on = fr_.is_filtering_on_;
+  bool cond_first_pub = t_ep_prev.isZero();
+  bool cond_not_duplicate = !(msg_odom_.header.stamp-t_ep_prev).isZero();
+  if(  cond_filt_on && (cond_first_pub || cond_not_duplicate))
+  {
+    pub_odom_.publish(msg_odom_);
+    seq++;
+    t_ep_prev = msg_odom_.header.stamp;
+  }
+}
+
+void
+CallBackInsEkf::cbTimerPubDiag(const ros::TimerEvent& event)
+{
+  static int seq=0;
+  static ros::Time t_ep_prev;
+  bool cond_filt_on = fr_.is_filtering_on_;
+  bool cond_first_pub = t_ep_prev.isZero();
+  bool cond_not_duplicate = !(msg_diag_.header.stamp-t_ep_prev).isZero();
+  if(  cond_filt_on && (cond_first_pub || cond_not_duplicate))
+  {
+    pub_diag_.publish(msg_diag_);
+    seq++;
+    t_ep_prev = msg_diag_.header.stamp;
+  }
+}
 
 void
 CallBackInsEkf::cbTimerGeneral(const ros::TimerEvent& event)
@@ -1342,77 +1379,84 @@ CallBackInsEkf::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg_imu)
        cout << "Estim attitude:\n" << x_.R << endl;
 
        //Publishing odometric message
-       static nav_msgs::Odometry msg_odom;
-       static uint32_t seq=0;seq++;
-
-       msg_odom.header.frame_id= strfrm_map_;
-       msg_odom.header.seq = seq;
-       msg_odom.header.stamp = msg_imu->header.stamp;
-       msg_odom.child_frame_id = strfrm_robot_;
-       eig2PoseMsg(msg_odom.pose.pose,x_.R, x_.p);
-       eig2TwistMsg(msg_odom.twist.twist, gyr_-x_.bg, x_.R.transpose()*x_.v);
-       Map<Matrix6d>(msg_odom.pose.covariance.data()).block<3,3>(0,0).setZero();
-       Map<Matrix6d>(msg_odom.pose.covariance.data()).block<3,3>(0,0) = x_.P.block<3,3>(9,9);//pos cov
-       Map<Matrix6d>(msg_odom.pose.covariance.data()).block<3,3>(3,3) = x_.P.block<3,3>(0,0);//rot cov
-       Map<Matrix6d>(msg_odom.twist.covariance.data()).block<3,3>(0,0).setZero();
-       Map<Matrix6d>(msg_odom.twist.covariance.data()).block<3,3>(0,0) = x_.R.transpose()*x_.P.block<3,3>(12,12)*x_.R;//v cov
-       Map<Matrix6d>(msg_odom.twist.covariance.data()).block<3,3>(3,3) = cov_ctrl_gyr_.cov()+ x_.P.block<3,3>(3,3);//w cov
-       pub_odom_.publish(msg_odom);
+       static int seq_odom=0;
+       msg_odom_.header.frame_id= strfrm_map_;
+       msg_odom_.header.stamp = msg_imu->header.stamp;
+       msg_odom_.child_frame_id = strfrm_robot_;
+       eig2PoseMsg(msg_odom_.pose.pose,x_.R, x_.p);
+       eig2TwistMsg(msg_odom_.twist.twist, gyr_-x_.bg, x_.R.transpose()*x_.v);
+       Map<Matrix6d>(msg_odom_.pose.covariance.data()).block<3,3>(0,0).setZero();
+       Map<Matrix6d>(msg_odom_.pose.covariance.data()).block<3,3>(0,0) = x_.P.block<3,3>(9,9);//pos cov
+       Map<Matrix6d>(msg_odom_.pose.covariance.data()).block<3,3>(3,3) = x_.P.block<3,3>(0,0);//rot cov
+       Map<Matrix6d>(msg_odom_.twist.covariance.data()).block<3,3>(0,0).setZero();
+       Map<Matrix6d>(msg_odom_.twist.covariance.data()).block<3,3>(0,0) = x_.R.transpose()*x_.P.block<3,3>(12,12)*x_.R;//v cov
+       Map<Matrix6d>(msg_odom_.twist.covariance.data()).block<3,3>(3,3) = cov_ctrl_gyr_.cov()+ x_.P.block<3,3>(3,3);//w cov
+       if(hz_odom_==0)
+       {
+         msg_odom_.header.seq=seq_odom;
+         pub_odom_.publish(msg_odom_);
+         seq_odom++;
+       }
 
        //publish for debugging
-       static gcop_ros_est::InsekfDiag msg_diag;
-       msg_diag.wx  = u(0);
-       msg_diag.wy  = u(1);
-       msg_diag.wz  = u(2);
-       msg_diag.ax  = u(3);
-       msg_diag.ay  = u(4);
-       msg_diag.az  = u(5);
+       static int seq_diag=0;
+       msg_diag_.header.frame_id= "none";
+       msg_diag_.header.stamp = msg_imu->header.stamp;
+       msg_diag_.wx  = u(0);
+       msg_diag_.wy  = u(1);
+       msg_diag_.wz  = u(2);
+       msg_diag_.ax  = u(3);
+       msg_diag_.ay  = u(4);
+       msg_diag_.az  = u(5);
 
-       msg_diag.bgx = u_b(0);
-       msg_diag.bgy = u_b(1);
-       msg_diag.bgz = u_b(2);
-       msg_diag.bax = u_b(3);
-       msg_diag.bay = u_b(4);
-       msg_diag.baz = u_b(5);
+       msg_diag_.bgx = u_b(0);
+       msg_diag_.bgy = u_b(1);
+       msg_diag_.bgz = u_b(2);
+       msg_diag_.bax = u_b(3);
+       msg_diag_.bay = u_b(4);
+       msg_diag_.baz = u_b(5);
 
 
-       msg_diag.wfx = u_f(0);
-       msg_diag.wfy = u_f(1);
-       msg_diag.wfz = u_f(2);
-       msg_diag.afx = u_f(3);
-       msg_diag.afy = u_f(4);
-       msg_diag.afz = u_f(5);
+       msg_diag_.wfx = u_f(0);
+       msg_diag_.wfy = u_f(1);
+       msg_diag_.wfz = u_f(2);
+       msg_diag_.afx = u_f(3);
+       msg_diag_.afy = u_f(4);
+       msg_diag_.afz = u_f(5);
 
-       msg_diag.x     = x_.p(0);
-       msg_diag.y     = x_.p(1);
-       msg_diag.z     = x_.p(2);
+       msg_diag_.x     = x_.p(0);
+       msg_diag_.y     = x_.p(1);
+       msg_diag_.z     = x_.p(2);
 
-       msg_diag.vx    = x_.v(0);
-       msg_diag.vy    = x_.v(1);
-       msg_diag.vz    = x_.v(2);
+       msg_diag_.vx    = x_.v(0);
+       msg_diag_.vy    = x_.v(1);
+       msg_diag_.vz    = x_.v(2);
 
-       msg_diag.roll  = rpy(0);
-       msg_diag.pitch = rpy(1);
-       msg_diag.yaw   = rpy(2);
+       msg_diag_.roll  = rpy(0);
+       msg_diag_.pitch = rpy(1);
+       msg_diag_.yaw   = rpy(2);
 
-       msg_diag.p00   = x_.P(0,0);
-       msg_diag.p11   = x_.P(1,1);
-       msg_diag.p22   = x_.P(2,2);
-       msg_diag.p33   = x_.P(3,3);
-       msg_diag.p44   = x_.P(4,4);
-       msg_diag.p55   = x_.P(5,5);
-       msg_diag.p66   = x_.P(6,6);
-       msg_diag.p77   = x_.P(7,7);
-       msg_diag.p88   = x_.P(8,8);
-       msg_diag.p99   = x_.P(9,9);
-       msg_diag.p1010 = x_.P(10,10);
-       msg_diag.p1111 = x_.P(11,11);
-       msg_diag.p1212 = x_.P(12,12);
-       msg_diag.p1313 = x_.P(13,13);
-       msg_diag.p1414 = x_.P(14,14);
-
-       if(config_.dyn_diag_on)
-         pub_diag_.publish(msg_diag);
+       msg_diag_.p00   = x_.P(0,0);
+       msg_diag_.p11   = x_.P(1,1);
+       msg_diag_.p22   = x_.P(2,2);
+       msg_diag_.p33   = x_.P(3,3);
+       msg_diag_.p44   = x_.P(4,4);
+       msg_diag_.p55   = x_.P(5,5);
+       msg_diag_.p66   = x_.P(6,6);
+       msg_diag_.p77   = x_.P(7,7);
+       msg_diag_.p88   = x_.P(8,8);
+       msg_diag_.p99   = x_.P(9,9);
+       msg_diag_.p1010 = x_.P(10,10);
+       msg_diag_.p1111 = x_.P(11,11);
+       msg_diag_.p1212 = x_.P(12,12);
+       msg_diag_.p1313 = x_.P(13,13);
+       msg_diag_.p1414 = x_.P(14,14);
+       if(hz_diag_==0)
+       {
+         msg_diag_.header.seq=seq_diag;
+         pub_diag_.publish(msg_diag_);
+         seq_diag++;
+       }
      }
    }
    else
@@ -1690,77 +1734,81 @@ CallBackInsEkf::cbSubGyrV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_g
      cout << "Estim attitude:\n" << x_.R << endl;
 
      //Publishing odometric message
-     static nav_msgs::Odometry msg_odom;
-     static uint32_t seq=0;seq++;
-
-     msg_odom.header.frame_id= strfrm_map_;
-     msg_odom.header.seq = seq;
-     msg_odom.header.stamp = msg_gyr_v3s->header.stamp;
-     msg_odom.child_frame_id = strfrm_robot_;
-     eig2PoseMsg(msg_odom.pose.pose,x_.R, x_.p);
-     eig2TwistMsg(msg_odom.twist.twist, gyr_-x_.bg, x_.R*x_.v);
-     Map<Matrix6d>(msg_odom.pose.covariance.data()).block<3,3>(0,0).setZero();
-     Map<Matrix6d>(msg_odom.pose.covariance.data()).block<3,3>(0,0) = x_.P.block<3,3>(9,9);//pos cov
-     Map<Matrix6d>(msg_odom.pose.covariance.data()).block<3,3>(3,3) = x_.P.block<3,3>(0,0);//rot cov
-     Map<Matrix6d>(msg_odom.twist.covariance.data()).block<3,3>(0,0).setZero();
-     Map<Matrix6d>(msg_odom.twist.covariance.data()).block<3,3>(0,0) = x_.R.transpose()*x_.P.block<3,3>(12,12)*x_.R;//v cov
-     Map<Matrix6d>(msg_odom.twist.covariance.data()).block<3,3>(3,3) = cov_ctrl_gyr_.cov()+ x_.P.block<3,3>(3,3);//w cov
-     pub_odom_.publish(msg_odom);
-
+     static int seq_odom=0;
+     msg_odom_.header.frame_id= strfrm_map_;
+     msg_odom_.header.stamp = msg_gyr_v3s->header.stamp;
+     msg_odom_.child_frame_id = strfrm_robot_;
+     eig2PoseMsg(msg_odom_.pose.pose,x_.R, x_.p);
+     eig2TwistMsg(msg_odom_.twist.twist, gyr_-x_.bg, x_.R*x_.v);
+     Map<Matrix6d>(msg_odom_.pose.covariance.data()).block<3,3>(0,0).setZero();
+     Map<Matrix6d>(msg_odom_.pose.covariance.data()).block<3,3>(0,0) = x_.P.block<3,3>(9,9);//pos cov
+     Map<Matrix6d>(msg_odom_.pose.covariance.data()).block<3,3>(3,3) = x_.P.block<3,3>(0,0);//rot cov
+     Map<Matrix6d>(msg_odom_.twist.covariance.data()).block<3,3>(0,0).setZero();
+     Map<Matrix6d>(msg_odom_.twist.covariance.data()).block<3,3>(0,0) = x_.R.transpose()*x_.P.block<3,3>(12,12)*x_.R;//v cov
+     Map<Matrix6d>(msg_odom_.twist.covariance.data()).block<3,3>(3,3) = cov_ctrl_gyr_.cov()+ x_.P.block<3,3>(3,3);//w cov
+     if(hz_odom_==0)
+     {
+       msg_odom_.header.seq=seq_odom;
+       pub_odom_.publish(msg_odom_);
+       seq_odom++;
+     }
      //publish for debugging
-     static gcop_ros_est::InsekfDiag msg_diag;
-     msg_diag.wx  = u(0);
-     msg_diag.wy  = u(1);
-     msg_diag.wz  = u(2);
-     msg_diag.ax  = u(3);
-     msg_diag.ay  = u(4);
-     msg_diag.az  = u(5);
+     static int seq_diag=0;
+     msg_diag_.wx  = u(0);
+     msg_diag_.wy  = u(1);
+     msg_diag_.wz  = u(2);
+     msg_diag_.ax  = u(3);
+     msg_diag_.ay  = u(4);
+     msg_diag_.az  = u(5);
 
-     msg_diag.bgx = u_b(0);
-     msg_diag.bgy = u_b(1);
-     msg_diag.bgz = u_b(2);
-     msg_diag.bax = u_b(3);
-     msg_diag.bay = u_b(4);
-     msg_diag.baz = u_b(5);
+     msg_diag_.bgx = u_b(0);
+     msg_diag_.bgy = u_b(1);
+     msg_diag_.bgz = u_b(2);
+     msg_diag_.bax = u_b(3);
+     msg_diag_.bay = u_b(4);
+     msg_diag_.baz = u_b(5);
 
 
-     msg_diag.wfx = u_f(0);
-     msg_diag.wfy = u_f(1);
-     msg_diag.wfz = u_f(2);
-     msg_diag.afx = u_f(3);
-     msg_diag.afy = u_f(4);
-     msg_diag.afz = u_f(5);
+     msg_diag_.wfx = u_f(0);
+     msg_diag_.wfy = u_f(1);
+     msg_diag_.wfz = u_f(2);
+     msg_diag_.afx = u_f(3);
+     msg_diag_.afy = u_f(4);
+     msg_diag_.afz = u_f(5);
 
-     msg_diag.x     = x_.p(0);
-     msg_diag.y     = x_.p(1);
-     msg_diag.z     = x_.p(2);
+     msg_diag_.x     = x_.p(0);
+     msg_diag_.y     = x_.p(1);
+     msg_diag_.z     = x_.p(2);
 
-     msg_diag.vx    = x_.v(0);
-     msg_diag.vy    = x_.v(1);
-     msg_diag.vz    = x_.v(2);
+     msg_diag_.vx    = x_.v(0);
+     msg_diag_.vy    = x_.v(1);
+     msg_diag_.vz    = x_.v(2);
 
-     msg_diag.roll  = rpy(0);
-     msg_diag.pitch = rpy(1);
-     msg_diag.yaw   = rpy(2);
+     msg_diag_.roll  = rpy(0);
+     msg_diag_.pitch = rpy(1);
+     msg_diag_.yaw   = rpy(2);
 
-     msg_diag.p00   = x_.P(0,0);
-     msg_diag.p11   = x_.P(1,1);
-     msg_diag.p22   = x_.P(2,2);
-     msg_diag.p33   = x_.P(3,3);
-     msg_diag.p44   = x_.P(4,4);
-     msg_diag.p55   = x_.P(5,5);
-     msg_diag.p66   = x_.P(6,6);
-     msg_diag.p77   = x_.P(7,7);
-     msg_diag.p88   = x_.P(8,8);
-     msg_diag.p99   = x_.P(9,9);
-     msg_diag.p1010 = x_.P(10,10);
-     msg_diag.p1111 = x_.P(11,11);
-     msg_diag.p1212 = x_.P(12,12);
-     msg_diag.p1313 = x_.P(13,13);
-     msg_diag.p1414 = x_.P(14,14);
-
-     if(config_.dyn_diag_on)
-       pub_diag_.publish(msg_diag);
+     msg_diag_.p00   = x_.P(0,0);
+     msg_diag_.p11   = x_.P(1,1);
+     msg_diag_.p22   = x_.P(2,2);
+     msg_diag_.p33   = x_.P(3,3);
+     msg_diag_.p44   = x_.P(4,4);
+     msg_diag_.p55   = x_.P(5,5);
+     msg_diag_.p66   = x_.P(6,6);
+     msg_diag_.p77   = x_.P(7,7);
+     msg_diag_.p88   = x_.P(8,8);
+     msg_diag_.p99   = x_.P(9,9);
+     msg_diag_.p1010 = x_.P(10,10);
+     msg_diag_.p1111 = x_.P(11,11);
+     msg_diag_.p1212 = x_.P(12,12);
+     msg_diag_.p1313 = x_.P(13,13);
+     msg_diag_.p1414 = x_.P(14,14);
+     if(hz_diag_==0)
+     {
+       msg_diag_.header.seq=seq_diag;
+       pub_diag_.publish(msg_diag_);
+       seq_diag++;
+     }
    }
  }
  else
@@ -1825,12 +1873,6 @@ CallBackInsEkf::setupTopicsAndNames(void)
 void
 CallBackInsEkf::initSubsPubsAndTimers(void)
 {
-  //Publishers
-  pub_viz_cov_ = nh_.advertise<visualization_msgs::Marker>( strtop_marker_cov_, 0 );
-  pub_diag_ = nh_.advertise<gcop_ros_est::InsekfDiag>( strtop_diag_, 0 );
-  pub_odom_ = nh_.advertise<nav_msgs::Odometry>( strtop_odom_, 0 );
-
-
   //Subscribers
   sub_gps_  = nh_.subscribe<sensor_msgs::NavSatFix>(strtop_gps_,1000,&CallBackInsEkf::cbSubGps, this,ros::TransportHints().tcpNoDelay());
 
@@ -1851,14 +1893,35 @@ CallBackInsEkf::initSubsPubsAndTimers(void)
     assert(0);
   }
 
-  //Timers
-  //timer_general_ = nh_.createTimer(ros::Duration(1.0), &CallBackInsEkf::cbTimerGeneral, this);
-  //timer_general_.start();
-  double hz_tf;
-  nh_p_.getParam("hz_tf",hz_tf);
-  timer_send_tf_   =  nh_.createTimer(ros::Duration(1.0/hz_tf), &CallBackInsEkf::cbTimerPubTFCov, this);
-  timer_send_tf_.start();
+  //Publishers and Timers
 
+  nh_p_.getParam("hz_tf",hz_tf_);
+  if(hz_tf_>=0)
+    pub_viz_cov_ = nh_.advertise<visualization_msgs::Marker>( strtop_marker_cov_, 0 );
+  if(hz_tf_>0)
+  {
+    timer_send_tf_   =  nh_.createTimer(ros::Duration(1.0/hz_tf_), &CallBackInsEkf::cbTimerPubTFCov, this);
+    timer_send_tf_.start();
+  }
+
+
+  nh_p_.getParam("hz_odom",hz_odom_);
+  if(hz_odom_>=0)
+    pub_odom_ = nh_.advertise<nav_msgs::Odometry>( strtop_odom_, 0 );
+  if(hz_odom_>0)
+  {
+    timer_send_odom_   =  nh_.createTimer(ros::Duration(1.0/hz_odom_), &CallBackInsEkf::cbTimerPubOdom, this);
+    timer_send_odom_.start();
+  }
+
+  nh_p_.getParam("hz_diag",hz_diag_);
+  if(hz_diag_>=0)
+    pub_diag_ = nh_.advertise<gcop_ros_est::InsekfDiag>( strtop_diag_, 0 );
+  if(hz_diag_>0)
+  {
+    timer_send_diag_   =  nh_.createTimer(ros::Duration(1.0/hz_diag_), &CallBackInsEkf::cbTimerPubDiag, this);
+    timer_send_diag_.start();
+  }
 }
 
 void
@@ -1964,8 +2027,6 @@ CallBackInsEkf::setFromParamsConfig()
   nh_p_.getParam("debug_on",config_.dyn_debug_on);
   nh_p_.getParam("mag_on",config_.dyn_mag_on);
   nh_p_.getParam("gps_on",config_.dyn_gps_on);
-  nh_p_.getParam("diag_on",config_.dyn_diag_on);
-  nh_p_.getParam("tf_on",config_.dyn_tf_on);
 
   Vector3d cov;
   string type;
