@@ -43,6 +43,13 @@ find_package(Eigen3 REQUIRED)
 #find_package(GLUT REQUIRED)
 find_library(SWIFTNAV swiftnav)
 
+pkg_check_modules(YAML_CPP yaml-cpp)
+if(${YAML_CPP_VERSION} VERSION_GREATER 0.5)
+    add_definitions(-DHAVE_NEW_YAMLCPP)
+endif()
+link_directories(${YAML_CPP_LIBRARY_DIRS})
+include_directories(${YAML_CPP_INCLUDE_DIRS})
+
 add_message_files(
     FILES
     InsekfDiag.msg
@@ -219,11 +226,21 @@ add_dependencies(simsens ${PROJECT_NAME}_gencfg )
 
 add_executable(insekf src/insekf.cpp)
 target_link_libraries(insekf 
-		      ${GCOP_LIBRARIES}
-	      ${TINYXML_LIBRARIES}
-	      ${catkin_LIBRARIES}
-	      ${SWIFTNAV})
+		              ${GCOP_LIBRARIES}
+	                  ${TINYXML_LIBRARIES}
+	                  ${catkin_LIBRARIES}
+	                  ${SWIFTNAV}
+	                  ${YAML_CPP_LIBRARIES} )
+
 add_dependencies(insekf ${PROJECT_NAME}_gencfg )
+
+#add_executable(insekf_alvar src/insekf_alvar.cpp)
+#target_link_libraries(insekf_alvar 
+#		              ${GCOP_LIBRARIES}
+#	                  ${TINYXML_LIBRARIES}
+#	                  ${catkin_LIBRARIES}
+#	                  ${SWIFTNAV})
+#add_dependencies(insekf_alvar ${PROJECT_NAME}_gencfg )
 
 add_executable(calibrator src/calibrator.cpp)
 target_link_libraries(calibrator 

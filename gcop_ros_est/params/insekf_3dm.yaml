@@ -91,10 +91,10 @@ robot2acc:  [ 0.0 , 0.0 , 0.0 , 0.000 , 0.000 , 0.000 , 1.000]
 #   cov: ["est"]
 #     Estimate upon startup. Note that the sensor has to be still for first 2 seconds
 #   Rotation matrix init
-#x0_R: ['yaml',1.0, 0.0, 0.0,
+#x0_R: ["yaml",1.0, 0.0, 0.0,
 #              0.0, 1.0, 0.0,
 #              0.0, 0.0, 1.0]
-#x0_R_cov: ['yaml',0.1, 0.1 , 0.1]
+#x0_R_cov: ["yaml",0.1, 0.1 , 0.1]
 x0_R: ["est"]   #estimated from acc and mag readings                     
 x0_R_cov:  ["est"] # 
          

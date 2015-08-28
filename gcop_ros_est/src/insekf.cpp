@@ -3,6 +3,7 @@
  *
  *  Created on: Jul 20, 2015
  *      Author: subhransu
+ *  TODO: Remove all assert(0) lines and handle them gracefully
  */
 
 // ROS relevant includes
@@ -51,6 +52,7 @@
 
 //Other includes
 #include <numeric>
+#include <fstream>
 #include <iostream>
 #include <signal.h>
 #include <stdio.h>
@@ -62,7 +64,8 @@
 #include <string.h>
 #include <limits>
 #include <algorithm>
-#include <XmlRpcValue.h>
+#include <yaml-cpp/yaml.h>
+#include "yaml_eig_conv.h"
 
 //Eigen Lib Includes
 #include <Eigen/Dense>
@@ -118,91 +121,6 @@ long timer_us(struct timeval *time)
 
 template <typename T> int sgn(T val) {
     return (T(0) < val) - (val < T(0));
-}
-
-
-/**
- * converts XmlRpc::XmlRpcValue to Eigen::Matrix<double,r,c> type
- * @param mat: is an Eigen::Matrix(with static rows and cols)
- * @param my_list
- */
-template<typename T>
-void xml2Mat(T &mat, XmlRpc::XmlRpcValue &my_list)
-{
-  assert(my_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
-  assert(my_list.size() > 0);
-  assert(mat.size()==my_list.size());
-
-  for (int i = 0; i < mat.rows(); i++)
-  {
-    for(int j=0; j<mat.cols();j++)
-    {
-      int k = j+ i*mat.cols();
-      assert(my_list[k].getType() == XmlRpc::XmlRpcValue::TypeDouble);
-      mat(i,j) =  (double)(my_list[k]);
-    }
-  }
-}
-
-template<typename T>
-string xml2StringMat(T &mat, XmlRpc::XmlRpcValue &my_list)
-{
-  assert(my_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
-  assert(my_list.size() > 0);
-  if(my_list.size()==1)
-    return static_cast<string>(my_list[0]);
-  else if(mat.size()!=my_list.size()-1)
-    return "invalid";
-  else
-  {
-    for (int i = 0; i < mat.rows(); i++)
-    {
-      for(int j=0; j<mat.cols();j++)
-      {
-        int k = j+ i*mat.cols();
-        assert(my_list[k+1].getType() == XmlRpc::XmlRpcValue::TypeDouble);
-        mat(i,j) =  (double)(my_list[k+1]);
-      }
-    }
-    return static_cast<string>(my_list[0]);
-  }
-}
-/**
- * Converts a XmlRpc::XmlRpcValue to a Eigen::Vector(dynamic type)
- * @param vec
- * @param my_list
- */
-void xml2vec(VectorXd &vec, XmlRpc::XmlRpcValue &my_list)
-{
-  assert(my_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
-  assert(my_list.size() > 0);
-  vec.resize(my_list.size());
-
-  for (int32_t i = 0; i < my_list.size(); i++)
-  {
-    assert(my_list[i].getType() == XmlRpc::XmlRpcValue::TypeDouble);
-    vec[i] =  (double)(my_list[i]);
-  }
-}
-
-template<typename T>
-void
-rosParam2Mat(T &mat, const std::string param)
-{
-  static ros::NodeHandle nh_p("~");
-  XmlRpc::XmlRpcValue mat_xml;
-  nh_p.getParam(param,mat_xml);
-  xml2Mat(mat, mat_xml);
-}
-
-template<typename T>
-string
-rosParam2StringMat(T &mat, const std::string param)
-{
-  static ros::NodeHandle nh_p("~");
-  XmlRpc::XmlRpcValue mat_xml;
-  nh_p.getParam(param,mat_xml);
-  return xml2StringMat( mat, mat_xml);
 }
 
 
@@ -419,8 +337,12 @@ public:
         cout<<"R and its cov already set"<<endl;
     }
 
-    void initRAndCov(const string& type_rot, const Matrix3d& rot, const string& type_vars, const Vector3d& vars)
+    void initRAndCov(const pair<string,Matrix3d>&type_n_rot,const pair<string,Vector3d>&type_n_vars)
     {
+      const string&   type_rot  = type_n_rot.first;
+      const Matrix3d& rot       = type_n_rot.second;
+      const string&   type_vars = type_n_vars.first;
+      const Vector3d& vars      = type_n_vars.second;
       if(type_rot.compare(type_vars))
       {
         cout<<"Selection method for rotation matrix and it's covariance is not the same"<<endl;
@@ -491,8 +413,12 @@ public:
         cout<<"bg and its cov already set"<<endl;
     }
 
-    void initBgAndCov(const string& type_val,const Vector3d& val,const string& type_vars, const Vector3d& vars)
+    void initBgAndCov(const pair<string,Vector3d>&type_n_val, const pair<string,Vector3d>& type_n_vars)
     {
+      const string&   type_val  = type_n_val.first;
+      const Vector3d& val       = type_n_val.second;
+      const string&   type_vars = type_n_vars.first;
+      const Vector3d& vars      = type_n_vars.second;
       if(type_val.compare(type_vars))
       {
         cout<<"Selection method for Bg and it's covariance is not the same"<<endl;
@@ -563,8 +489,13 @@ public:
         cout<<"Ba and its cov already set"<<endl;
     }
 
-    void initBaAndCov(const string& type_val,const Vector3d& val,const string& type_vars, const Vector3d& vars)
+    void initBaAndCov(const pair<string,Vector3d>&type_n_val, const pair<string,Vector3d>& type_n_vars)
     {
+      const string&   type_val  = type_n_val.first;
+      const Vector3d& val       = type_n_val.second;
+      const string&   type_vars = type_n_vars.first;
+      const Vector3d& vars      = type_n_vars.second;
+
       if(type_val.compare(type_vars))
       {
         cout<<"Selection method for Ba and it's covariance is not the same"<<endl;
@@ -722,14 +653,16 @@ public:
       sync();
     }
 
-    void initCov(string type,Vector3d val)
+    void initCov(const pair<string,Vector3d>& type_n_vars)
     {
+      const string&   type =  type_n_vars.first;
+      const Vector3d& vars  = type_n_vars.second;
       if(!type.compare("dyn"))
       {
         type_=0;
-        config_cov_x_=val(0);
-        config_cov_y_=val(1);
-        config_cov_z_=val(2);
+        config_cov_x_=vars(0);
+        config_cov_y_=vars(1);
+        config_cov_z_=vars(2);
         ready_=true;
         cov_.diagonal()<<config_cov_x_, config_cov_y_,config_cov_z_;
       }
@@ -926,12 +859,14 @@ private:
   SelCov cov_ctrl_gyr_, cov_ctrl_acc_, cov_ctrl_su_, cov_ctrl_sa_;
   Vector3d mag_, acc_, gyr_, acc_raw_, gyr_raw_;
   Vector3d map0_;//map reference in lat(deg) lon(deg) and alt(m)
+  double a0_tol_;
   double scale2si_gyr_, scale2si_acc_;
   Transform<double,3, Affine> magcal_trfm_, acccal_trfm_;
   bool pause_getchar_;
   nav_msgs::Odometry msg_odom_;
   gcop_ros_est::InsekfDiag msg_diag_;
   double hz_tf_, hz_odom_, hz_diag_;
+  YAML::Node yaml_node_;
 
   //Kalman filter
   InsKalmanPredictor kp_ins_;
@@ -968,6 +903,17 @@ CallBackInsEkf::CallBackInsEkf():
 
 {
   cout<<"*Entering constructor of cbc"<<endl;
+
+  //Setup YAML reading and parsing
+  string strfile_params;nh_p_.getParam("strfile_params",strfile_params);
+#ifdef HAVE_NEW_YAMLCPP
+  cout<<"loading yaml param file into yaml_node"<<endl;
+  yaml_node_ = YAML::LoadFile(strfile_params);
+#else
+  cout<<"Wrong Yaml version used. Change source code or install version>0.5"<<endl;
+  assert(0);
+#endif
+
   //setup dynamic reconfigure
   dynamic_reconfigure::Server<gcop_ros_est::InsekfConfig>::CallbackType dyn_cb_f;
   dyn_cb_f = boost::bind(&CallBackInsEkf::cbReconfig, this, _1, _2);
@@ -1147,7 +1093,7 @@ CallBackInsEkf::initRvizMarkers(void)
   //Marker for path
   id++;
   //Marker for displaying gps covariance
-  nh_p_.getParam("strfrm_map", marker_cov_gps_lcl_.header.frame_id);
+  marker_cov_gps_lcl_.header.frame_id = strfrm_map_;
   marker_cov_gps_lcl_.ns = "insekf";
   marker_cov_gps_lcl_.id = id;
   marker_cov_gps_lcl_.type = visualization_msgs::Marker::SPHERE;
@@ -1163,7 +1109,7 @@ CallBackInsEkf::initRvizMarkers(void)
 
   //Marker for displaying covariance of estimate
   id++;
-  nh_p_.getParam("strfrm_map", marker_cov_base_link_.header.frame_id);
+  marker_cov_base_link_.header.frame_id = strfrm_map_;
   marker_cov_base_link_.ns = "insekf";
   marker_cov_base_link_.id = id;
   marker_cov_base_link_.type = visualization_msgs::Marker::SPHERE;
@@ -1355,12 +1301,11 @@ CallBackInsEkf::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg_imu)
 
 
        kp_ins_.Predict(x_temp_, t, x_, u, dt);
-       double a0_tol; nh_p_.getParam("a0_tol",a0_tol);
-       if(abs(a.norm() - sens_acc_.a0.norm())<a0_tol)
+       if(abs(a.norm() - sens_acc_.a0.norm())<a0_tol_)
          kc_insimu_.Correct(x_, t, x_temp_, u_, a);
        else
        {
-         cout<<"Acc of magnitude: "<< a.norm()<<" exceeded the a0_tol of "<<a0_tol<<". Skipping update step"<<endl;
+         cout<<"Acc of magnitude: "<< a.norm()<<" exceeded the a0_tol of "<<a0_tol_<<". Skipping update step"<<endl;
          x_=x_temp_;
        }
        t_ep_x_ = msg_imu->header.stamp;
@@ -1710,12 +1655,11 @@ CallBackInsEkf::cbSubGyrV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_g
 
 
      kp_ins_.Predict(x_temp_, t, x_, u, dt);
-     double a0_tol; nh_p_.getParam("a0_tol",a0_tol);
-     if(abs(a.norm() - sens_acc_.a0.norm())<a0_tol)
+     if(abs(a.norm() - sens_acc_.a0.norm())<a0_tol_)
        kc_insimu_.Correct(x_, t, x_temp_, u_, a);
      else
      {
-       cout<<"Acc of magnitude: "<< a.norm()<<" exceeded the a0_tol of "<<a0_tol<<". Skipping update step"<<endl;
+       cout<<"Acc of magnitude: "<< a.norm()<<" exceeded the a0_tol of "<<a0_tol_<<". Skipping update step"<<endl;
        x_=x_temp_;
      }
      t_ep_x_ = msg_gyr_v3s->header.stamp;
@@ -1832,41 +1776,41 @@ CallBackInsEkf::setupTopicsAndNames(void)
   if(config_.dyn_debug_on)
     cout<<"setting up topic names"<<endl;
 
-  nh_p_.getParam("type_sensor_msg",type_sensor_msg_);
+  type_sensor_msg_   = yaml_node_["type_sensor_msg"].as<int>();
 
-  nh_p_.getParam("strtop_gps",strtop_gps_);
-  nh_p_.getParam("strtop_imu",strtop_imu_);
-  nh_p_.getParam("strtop_mag",strtop_mag_);
-  nh_p_.getParam("strtop_gyr_v3s",strtop_gyr_v3s_);
-  nh_p_.getParam("strtop_acc_v3s",strtop_acc_v3s_);
-  nh_p_.getParam("strtop_mag_v3s",strtop_mag_v3s_);
+  strtop_gps_        = yaml_node_["strtop_gps"].as<string>();
+  strtop_imu_        = yaml_node_["strtop_imu"].as<string>();
+  strtop_mag_        = yaml_node_["strtop_mag"].as<string>();
+  strtop_gyr_v3s_    = yaml_node_["strtop_gyr_v3s"].as<string>();
+  strtop_acc_v3s_    = yaml_node_["strtop_acc_v3s"].as<string>();
+  strtop_mag_v3s_    = yaml_node_["strtop_mag_v3s"].as<string>();
 
-  nh_p_.getParam("strtop_odom",strtop_odom_);
-  nh_p_.getParam("strtop_diag",strtop_diag_);
-  nh_p_.getParam("strtop_marker_cov",strtop_marker_cov_);
+  strtop_odom_       = yaml_node_["strtop_odom"].as<string>();
+  strtop_diag_       = yaml_node_["strtop_diag"].as<string>();
+  strtop_marker_cov_ = yaml_node_["strtop_marker_cov"].as<string>();
 
-  nh_p_.getParam("strfrm_map",strfrm_map_);
-  nh_p_.getParam("strfrm_robot",strfrm_robot_);
-  nh_p_.getParam("strfrm_gps_lcl",strfrm_gps_lcl_);
+  strfrm_map_        = yaml_node_["strfrm_map"].as<string>();
+  strfrm_robot_      = yaml_node_["strfrm_robot"].as<string>();
+  strfrm_gps_lcl_    = yaml_node_["strfrm_gps_lcl"].as<string>();
 
   if(config_.dyn_debug_on)
   {
-    cout<<"Topics are:  "<<endl;
+    cout<<"Topics are:"<<endl;
     if(type_sensor_msg_==1)
     {
-      cout<<"strtop_gps:  "<<strtop_gps_<<endl;
-      cout<<"strtop_imu:  "<<strtop_imu_<<endl;
-      cout<<"strtop_mag:  "<<strtop_mag_<<endl;
+      cout<<"strtop_gps:"<<strtop_gps_<<endl;
+      cout<<"strtop_imu:"<<strtop_imu_<<endl;
+      cout<<"strtop_mag:"<<strtop_mag_<<endl;
     }
     else if(type_sensor_msg_==0)
     {
-      cout<<"strtop_gyr_v3s:  "<<strtop_gyr_v3s_<<endl;
-      cout<<"strtop_acc_v3s:  "<<strtop_acc_v3s_<<endl;
-      cout<<"strtop_mag_v3s:  "<<strtop_mag_v3s_<<endl;
+      cout<<"strtop_gyr_v3s:"<<strtop_gyr_v3s_<<endl;
+      cout<<"strtop_acc_v3s:"<<strtop_acc_v3s_<<endl;
+      cout<<"strtop_mag_v3s:"<<strtop_mag_v3s_<<endl;
     }
-    cout<<"strtop_odom:  "<<strtop_odom_<<endl;
-    cout<<"strtop_diag:  "<<strtop_diag_<<endl;
-    cout<<"strtop_marker_cov:  "<<strtop_marker_cov_<<endl;
+    cout<<"strtop_odom:"<<strtop_odom_<<endl;
+    cout<<"strtop_diag:"<<strtop_diag_<<endl;
+    cout<<"strtop_marker_cov:"<<strtop_marker_cov_<<endl;
   }
 }
 
@@ -1895,7 +1839,7 @@ CallBackInsEkf::initSubsPubsAndTimers(void)
 
   //Publishers and Timers
 
-  nh_p_.getParam("hz_tf",hz_tf_);
+  hz_tf_ = yaml_node_["hz_tf"].as<double>();
   if(hz_tf_>=0)
     pub_viz_cov_ = nh_.advertise<visualization_msgs::Marker>( strtop_marker_cov_, 0 );
   if(hz_tf_>0)
@@ -1904,8 +1848,7 @@ CallBackInsEkf::initSubsPubsAndTimers(void)
     timer_send_tf_.start();
   }
 
-
-  nh_p_.getParam("hz_odom",hz_odom_);
+  hz_odom_ = yaml_node_["hz_odom"].as<double>();
   if(hz_odom_>=0)
     pub_odom_ = nh_.advertise<nav_msgs::Odometry>( strtop_odom_, 0 );
   if(hz_odom_>0)
@@ -1914,7 +1857,7 @@ CallBackInsEkf::initSubsPubsAndTimers(void)
     timer_send_odom_.start();
   }
 
-  nh_p_.getParam("hz_diag",hz_diag_);
+  hz_diag_ = yaml_node_["hz_diag"].as<double>();
   if(hz_diag_>=0)
     pub_diag_ = nh_.advertise<gcop_ros_est::InsekfDiag>( strtop_diag_, 0 );
   if(hz_diag_>0)
@@ -1927,56 +1870,48 @@ CallBackInsEkf::initSubsPubsAndTimers(void)
 void
 CallBackInsEkf::loadYamlParams(void)
 {
-  nh_p_.getParam("pause",pause_getchar_);
+  pause_getchar_ = yaml_node_["pause"].as<bool>();
 
-  //Number of reading for mean and covariance computation
-  nh_p_.getParam("n_avg",x0_.n_avg_);
-  nh_p_.getParam("n_avg",cov_sens_mag_.n_avg_);
-  nh_p_.getParam("n_avg",cov_sens_acc_.n_avg_);
-  nh_p_.getParam("n_avg",cov_ctrl_gyr_.n_avg_);
-  nh_p_.getParam("n_avg",cov_sens_gps_.n_avg_);
+  x0_.n_avg_ = yaml_node_["n_avg"].as<int>();
+  cov_sens_mag_.n_avg_ = x0_.n_avg_;
+  cov_sens_acc_.n_avg_ = x0_.n_avg_;
+  cov_ctrl_gyr_.n_avg_ = x0_.n_avg_;
+  cov_sens_gps_.n_avg_ = x0_.n_avg_;
 
   //InsState initialization
   Matrix3d rot;
   Vector3d vars,val;
   string type_rot, type_val, type_vars;
 
-  type_rot = rosParam2StringMat(rot,"x0_R");
-  type_vars = rosParam2StringMat(vars,"x0_R_cov");
-  if(type_rot.compare("invalid") && type_vars.compare("invalid"))
-    x0_.initRAndCov(type_rot,rot,type_vars,vars);
-  else
-    assert(0);
+  pair<string,Matrix3d> str_mat3d = yaml_node_["x0_R"].as<pair<string,Matrix3d>>();
+  pair<string,Vector3d> str_vec3d = yaml_node_["x0_R_cov"].as<pair<string,Vector3d>>();
+  x0_.initRAndCov(str_mat3d,str_vec3d);
 
-  type_val = rosParam2StringMat(val,"x0_bg");
-  type_vars = rosParam2StringMat(vars,"x0_bg_cov");
-  if(type_val.compare("invalid") && type_vars.compare("invalid"))
-    x0_.initBgAndCov(type_val,val,type_vars,vars);
-  else
-    assert(0);
-
+  pair<string,Vector3d> str_vec3d_val = yaml_node_["x0_bg"].as<pair<string,Vector3d>>();
+  pair<string,Vector3d> str_vec3d_vars = yaml_node_["x0_bg_cov"].as<pair<string,Vector3d>>();
+  x0_.initBgAndCov(str_vec3d_val,str_vec3d_vars);
 
   //Set reference
   //a0: accelerometer, m0:magnetometer, map0_:gps(lat0(deg), lon0(deg), alt0(m)
-  Vector3d a0,m0;
-  rosParam2Mat(a0,"a0");
-  rosParam2Mat(m0,"m0");
+  a0_tol_ = yaml_node_["a0_tol"].as<double>();
+  Vector3d a0 = yaml_node_["a0"].as<Vector3d>();
+  Vector3d m0 = yaml_node_["m0"].as<Vector3d>();
   ins_.g0         = a0;
   sens_acc_.a0 = a0;
   sens_acc_.m0 = m0.normalized();
   sens_mag_.m0 = m0.normalized();
-  rosParam2Mat(map0_,"map0");
+  map0_ = yaml_node_["map0"].as<Vector3d>();
+
 
   //set robot to sensors rotation
-  Vector7d tfm_r2gyr, tfm_r2mag, tfm_r2acc;
-  rosParam2Mat(tfm_r2gyr, "robot2gyr");
-  rosParam2Mat(tfm_r2acc, "robot2acc");
+  Vector7d tfm_r2gyr = yaml_node_["robot2gyr"].as<Vector7d>();
+  Vector7d tfm_r2acc = yaml_node_["robot2acc"].as<Vector7d>();;
   q_r2gyr_ = Quaternion<double>(tfm_r2gyr(6),tfm_r2gyr(3),tfm_r2gyr(4),tfm_r2gyr(5));
   q_r2acc_ = Quaternion<double>(tfm_r2acc(6),tfm_r2acc(3),tfm_r2acc(4),tfm_r2acc(5));
 
   //set scale2si for mag, gyr, acc
-  nh_p_.getParam("scale2si_gyr",scale2si_gyr_);
-  nh_p_.getParam("scale2si_acc",scale2si_acc_);
+  scale2si_gyr_ = yaml_node_["scale2si_gyr"].as<double>();
+  scale2si_acc_ = yaml_node_["scale2si_acc"].as<double>();
 
   //Set Ctrl Noise
   //gyr noise
@@ -2003,19 +1938,11 @@ CallBackInsEkf::loadYamlParams(void)
 void
 CallBackInsEkf::initMagCalib(void)
 {
-  Matrix3d magcal_linear;
-  Vector3d magcal_translation;
-  rosParam2Mat(magcal_linear , "magcal_linear");
-  rosParam2Mat(magcal_translation, "magcal_translation");
-  magcal_trfm_.linear()      = magcal_linear;
-  magcal_trfm_.translation() = magcal_translation;
+  magcal_trfm_.linear()      = yaml_node_["magcal_linear"].as<Matrix3d>();
+  magcal_trfm_.translation() = yaml_node_["magcal_translation"].as<Vector3d>();
 
-  Matrix3d acccal_linear;
-  Vector3d acccal_translation;
-  rosParam2Mat(acccal_linear , "acccal_linear");
-  rosParam2Mat(acccal_translation, "acccal_translation");
-  acccal_trfm_.linear()      = acccal_linear;
-  acccal_trfm_.translation() = acccal_translation;
+  acccal_trfm_.linear()      = yaml_node_["acccal_linear"].as<Matrix3d>();
+  acccal_trfm_.translation() = yaml_node_["acccal_translation"].as<Vector3d>();
 }
 
 
@@ -2024,56 +1951,29 @@ CallBackInsEkf::setFromParamsConfig()
 {
   cout<<"*Loading params from yaml file to dynamic reconfigure"<<endl;
 
-  nh_p_.getParam("debug_on",config_.dyn_debug_on);
-  nh_p_.getParam("mag_on",config_.dyn_mag_on);
-  nh_p_.getParam("gps_on",config_.dyn_gps_on);
+  config_.dyn_debug_on = yaml_node_["debug_on"].as<bool>();
+  config_.dyn_mag_on = yaml_node_["mag_on"].as<bool>();
+  config_.dyn_gps_on = yaml_node_["gps_on"].as<bool>();
 
-  Vector3d cov;
-  string type;
+  //sensor cov
+  pair<string,Vector3d> type_n_vars;
+  type_n_vars = yaml_node_["cov_sens_mag"].as<pair<string,Vector3d>>();
+  cov_sens_mag_.initCov(type_n_vars);
+  type_n_vars = yaml_node_["cov_sens_acc"].as<pair<string,Vector3d>>();
+  cov_sens_acc_.initCov(type_n_vars);
+  type_n_vars = yaml_node_["cov_sens_gps"].as<pair<string,Vector3d>>();
+  cov_sens_gps_.initCov(type_n_vars);
 
-  //Sensor covariance
-  type = rosParam2StringMat(cov,"cov_sens_mag");
-  if(type.compare("invalid"))
-    cov_sens_mag_.initCov(type,cov);
-  else
-    assert(0);
+  //ctrl cov
+  type_n_vars = yaml_node_["cov_ctrl_gyr"].as<pair<string,Vector3d>>();
+  cov_ctrl_gyr_.initCov(type_n_vars);
+  type_n_vars = yaml_node_["cov_ctrl_acc"].as<pair<string,Vector3d>>();
+  cov_ctrl_acc_.initCov(type_n_vars);
+  type_n_vars = yaml_node_["cov_ctrl_su"].as<pair<string,Vector3d>>();
+  cov_ctrl_su_.initCov(type_n_vars);
+  type_n_vars = yaml_node_["cov_ctrl_sa"].as<pair<string,Vector3d>>();
+  cov_ctrl_sa_.initCov(type_n_vars);
 
-  type = rosParam2StringMat(cov,"cov_sens_acc");
-  if(type.compare("invalid"))
-    cov_sens_acc_.initCov(type,cov);
-  else
-    assert(0);
-
-  type = rosParam2StringMat(cov,"cov_sens_gps");
-  if(type.compare("invalid"))
-    cov_sens_gps_.initCov(type,cov);
-  else
-    assert(0);
-
-  //Ctrl covariance
-  type = rosParam2StringMat(cov,"cov_ctrl_gyr");
-  if(type.compare("invalid"))
-    cov_ctrl_gyr_.initCov(type,cov);
-  else
-    assert(0);
-
-  type = rosParam2StringMat(cov,"cov_ctrl_acc");
-  if(type.compare("invalid"))
-    cov_ctrl_acc_.initCov(type,cov);
-  else
-    assert(0);
-
-  type = rosParam2StringMat(cov,"cov_ctrl_su");
-  if(type.compare("invalid"))
-    cov_ctrl_su_.initCov(type,cov);
-  else
-    assert(0);
-
-  type = rosParam2StringMat(cov,"cov_ctrl_sa");
-  if(type.compare("invalid"))
-    cov_ctrl_sa_.initCov(type,cov);
-  else
-    assert(0);
 }
 
 void

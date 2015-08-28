@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <launch>
   <node pkg="gcop_ros_est" type="insekf" name="insekf"  output="screen">
-  <rosparam command="load" file="$(find gcop_ros_est)/params/insekf_mavros.yaml"/>
+  <param name="strfile_params" type="str" value="$(find gcop_ros_est)/params/insekf_mavros.yaml"/>
   </node>
 </launch>
