@@ -66,6 +66,8 @@
 #include <algorithm>
 #include <yaml-cpp/yaml.h>
 #include "yaml_eig_conv.h"
+#include <algorithm>
+#include <boost/shared_ptr.hpp>
 
 //Eigen Lib Includes
 #include <Eigen/Dense>
@@ -91,6 +93,10 @@ typedef KalmanCorrector<InsState, 15, 6, Dynamic, Vector6d, 6> InsImuMagKalmanCo
 typedef KalmanCorrector<InsState, 15, 6, Dynamic, Vector3d, 3> InsMagKalmanCorrector;
 typedef KalmanCorrector<InsState, 15, 6, Dynamic, Vector3d, 3> InsGpsKalmanCorrector;
 
+typedef Eigen::Matrix<double, 4, 4> Matrix4d;
+typedef Eigen::Matrix<double, 4, 1> Vector4d;
+typedef Eigen::Matrix<double, 7, 1> Vector7d;
+typedef Eigen::Transform<double,3, Affine> Transform3d;
 //-------------------------------------------------------------------------
 //-----------------------GLOBAL VARIABLES ---------------------------------
 //-------------------------------------------------------------------------
@@ -146,13 +152,123 @@ void avgVectInStl(typename C::value_type& avg,M& cov, const C& buffer)
 //------------------------MAIN CALLBACK CLASS ----------------------------
 //------------------------------------------------------------------------
 
+enum SensorType{
+  GPS, MAG, POSE3D
+};
+
+class SensNode
+{
+public:
+  SensNode(double t, SensorType type):t_(t),type_(type)
+{
+
+}
+  ~SensNode()
+  {
+    cout<<"SensNode destructor called"<<endl;
+  }
+
+  void addVec3d(const Vector3d& vec, const Vector3d& var)
+  {
+    val_ .reset( new Vector3d(vec));
+    var_ .reset( new Vector3d(var));
+    assert(type_==SensorType::GPS || type_==SensorType::MAG);
+  }
+
+  void addPose3d(const Transform3d& tfm, const Vector6d& vec)
+  {
+    pose_ .reset( new Transform3d(tfm));
+    pose_var_ .reset( new Vector6d(vec));
+    assert(type_==SensorType::POSE3D);
+  }
+
+  bool operator < (const SensNode& sn) const
+  {
+      return (t_< sn.t_);
+  }
+
+  double t_;
+  boost::shared_ptr<Vector3d> val_;
+  boost::shared_ptr<Vector3d> var_;
+  boost::shared_ptr<Transform3d> pose_;
+  boost::shared_ptr<Vector6d>    pose_var_;
+  SensorType type_;
+};
+
+class FilterNode
+{
+public:
+FilterNode(double t, InsState x, Vector3d a, Vector3d a_var, Vector3d w, Vector3d w_var):
+              t_(t), x_(x),
+              ctrl_a_(a),          ctrl_a_var_(a_var),
+              ctrl_w_(w),          ctrl_w_var_(w_var)
+{
+
+
+}
+
+~FilterNode()
+{
+  cout<<"Entering filter node destroy"<<endl;
+}
+
+//adding a sensor reading will perform a sensor update on the present state value
+void addSensAcc(const Vector3d& val, const Vector3d& var)
+{
+  sens_a_     .reset( new Vector3d(val));
+  sens_a_var_ .reset( new Vector3d(var));
+}
+
+void addSensPos(const Vector3d& val, const Vector3d& var)
+{
+  sens_pos_     .reset( new Vector3d(val));
+  sens_pos_var_ .reset( new Vector3d(var));
+}
+
+void addSensMag(const Vector3d& val, const Vector3d& var)
+{
+  sens_mag_     .reset( new Vector3d(val));
+  sens_mag_var_ .reset( new Vector3d(var));
+
+}
+
+void addSensPose(const Transform3d& val, const Vector6d& var)
+{
+  sens_pose_     .reset( new Transform3d(val));
+  sens_pose_var_ .reset( new Vector6d(var));
+}
+
+bool operator < (const SensNode& sn) const
+{
+    return (t_< sn.t_);
+}
+
+bool operator < (const FilterNode& fn) const
+{
+    return (t_< fn.t_);
+}
+
+public:
+double       t_;
+InsState     x_;           //State after prediction from prev x using ctrl below and update step if any as below
+Vector3d     ctrl_a_;      //Ctrl
+Vector3d     ctrl_a_var_;
+Vector3d     ctrl_w_;
+Vector3d     ctrl_w_var_;
+boost::shared_ptr<Vector3d>    sens_a_;
+boost::shared_ptr<Vector3d>    sens_a_var_;
+boost::shared_ptr<Vector3d>    sens_pos_;
+boost::shared_ptr<Vector3d>    sens_pos_var_;
+boost::shared_ptr<Vector3d>    sens_mag_;
+boost::shared_ptr<Vector3d>    sens_mag_var_;
+boost::shared_ptr<Transform3d> sens_pose_;
+boost::shared_ptr<Vector6d>    sens_pose_var_;        //First 3 for rotation and next 3 for translation
+
+};
 
 class CallBackInsEkf
 {
 public:
-  typedef Matrix<double, 4, 4> Matrix4d;
-  typedef Matrix<double, 4, 1> Vector4d;
-  typedef Matrix<double, 7, 1> Vector7d;
 
   class RetReady
   {
@@ -855,7 +971,7 @@ private:
   ros::Time t_epoch_start_;
   FilterReadiness fr_;
   int insstate_initialized_;//0:uninitialized, 1:gps available 2:gyro bias estimated
-  SelCov cov_sens_mag_,cov_sens_acc_, cov_sens_gps_;
+  SelCov cov_sens_mag_,cov_sens_acc_, cov_sens_pos_;
   SelCov cov_ctrl_gyr_, cov_ctrl_acc_, cov_ctrl_su_, cov_ctrl_sa_;
   Vector3d mag_, acc_, gyr_, acc_raw_, gyr_raw_;
   Vector3d map0_;//map reference in lat(deg) lon(deg) and alt(m)
@@ -867,6 +983,9 @@ private:
   gcop_ros_est::InsekfDiag msg_diag_;
   double hz_tf_, hz_odom_, hz_diag_;
   YAML::Node yaml_node_;
+  deque<FilterNode> filt_nodes_;
+  deque<SensNode> sens_nodes_;
+  int n_max_scs_;
 
   //Kalman filter
   InsKalmanPredictor kp_ins_;
@@ -876,7 +995,7 @@ private:
 
   //Sensors
   InsImu<3>   sens_acc_;
-  InsGps<>    sens_gps_;
+  InsGps<>    sens_pos_;
   InsMag<>    sens_mag_;
   //Vector3d  ctrl_w_true_, ctrl_a_true_, ctrl_w_drft_, ctrl_a_drft_;
 
@@ -886,16 +1005,17 @@ public:
 
 CallBackInsEkf::CallBackInsEkf():
     nh_p_("~"),
+    n_max_scs_(100),
     loop_rate_(1000),
     t_(0),
     kp_ins_(ins_),
     kc_insimu_(ins_.X, sens_acc_),
-    kc_insgps_(ins_.X, sens_gps_),
+    kc_insgps_(ins_.X, sens_pos_),
     kc_insmag_(ins_.X, sens_mag_),
     config_(),
     cov_sens_mag_(config_.dyn_cov_sens_mag,   config_.dyn_cov_sens_mag,   config_.dyn_cov_sens_mag),
     cov_sens_acc_(config_.dyn_cov_sens_acc,   config_.dyn_cov_sens_acc,   config_.dyn_cov_sens_acc),
-    cov_sens_gps_(config_.dyn_cov_sens_gps_xy,config_.dyn_cov_sens_gps_xy,config_.dyn_cov_sens_gps_z),
+    cov_sens_pos_(config_.dyn_cov_sens_pos_xy,config_.dyn_cov_sens_pos_xy,config_.dyn_cov_sens_pos_z),
     cov_ctrl_gyr_(config_.dyn_cov_ctrl_gyr,   config_.dyn_cov_ctrl_gyr,   config_.dyn_cov_ctrl_gyr),
     cov_ctrl_acc_(config_.dyn_cov_ctrl_acc,   config_.dyn_cov_ctrl_acc,   config_.dyn_cov_ctrl_acc),
     cov_ctrl_su_(config_.dyn_cov_ctrl_su,   config_.dyn_cov_ctrl_su,   config_.dyn_cov_ctrl_su),
@@ -950,7 +1070,7 @@ CallBackInsEkf::CallBackInsEkf():
 
   fr_.check_ready_.push_back(&cov_sens_mag_);
   fr_.check_ready_.push_back(&cov_sens_acc_);
-  fr_.check_ready_.push_back(&cov_sens_gps_);
+  fr_.check_ready_.push_back(&cov_sens_pos_);
   fr_.check_ready_.push_back(&x0_);
   cout<<"Pushed readiness check to FilterReadiness.check_ready_ member "<<endl;
 
@@ -969,7 +1089,7 @@ CallBackInsEkf::cbTimerPubTFCov(const ros::TimerEvent& event)
   static SelfAdjointEigenSolver<Matrix3d> eig_solver;
 
   //send gps tf
-  if(hz_tf_>=0.0 && cov_sens_gps_.ready())
+  if(hz_tf_>=0.0 && cov_sens_pos_.ready())
   {
     // Send GPS data for visualization
     tf::Transform trfm2;
@@ -982,15 +1102,15 @@ CallBackInsEkf::cbTimerPubTFCov(const ros::TimerEvent& event)
   }
 
   //Send gps cov
-  if(config_.dyn_enable_cov_disp_gps && cov_sens_gps_.ready())
+  if(config_.dyn_enable_cov_disp_gps && cov_sens_pos_.ready())
   {
     marker_cov_gps_lcl_.header.stamp = t_ep_gps_;
     marker_cov_gps_lcl_.pose.position.x = xyz_gps_(0);
     marker_cov_gps_lcl_.pose.position.y = xyz_gps_(1);
     marker_cov_gps_lcl_.pose.position.z = xyz_gps_(2);
-    marker_cov_gps_lcl_.scale.x = 2*sqrt(sens_gps_.R.diagonal()(0));
-    marker_cov_gps_lcl_.scale.y = 2*sqrt(sens_gps_.R.diagonal()(1));
-    marker_cov_gps_lcl_.scale.z = 2*sqrt(sens_gps_.R.diagonal()(2));
+    marker_cov_gps_lcl_.scale.x = 2*sqrt(sens_pos_.R.diagonal()(0));
+    marker_cov_gps_lcl_.scale.y = 2*sqrt(sens_pos_.R.diagonal()(1));
+    marker_cov_gps_lcl_.scale.z = 2*sqrt(sens_pos_.R.diagonal()(2));
     marker_cov_gps_lcl_.color.a = config_.dyn_alpha_cov; // Don't forget to set the alpha!
     pub_viz_cov_.publish( marker_cov_gps_lcl_ );
   }
@@ -1001,19 +1121,16 @@ CallBackInsEkf::cbTimerPubTFCov(const ros::TimerEvent& event)
     Vector4d wxyz;
     SO3::Instance().g2quat(wxyz, x_.R);
     tf::Quaternion q_true(wxyz[1],wxyz[2],wxyz[3],wxyz[0]);
-
     tf::Transform trfm;
     trfm.setOrigin( tf::Vector3(x_.p[0],x_.p[1], x_.p[2]) );
     trfm.setRotation(q_true);
 
     if(hz_tf_>=0)
-      br.sendTransform(tf::StampedTransform(trfm, ros::Time::now(), strfrm_map_, strfrm_robot_));
+      br.sendTransform(tf::StampedTransform(trfm, t_ep_x_, strfrm_map_, strfrm_robot_));
 
     // Send base_link cov
     if(config_.dyn_enable_cov_disp_est)
     {
-
-
       eig_solver.compute((x_.P.block<3,3>(9,9)).selfadjointView<Eigen::Upper>());
       Vector3d eig_vals = eig_solver.eigenvalues();
       Matrix3d eig_vecs = eig_solver.eigenvectors();
@@ -1023,7 +1140,7 @@ CallBackInsEkf::cbTimerPubTFCov(const ros::TimerEvent& event)
         eig_vals.row(0).swap(eig_vals.row(1));
       }
       Vector4d wxyz; SO3::Instance().g2quat(wxyz,eig_vecs);
-      marker_cov_base_link_.header.stamp = ros::Time();
+      marker_cov_base_link_.header.stamp = t_ep_x_;
       marker_cov_base_link_.scale.x = 2*sqrt(eig_vals(0));
       marker_cov_base_link_.scale.y = 2*sqrt(eig_vals(1));
       marker_cov_base_link_.scale.z = 2*sqrt(eig_vals(2));
@@ -1136,31 +1253,34 @@ CallBackInsEkf::cbSubGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps)
 
 
   //filter ready stuff
-  if(!cov_sens_gps_.msg_recvd_)
-    cov_sens_gps_.msg_recvd_=true;
+  if(!cov_sens_pos_.msg_recvd_)
+    cov_sens_pos_.msg_recvd_=true;
 
-  if(!cov_sens_gps_.ready())
+  if(!cov_sens_pos_.ready())
   {
-    if(cov_sens_gps_.type() == 1) //cov from msg
-      cov_sens_gps_.msgCovReady(true);
-    else if(cov_sens_gps_.type() == 2)//est cov
-      cov_sens_gps_.tryEstCov(xyz_gps, first_call);
+    if(cov_sens_pos_.type() == 1) //cov from msg
+      cov_sens_pos_.msgCovReady(true);
+    else if(cov_sens_pos_.type() == 2)//est cov
+      cov_sens_pos_.tryEstCov(xyz_gps, first_call);
   }
   else
-    cov_sens_gps_.updateCov(cov_gps_msg);//It updates everything based on what is the cov provider(either dyn, est or msg)
+    cov_sens_pos_.updateCov(cov_gps_msg);//It updates everything based on what is the cov provider(either dyn, est or msg)
 
 
-  if(!x0_.readypAndCov() && cov_sens_gps_.ready())
-    x0_.setpAndCov(xyz_gps,cov_sens_gps_.cov());
+  if(!x0_.readypAndCov() && cov_sens_pos_.ready())
+    x0_.setpAndCov(xyz_gps,cov_sens_pos_.cov());
 
   if(fr_.is_filtering_on_ && config_.dyn_gps_on)//perform a sensor update
   {
-    InsState xs;
-    Vector3d &zp=xyz_gps;// noisy measurements of position
-    double t= (msg_gps->header.stamp - t_epoch_start_).toSec();
-    kc_insgps_.Correct(x_temp_, t, x_, u_, zp);
-    x_ = x_temp_;
-    t_ep_x_ = msg_gps->header.stamp;
+    cout<<"pushed back gps reading to sens_nodes_"<<endl;
+    sens_nodes_.push_back(SensNode((msg_gps->header.stamp - t_epoch_start_).toSec(), SensorType::GPS));
+    sens_nodes_.back().addVec3d(xyz_gps,cov_sens_pos_.cov().diagonal());
+//    InsState xs;
+//    Vector3d &zp=xyz_gps;// noisy measurements of position
+//    double t= (msg_gps->header.stamp - t_epoch_start_).toSec();
+//    kc_insgps_.Correct(x_temp_, t, x_, u_, zp);
+//    x_ = x_temp_;
+//    t_ep_x_ = msg_gps->header.stamp;
   }
 
 
@@ -1254,6 +1374,9 @@ CallBackInsEkf::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg_imu)
        fr_.is_filtering_on_=true;
 
        x_=x0_.state();
+       filt_nodes_.push_back(FilterNode(0, x_,acc_, cov_ctrl_acc_.cov().diagonal(), gyr_, cov_ctrl_gyr_.cov().diagonal()));
+       filt_nodes_.back().addSensAcc(acc_, cov_ctrl_acc_.cov().diagonal());
+
 
        cout << "*****t=0*****\n";
        cout << "initial state is as follows**************:"<<endl;
@@ -1270,7 +1393,7 @@ CallBackInsEkf::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg_imu)
        cout <<"Initial Sens noise is as follows***********"<<endl;
        cout <<"sens_mag_.R:\n"<< sens_mag_.R <<endl;
        cout <<"sens_acc_.R:\n"<< sens_acc_.R <<endl;
-       cout <<"sens_gps_.R:\n"<< sens_gps_.R <<endl;
+       cout <<"sens_pos_.R:\n"<< sens_pos_.R <<endl;
        cout <<"Initial Ctrl noise is as follows***********"<<endl;
        cout <<"cov_ctrl_gyr_\n"<< cov_ctrl_gyr_.cov() <<endl;
        cout <<"ins.sv: "<< ins_.sv <<endl;
@@ -1285,39 +1408,145 @@ CallBackInsEkf::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg_imu)
      }
      else
      {
-       Vector3d& a = acc_;
-       Vector3d& w = gyr_;
-       Vector6d u;
 
-       u << w, a;
+       //keep the size of the buffer at n_max_scs_
+       while(filt_nodes_.size()>n_max_scs_-1)
+         filt_nodes_.pop_front();
 
        double t  = (msg_imu->header.stamp - t_epoch_start_).toSec();
        double dt = (msg_imu->header.stamp -   t_epoch_prev).toSec();
-
-
        t_epoch_prev = msg_imu->header.stamp;
+       cout << "****************\n";
+       cout << "t:"<<t<< "\tdt:"<<dt <<endl;
+
+       u_ << gyr_, acc_;
 
 
+       filt_nodes_.push_back(FilterNode(t, x0_.state(),acc_, cov_ctrl_acc_.cov().diagonal(), gyr_, cov_ctrl_gyr_.cov().diagonal()));
+       cout<<"Just pushed a new FilterNode to back/end of filt_nodes_"<<endl;
+       cout<<"size of scs_all:"<<filt_nodes_.size()<<endl;
 
+       //Add acc_sens reading to the latest filter node
 
-       kp_ins_.Predict(x_temp_, t, x_, u, dt);
-       if(abs(a.norm() - sens_acc_.a0.norm())<a0_tol_)
-         kc_insimu_.Correct(x_, t, x_temp_, u_, a);
-       else
+       filt_nodes_.back().addSensAcc(acc_, cov_ctrl_acc_.cov().diagonal());
+       cout<<"Just added acc reading to filt_nodes_.back()"<<endl;
+
+       //sort all the sensor readings which have not been added to FilterNode and add them at appropriate places
+       sort(sens_nodes_.begin(), sens_nodes_.end());
+       cout<<"Just sorted the sens_nodes_ and number of elements in sens_nodes_:"<<sens_nodes_.size()<<endl;
+
+       deque<FilterNode>::iterator plb = filt_nodes_.begin(); //prev lower bound
+       deque<FilterNode>::iterator flb = filt_nodes_.end()-1; //first lower bound
+       bool first_update=true;
+
+       //add the sorted sensor reading at the right node in filt_nodes_ or just reject it if it's too old
+       deque<SensNode>::iterator it_sn;
+       for(it_sn = sens_nodes_.begin(); it_sn!=sens_nodes_.end();it_sn++)
        {
-         cout<<"Acc of magnitude: "<< a.norm()<<" exceeded the a0_tol of "<<a0_tol_<<". Skipping update step"<<endl;
-         x_=x_temp_;
+         if(it_sn->t_>filt_nodes_.back().t_)
+           break;
+
+         deque<FilterNode>::iterator lb = lower_bound(plb,filt_nodes_.end(), *it_sn);
+         if(lb == filt_nodes_.begin()) //reject a reading because it's old
+         {
+           cout<<"lower bound given as node 0 so rejecting"<<endl;
+           continue;
+         }
+         else                        //add a reading to the right filter_node
+         {
+
+           if(first_update)
+           {
+             flb = lb;
+             first_update = false;
+           }
+           plb = lb;
+           switch(it_sn->type_)
+           {
+             case SensorType::GPS:
+               lb->addSensPos(*(it_sn->val_),*(it_sn->var_));
+               cout<<"Inserted gps reading at"<<lb-filt_nodes_.begin()<<endl;
+               break;
+             case SensorType::MAG:
+               lb->addSensMag(*(it_sn->val_),*(it_sn->var_));
+               cout<<"Inserted mag reading at"<<lb-filt_nodes_.begin()<<endl;
+               break;
+             case SensorType::POSE3D:
+               lb->addSensPose(*(it_sn->pose_),*(it_sn->pose_var_));
+               cout<<"Inserted pose3d reading at"<<lb-filt_nodes_.begin()<<endl;
+               break;
+           }
+         }
        }
+       //delete the sensor measurements which were either added or rejected
+       //Is the erase operation still inefficient in deque if elements erased are consecutive from ends?
+       sens_nodes_.erase(sens_nodes_.begin(),it_sn);
+       cout<<"size of sens_nodes_ after nodes were erased:"<<sens_nodes_.size()<<endl;
+
+       //predict and update from the first update node to the last node
+       for(deque<FilterNode>::iterator it=flb; it!=filt_nodes_.end(); it++)
+       {
+         //Perform prediction from prev state( (it-1)->x_) to current state
+         Vector6d u; u <<(it-1)->ctrl_w_, (it-1)->ctrl_a_;
+         ins_.sra = sqrt((it-1)->ctrl_a_var_(0));
+         ins_.sv  = sqrt((it-1)->ctrl_w_var_(0));
+         kp_ins_.Predict(it->x_, (it-1)->t_, (it-1)->x_, u, dt);
+         cout<<"Predicted the position for node"<<it-filt_nodes_.begin()<<" from previous node"<<endl;
+
+         //perform update for all the sensors
+         if(it->sens_a_)
+         {
+           cout<<"Entering acc update step for node number:"<<it-filt_nodes_.begin()<<endl;
+           InsState xa = it->x_;
+           sens_acc_.R.setZero();sens_acc_.R.diagonal()= *(it->sens_a_var_);
+           if(abs(it->sens_a_->norm() - sens_acc_.a0.norm()) < a0_tol_)
+             kc_insimu_.Correct(it->x_, it->t_, xa, u, *(it->sens_a_));
+         }
+         if(it->sens_mag_)
+         {
+           cout<<"Entering mag update step for node number:"<<it-filt_nodes_.begin()<<endl;
+           InsState xa = it->x_;
+           sens_mag_.R.setZero();sens_mag_.R.diagonal()= *(it->sens_mag_var_);
+           kc_insmag_.Correct(it->x_, it->t_, xa, u, *(it->sens_mag_));
+         }
+         if(it->sens_pos_)
+         {
+           cout<<"Entering pos update step for node number:"<<it-filt_nodes_.begin()<<endl;
+           InsState xa = it->x_;
+           sens_pos_.R.setZero();sens_pos_.R.diagonal()= *(it->sens_pos_var_);
+           kc_insgps_.Correct(it->x_, it->t_, x_, u, *(it->sens_pos_));
+         }
+         if(it->sens_pose_)
+         {
+           cout<<"Entering pose update step for node number:"<<it-filt_nodes_.begin()<<endl;
+           cout<<"sens_pose_ update unimplemented"<<endl;
+           assert(0);
+         }
+       }
+       x_ = filt_nodes_.back().x_;
        t_ep_x_ = msg_imu->header.stamp;
+
+//       double t  = (msg_imu->header.stamp - t_epoch_start_).toSec();
+//       double dt = (msg_imu->header.stamp -   t_epoch_prev).toSec();
+//       t_epoch_prev = msg_imu->header.stamp;
+//
+//       kp_ins_.Predict(x_temp_, t, x_, u_, dt);
+//       if(abs(acc_.norm() - sens_acc_.a0.norm())<a0_tol_)
+//         kc_insimu_.Correct(x_, t, x_temp_, u_, acc_);
+//       else
+//       {
+//         cout<<"Acc of magnitude: "<< acc_.norm()<<" exceeded the a0_tol of "<<a0_tol_<<". Skipping update step"<<endl;
+//         x_=x_temp_;
+//       }
+//       t_ep_x_ = msg_imu->header.stamp;
+
 
        //Display suff
        Vector6d u_b; u_b << x_.bg, x_.ba;
        Vector6d u_g; u_g <<Vector3d::Zero(),x_.R.transpose()*sens_acc_.a0;
-       Vector6d u_f; u_f = u -u_b - u_g;
+       Vector6d u_f; u_f = u_ -u_b - u_g;
        Vector3d rpy;SO3::Instance().g2q(rpy,x_.R);
-       cout << "****************\n";
-       cout << "t:"<<t<< "\tdt:"<<dt <<endl;
-       cout << "u(w,a):"<<u.transpose()<< endl;
+       cout << "u(w,a):"<<u_.transpose()<< endl;
        cout << "(bg,ba):"<<u_b.transpose()<< endl;
        cout << "u(w,a)-(bw,ba) - R'*g:"<<u_f.transpose()<< endl;
        cout << "position: " << x_.p.transpose() << endl;
@@ -1347,12 +1576,12 @@ CallBackInsEkf::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg_imu)
        static int seq_diag=0;
        msg_diag_.header.frame_id= "none";
        msg_diag_.header.stamp = msg_imu->header.stamp;
-       msg_diag_.wx  = u(0);
-       msg_diag_.wy  = u(1);
-       msg_diag_.wz  = u(2);
-       msg_diag_.ax  = u(3);
-       msg_diag_.ay  = u(4);
-       msg_diag_.az  = u(5);
+       msg_diag_.wx  = u_(0);
+       msg_diag_.wy  = u_(1);
+       msg_diag_.wz  = u_(2);
+       msg_diag_.ax  = u_(3);
+       msg_diag_.ay  = u_(4);
+       msg_diag_.az  = u_(5);
 
        msg_diag_.bgx = u_b(0);
        msg_diag_.bgy = u_b(1);
@@ -1457,11 +1686,15 @@ CallBackInsEkf::cbSubMag(const sensor_msgs::MagneticField::ConstPtr& msg_mag)
 
   if(fr_.is_filtering_on_ && config_.dyn_mag_on)
   {
-    //Sensor update
-    double t  = (msg_mag->header.stamp - t_epoch_start_).toSec();
-    kc_insmag_.Correct(x_temp_, t, x_, u_, mag_);
-    x_ = x_temp_;
-    t_ep_x_ = msg_mag->header.stamp;
+    cout<<"pushed back mag reading to sens_nodes_"<<endl;
+    sens_nodes_.push_back(SensNode((msg_mag->header.stamp - t_epoch_start_).toSec(), SensorType::MAG));
+    sens_nodes_.back().addVec3d(mag_,cov_sens_mag_.cov().diagonal());
+
+//    //Sensor update
+//    double t  = (msg_mag->header.stamp - t_epoch_start_).toSec();
+//    kc_insmag_.Correct(x_temp_, t, x_, u_, mag_);
+//    x_ = x_temp_;
+//    t_ep_x_ = msg_mag->header.stamp;
   }
 
   if(first_call)
@@ -1505,11 +1738,14 @@ CallBackInsEkf::cbSubMagV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_m
 
    if(fr_.is_filtering_on_ && config_.dyn_mag_on)
    {
-     //Sensor update
-     double t  = (msg_mag->header.stamp - t_epoch_start_).toSec();
-     kc_insmag_.Correct(x_temp_, t, x_, u_, mag_);
-     x_ = x_temp_;
-     t_ep_x_ = msg_mag->header.stamp;
+     cout<<"pushed back mag reading to sens_nodes_"<<endl;
+     sens_nodes_.push_back(SensNode((msg_mag->header.stamp - t_epoch_start_).toSec(), SensorType::MAG));
+     sens_nodes_.back().addVec3d(mag_,cov_sens_mag_.cov().diagonal());
+//     //Sensor update
+//     double t  = (msg_mag->header.stamp - t_epoch_start_).toSec();
+//     kc_insmag_.Correct(x_temp_, t, x_, u_, mag_);
+//     x_ = x_temp_;
+//     t_ep_x_ = msg_mag->header.stamp;
    }
 
    if(first_call)
@@ -1624,7 +1860,7 @@ CallBackInsEkf::cbSubGyrV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_g
      cout <<"Initial Sens noise is as follows***********"<<endl;
      cout <<"sens_mag_.R:\n"<< sens_mag_.R <<endl;
      cout <<"sens_acc_.R:\n"<< sens_acc_.R <<endl;
-     cout <<"sens_gps_.R:\n"<< sens_gps_.R <<endl;
+     cout <<"sens_pos_.R:\n"<< sens_pos_.R <<endl;
      cout <<"Initial Ctrl noise is as follows***********"<<endl;
      cout <<"cov_ctrl_gyr_\n"<< cov_ctrl_gyr_.cov() <<endl;
      cout <<"ins.sv: "<< ins_.sv <<endl;
@@ -1639,30 +1875,61 @@ CallBackInsEkf::cbSubGyrV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_g
    }
    else
    {
-     Vector3d& a = acc_;
-     Vector3d& w = gyr_;
-     Vector6d u;
+     while(filt_nodes_.size()>n_max_scs_)
+        filt_nodes_.pop_back();
 
-     u << w, a;
+      double t  = (msg_gyr_v3s->header.stamp - t_epoch_start_).toSec();
+      double dt = (msg_gyr_v3s->header.stamp -   t_epoch_prev).toSec();
+      t_epoch_prev = msg_gyr_v3s->header.stamp;
 
-     double t  = (msg_gyr_v3s->header.stamp - t_epoch_start_).toSec();
-     double dt = (msg_gyr_v3s->header.stamp -   t_epoch_prev).toSec();
+      FilterNode& fn_prev = filt_nodes_.front();
+      Vector6d u; u<<fn_prev.ctrl_w_, fn_prev.ctrl_a_;
+
+      ins_.sra = sqrt(fn_prev.ctrl_a_var_(0));
+      ins_.sv  = sqrt(fn_prev.ctrl_w_var_(0));
+      kp_ins_.Predict(x_temp_, fn_prev.t_, fn_prev.x_, u, dt);
+      filt_nodes_.push_front(FilterNode(t, x_temp_,acc_, cov_ctrl_acc_.cov().diagonal(), gyr_, cov_ctrl_gyr_.cov().diagonal()));
+      if(abs(acc_.norm() - sens_acc_.a0.norm())<a0_tol_)
+      {
+        kc_insimu_.Correct(x_, t, x_temp_, u_, acc_);
+        filt_nodes_.front().x_ = x_;
+        filt_nodes_.front().addSensAcc(acc_, cov_ctrl_acc_.cov().diagonal());
+      }
+      else
+      {
+        cout<<"Acc of magnitude: "<< acc_.norm()<<" exceeded the a0_tol of "<<a0_tol_<<". Skipping update step"<<endl;
+        x_=x_temp_;
+
+      }
+      t_ep_x_ = msg_gyr_v3s->header.stamp;
 
 
-     t_epoch_prev = msg_gyr_v3s->header.stamp;
-
-
-
-
-     kp_ins_.Predict(x_temp_, t, x_, u, dt);
-     if(abs(a.norm() - sens_acc_.a0.norm())<a0_tol_)
-       kc_insimu_.Correct(x_, t, x_temp_, u_, a);
-     else
-     {
-       cout<<"Acc of magnitude: "<< a.norm()<<" exceeded the a0_tol of "<<a0_tol_<<". Skipping update step"<<endl;
-       x_=x_temp_;
-     }
-     t_ep_x_ = msg_gyr_v3s->header.stamp;
+//
+//
+//     Vector3d& a = acc_;
+//     Vector3d& w = gyr_;
+//     Vector6d u;
+//
+//     u << w, a;
+//
+//     double t  = (msg_gyr_v3s->header.stamp - t_epoch_start_).toSec();
+//     double dt = (msg_gyr_v3s->header.stamp -   t_epoch_prev).toSec();
+//
+//
+//     t_epoch_prev = msg_gyr_v3s->header.stamp;
+//
+//
+//
+//
+//     kp_ins_.Predict(x_temp_, t, x_, u, dt);
+//     if(abs(a.norm() - sens_acc_.a0.norm())<a0_tol_)
+//       kc_insimu_.Correct(x_, t, x_temp_, u_, a);
+//     else
+//     {
+//       cout<<"Acc of magnitude: "<< a.norm()<<" exceeded the a0_tol of "<<a0_tol_<<". Skipping update step"<<endl;
+//       x_=x_temp_;
+//     }
+//     t_ep_x_ = msg_gyr_v3s->header.stamp;
 
      //Display suff
      Vector6d u_b; u_b << x_.bg, x_.ba;
@@ -1876,7 +2143,7 @@ CallBackInsEkf::loadYamlParams(void)
   cov_sens_mag_.n_avg_ = x0_.n_avg_;
   cov_sens_acc_.n_avg_ = x0_.n_avg_;
   cov_ctrl_gyr_.n_avg_ = x0_.n_avg_;
-  cov_sens_gps_.n_avg_ = x0_.n_avg_;
+  cov_sens_pos_.n_avg_ = x0_.n_avg_;
 
   //InsState initialization
   Matrix3d rot;
@@ -1929,7 +2196,7 @@ CallBackInsEkf::loadYamlParams(void)
   //accel noise
   cov_sens_acc_.setPointersOfCov(&sens_acc_.R);
   //gps noise
-  cov_sens_gps_.setPointersOfCov(&sens_gps_.R);
+  cov_sens_pos_.setPointersOfCov(&sens_pos_.R);
 
   //MagCalib setup
   initMagCalib();
@@ -1962,7 +2229,7 @@ CallBackInsEkf::setFromParamsConfig()
   type_n_vars = yaml_node_["cov_sens_acc"].as<pair<string,Vector3d>>();
   cov_sens_acc_.initCov(type_n_vars);
   type_n_vars = yaml_node_["cov_sens_gps"].as<pair<string,Vector3d>>();
-  cov_sens_gps_.initCov(type_n_vars);
+  cov_sens_pos_.initCov(type_n_vars);
 
   //ctrl cov
   type_n_vars = yaml_node_["cov_ctrl_gyr"].as<pair<string,Vector3d>>();
@@ -1993,7 +2260,7 @@ CallBackInsEkf::cbReconfig(gcop_ros_est::InsekfConfig &config, uint32_t level)
         break;
       case 4://sens cov change
         cov_sens_acc_.updateCov();
-        cov_sens_gps_.updateCov();
+        cov_sens_pos_.updateCov();
         cov_sens_mag_.updateCov();
         break;
       case 8://ctrl cov change

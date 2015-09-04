@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <launch>
-  <node pkg="gcop_ros_est" type="insekf" name="insekf_3ds"  output="screen">
+  <node pkg="gcop_ros_est" type="insekf" name="insekf_3dm"  output="screen" launch-prefix="">
   <param name="strfile_params" type="str" value="$(find gcop_ros_est)/params/insekf_3dm.yaml"/>
   </node>
 </launch>

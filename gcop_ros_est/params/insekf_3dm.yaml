@@ -74,7 +74,7 @@ m0: [-4045.4 , 20503.7, -47202.3]
 #   (un-modifiable in reconfigure)
 a0: [0.0 , 0.0 , 9.80665]
 
-a0_tol: 0.4 # An acceleration reading with magnitude a0_tol more than a0.norm wont be used in correction step
+a0_tol: 0.5 # An acceleration reading with magnitude a0_tol more than a0.norm wont be used in correction step
 
 ###################################
 # Sensor relative position 
