@@ -2,7 +2,7 @@
 
 ###################################
 pause:    false  #if true then it will pause at the first step of kalman filtering 
-debug_on: true  # Print important data on cout
+debug_on: false  # Print important data on cout
 mag_on:   true # Perform mag update step
 gps_on:   true  # Preform gps update step
 diag_on:  true  # Publish diagnostics information on a topic
@@ -107,7 +107,7 @@ x0_bg_cov: ["est"]  #set to gyro cov
 
 #   Accelerometer bias init
 x0_ba:     ["yaml", 0.0     , 0.0     , 0.0]
-x0_ba_cov: ["yaml", 1.0e-6 , 1.0e-6 , 1.0e-6]
+x0_ba_cov: ["yaml", 1.0e-5 , 1.0e-5 , 1.0e-5]
 #x0_ba: ["est"]
 #x0_ba_cov: ["est"]
 
@@ -121,7 +121,6 @@ x0_p_cov: ["est"] # Will be initialized with gps cov
 #   Velocity init
 x0_v: ["yaml", 0.0, 0.0, 0.0]
 x0_v_cov: ["yaml", 1.0e-4 , 1.0e-4 , 1.0e-4]
-
 
 ###################################
 # Control Noise Parameter
