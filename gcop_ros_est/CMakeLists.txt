@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(gcop_ros_est)
 
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
 add_definitions(-g -std=c++0x -pthread )
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules)
@@ -36,7 +36,6 @@ generate_dynamic_reconfigure_options(
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 find_package(GCOP REQUIRED)
-message("GCOP LIBS: ${GCOP_LIBRARIES}")
 find_package(OpenCV REQUIRED core highgui imgproc calib3d)
 find_package(Eigen3 REQUIRED)
 #find_package(GLU REQUIRED)
@@ -231,16 +230,16 @@ target_link_libraries(insekf
 	                  ${catkin_LIBRARIES}
 	                  ${SWIFTNAV}
 	                  ${YAML_CPP_LIBRARIES} )
-
 add_dependencies(insekf ${PROJECT_NAME}_gencfg )
 
-#add_executable(insekf_alvar src/insekf_alvar.cpp)
-#target_link_libraries(insekf_alvar 
-#		              ${GCOP_LIBRARIES}
-#	                  ${TINYXML_LIBRARIES}
-#	                  ${catkin_LIBRARIES}
-#	                  ${SWIFTNAV})
-#add_dependencies(insekf_alvar ${PROJECT_NAME}_gencfg )
+add_executable(insekf_artags src/insekf_artags.cpp)
+target_link_libraries(insekf_artags 
+		              ${GCOP_LIBRARIES}
+	                  ${TINYXML_LIBRARIES}
+	                  ${catkin_LIBRARIES}
+	                  ${SWIFTNAV}
+	                  ${YAML_CPP_LIBRARIES} )
+add_dependencies(insekf_artags ${PROJECT_NAME}_gencfg )
 
 add_executable(calibrator src/calibrator.cpp)
 target_link_libraries(calibrator 

@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="gcop_ros_est" type="insekf_artags" name="insekf_artags_3dm">
+  <param name="strfile_params" type="str" value="$(find gcop_ros_est)/params/insekf_artags_3dm.yaml"/>
+  </node>
+</launch>

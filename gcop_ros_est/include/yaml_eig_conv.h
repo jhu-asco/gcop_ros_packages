@@ -11,11 +11,12 @@
 #include <Eigen/Dense>
 
 using namespace Eigen;
+using namespace std;
 
 namespace YAML
 {
 template<typename T>
-struct convert<pair<string,T>>
+struct convert< pair<string,T> >
 {
   static Node encode(const pair<string,T>& string_mat) {
     Node node;
