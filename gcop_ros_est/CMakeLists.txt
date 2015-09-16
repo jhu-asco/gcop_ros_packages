@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(gcop_ros_est)
 
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
 add_definitions(-g -std=c++0x -pthread )
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules)
@@ -36,12 +36,18 @@ generate_dynamic_reconfigure_options(
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 find_package(GCOP REQUIRED)
-message("GCOP LIBS: ${GCOP_LIBRARIES}")
 find_package(OpenCV REQUIRED core highgui imgproc calib3d)
 find_package(Eigen3 REQUIRED)
 #find_package(GLU REQUIRED)
 #find_package(GLUT REQUIRED)
 find_library(SWIFTNAV swiftnav)
+
+pkg_check_modules(YAML_CPP yaml-cpp)
+if(${YAML_CPP_VERSION} VERSION_GREATER 0.5)
+    add_definitions(-DHAVE_NEW_YAMLCPP)
+endif()
+link_directories(${YAML_CPP_LIBRARY_DIRS})
+include_directories(${YAML_CPP_INCLUDE_DIRS})
 
 add_message_files(
     FILES
@@ -219,11 +225,21 @@ add_dependencies(simsens ${PROJECT_NAME}_gencfg )
 
 add_executable(insekf src/insekf.cpp)
 target_link_libraries(insekf 
-		      ${GCOP_LIBRARIES}
-	      ${TINYXML_LIBRARIES}
-	      ${catkin_LIBRARIES}
-	      ${SWIFTNAV})
+		              ${GCOP_LIBRARIES}
+	                  ${TINYXML_LIBRARIES}
+	                  ${catkin_LIBRARIES}
+	                  ${SWIFTNAV}
+	                  ${YAML_CPP_LIBRARIES} )
 add_dependencies(insekf ${PROJECT_NAME}_gencfg )
+
+add_executable(insekf_artags src/insekf_artags.cpp)
+target_link_libraries(insekf_artags 
+		              ${GCOP_LIBRARIES}
+	                  ${TINYXML_LIBRARIES}
+	                  ${catkin_LIBRARIES}
+	                  ${SWIFTNAV}
+	                  ${YAML_CPP_LIBRARIES} )
+add_dependencies(insekf_artags ${PROJECT_NAME}_gencfg )
 
 add_executable(calibrator src/calibrator.cpp)
 target_link_libraries(calibrator 

@@ -25,17 +25,10 @@
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/NavSatFix.h>
 #include <sensor_msgs/MagneticField.h>
+
+
+// ROS custom message
 #include <gcop_ros_est/InsekfDiag.h>
-
-
-//gcop_comm msgs
-#include <gcop_comm/State.h>
-#include <gcop_comm/CtrlTraj.h>
-#include <gcop_comm/Trajectory_req.h>
-
-// gps, utm, local coord conversions
-#include "llh_enu_cov.h"
-#include <enu/enu.h>  // ROS wrapper for conversion functions
 
 // utils
 #include <eigen_ros_conv.h>
@@ -49,6 +42,7 @@
 #include <gcop/insimu.h>
 #include <gcop/insgps.h>
 #include <gcop/insmag.h>
+#include <gcop/inspose3d.h>
 
 //Other includes
 #include <numeric>
@@ -964,12 +958,12 @@ public:
   void cbTimerPubOdom(const ros::TimerEvent& event);
   void cbTimerPubDiag(const ros::TimerEvent& event);
   void cbTimerGeneral(const ros::TimerEvent& event);
-  void cbSubGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps);
+  void cbSubPose(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg);
   void cbSubImu(const sensor_msgs::Imu::ConstPtr& msg);
   void updateOdomAndDiagMsg(void);
-  void cbSubMag(const sensor_msgs::MagneticField::ConstPtr& msg_mag);
+  //void cbSubMag(const sensor_msgs::MagneticField::ConstPtr& msg_mag);
   void cbSubAccV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg);
-  void cbSubMagV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_mag_v3s);
+  //void cbSubMagV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_mag_v3s);
   void cbSubGyrV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg);
 
   void cbReconfig(gcop_ros_est::InsekfConfig &config, uint32_t level);
@@ -981,7 +975,6 @@ public:
   void initSubsPubsAndTimers(void);
 
   void loadYamlParams(void);
-  void initMagCalib(void);
   void initCtrls(void);
   void updateCtrls(void);
 
@@ -1005,8 +998,8 @@ public:
 
 
   int type_sensor_msg_;
-  ros::Subscriber sub_gps_;
-  string    strtop_gps_;
+  ros::Subscriber sub_pose_;
+  string    strtop_pose_;
   ros::Subscriber sub_imu_   , sub_mag_;
   string    strtop_imu_, strtop_mag_;
   ros::Subscriber sub_gyr_v3s_   , sub_acc_v3s_   , sub_mag_v3s_;
@@ -1018,8 +1011,8 @@ public:
   //ins state evolution and sensor messages
   SelInitState x0_;
   InsState x_,x_temp_;
-  ros::Time t_ep_x_, t_ep_gps_;
-  Vector3d xyz_gps_;
+  ros::Time t_ep_x_, t_ep_pos_;
+  Vector3d xyz_pos_;
   Vector6d u_;
   Ins ins_;
   double t_;
@@ -1032,7 +1025,7 @@ public:
   Vector3d map0_;//map reference in lat(deg) lon(deg) and alt(m)
   double a0_tol_;
   double scale2si_gyr_, scale2si_acc_;
-  Transform<double,3, Affine> magcal_trfm_, acccal_trfm_;
+  Affine3d magcal_trfm_, acccal_trfm_, pose_box2robot_;
   bool pause_getchar_;
   nav_msgs::Odometry msg_odom_;
   gcop_ros_est::InsekfDiag msg_diag_;
@@ -1142,21 +1135,21 @@ CallBackInsEkf::cbTimerPubTFCov(const ros::TimerEvent& event)
   {
     // Send GPS data for visualization
     tf::Transform trfm2;
-    trfm2.setOrigin( tf::Vector3(xyz_gps_(0),xyz_gps_(1),xyz_gps_(2)) );
+    trfm2.setOrigin( tf::Vector3(xyz_pos_(0),xyz_pos_(1),xyz_pos_(2)) );
     tf::Quaternion q2;
     q2.setRPY(0, 0, 0);
     trfm2.setRotation(q2);
 
-    br.sendTransform(tf::StampedTransform(trfm2, t_ep_gps_, strfrm_map_,strfrm_gps_lcl_));
+    br.sendTransform(tf::StampedTransform(trfm2, t_ep_pos_, strfrm_map_,strfrm_gps_lcl_));
   }
 
   //Send gps cov
   if(config_.dyn_enable_cov_disp_gps && cov_sens_pos_.ready())
   {
-    marker_cov_gps_lcl_.header.stamp = t_ep_gps_;
-    marker_cov_gps_lcl_.pose.position.x = xyz_gps_(0);
-    marker_cov_gps_lcl_.pose.position.y = xyz_gps_(1);
-    marker_cov_gps_lcl_.pose.position.z = xyz_gps_(2);
+    marker_cov_gps_lcl_.header.stamp = t_ep_pos_;
+    marker_cov_gps_lcl_.pose.position.x = xyz_pos_(0);
+    marker_cov_gps_lcl_.pose.position.y = xyz_pos_(1);
+    marker_cov_gps_lcl_.pose.position.z = xyz_pos_(2);
     marker_cov_gps_lcl_.scale.x = 2*sqrt(sens_pos_.R.diagonal()(0));
     marker_cov_gps_lcl_.scale.y = 2*sqrt(sens_pos_.R.diagonal()(1));
     marker_cov_gps_lcl_.scale.z = 2*sqrt(sens_pos_.R.diagonal()(2));
@@ -1286,49 +1279,85 @@ CallBackInsEkf::initRvizMarkers(void)
   marker_cov_gps_lcl_.lifetime = ros::Duration(1);
 }
 
-
 void
-CallBackInsEkf::cbSubGps(const sensor_msgs::NavSatFix::ConstPtr& msg_gps)
+CallBackInsEkf::cbSubPose(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
 {
   static bool first_call=true;
+  Matrix6d cov_pose = Map<Matrix6d>((double*)msg->pose.covariance.data());
+  Matrix3d cov_msg = cov_pose.block<3,3>(0,0);
 
-  Map<Matrix3d>cov_gps_msg((double*)msg_gps->position_covariance.data());
+  Vector3d pos_msg;
+  Matrix3d rot_msg;
+  poseMsg2Eig(rot_msg, pos_msg, msg->pose.pose);
+  Affine3d pose_org2box; pose_org2box.linear() = rot_msg; pose_org2box.translation() =pos_msg;
+  Affine3d pose_org2robot = pose_org2box*pose_box2robot_;
 
-  //Get local coordinates(with map0_ being origin and X-Y-Z axis being East-North-Up
+//  cout<<"rot_msg:\n"<<rot_msg<<endl;
+//  cout<<"pos_msg:\n"<<pos_msg<<endl;
+//  cout<<"pos_box2robot:"<<pose_box2robot_.translation().transpose()<<endl;
+//  cout<<"rot_box2robot:"<<pose_box2robot_.rotation()<<endl;
+  Vector3d pos = pose_org2robot.translation();
+  Matrix3d rot = pose_org2robot.linear();
 
-  Vector3d llh;     llh  << msg_gps->latitude*M_PI/180.0,msg_gps->longitude*M_PI/180.0, msg_gps->altitude ;
-  Vector3d llh0;    llh0 << map0_(0)*M_PI/180.0         ,map0_(1)*M_PI/180.0          , msg_gps->altitude ;
-  Vector3d xyz_gps; llhSI2EnuSI(xyz_gps, llh, llh0);
+   //filter ready stuff for pos
+   if(!cov_sens_pos_.msg_recvd_)
+     cov_sens_pos_.msg_recvd_=true;
+
+   if(!cov_sens_pos_.ready())
+   {
+     if(cov_sens_pos_.type() == 1) //cov from msg
+       cov_sens_pos_.msgCovReady(true);
+     else if(cov_sens_pos_.type() == 2)//est cov
+       cov_sens_pos_.tryEstCov(pos, first_call);
+   }
+   else
+     cov_sens_pos_.updateCov(cov_msg);//It updates everything based on what is the cov provider(either dyn, est or msg)
+
+   if(!x0_.readypAndCov() && cov_sens_pos_.ready())
+     x0_.setpAndCov(pos,cov_sens_pos_.cov());
+
+   //filter ready stuff for mag
+   //Get aligned mag msg covariance
+   mag_ = rot.transpose()*sens_mag_.m0;
+
+//   std::cout<<"mag0 from pose:"<<sens_mag_.m0.transpose()<<endl;
+//   std::cout<<"rot from pose:\n"<<rot<<endl;
+//   std::cout<<"mag_ from pose:"<<mag_.transpose()<<endl;
+
+   Matrix3d cov_mag_msg = Matrix3d::Identity()*0.1;
+   if(!cov_sens_mag_.msg_recvd_)
+     cov_sens_mag_.msg_recvd_=true;
+
+   if(!cov_sens_mag_.ready())
+   {
+     if(cov_sens_mag_.type() == 1) //cov from msg
+       cov_sens_mag_.msgCovReady(true);
+     else if(cov_sens_mag_.type() == 2)//est cov
+       cov_sens_mag_.tryEstCov(mag_, first_call);
+   }
+   else
+     cov_sens_mag_.updateCov(cov_mag_msg);
 
 
-  //filter ready stuff
-  if(!cov_sens_pos_.msg_recvd_)
-    cov_sens_pos_.msg_recvd_=true;
+   //Update
+   if(fr_.is_filtering_on_ && config_.dyn_gps_on)
+   {
+     //perform a sensor(posn) update
+     sens_nodes_.push_back(SensNode((msg->header.stamp - t_epoch_start_).toSec(), SensorType::GPS));
+     sens_nodes_.back().addVec3d(pos,cov_sens_pos_.cov().diagonal());
+   }
 
-  if(!cov_sens_pos_.ready())
-  {
-    if(cov_sens_pos_.type() == 1) //cov from msg
-      cov_sens_pos_.msgCovReady(true);
-    else if(cov_sens_pos_.type() == 2)//est cov
-      cov_sens_pos_.tryEstCov(xyz_gps, first_call);
-  }
-  else
-    cov_sens_pos_.updateCov(cov_gps_msg);//It updates everything based on what is the cov provider(either dyn, est or msg)
-
-
-  if(!x0_.readypAndCov() && cov_sens_pos_.ready())
-    x0_.setpAndCov(xyz_gps,cov_sens_pos_.cov());
-
-  if(fr_.is_filtering_on_ && config_.dyn_gps_on)//perform a sensor update
-  {
-    sens_nodes_.push_back(SensNode((msg_gps->header.stamp - t_epoch_start_).toSec(), SensorType::GPS));
-    sens_nodes_.back().addVec3d(xyz_gps,cov_sens_pos_.cov().diagonal());
-  }
+   if(fr_.is_filtering_on_ && config_.dyn_mag_on)
+   {
+     //perform a sensor(mag) update
+     sens_nodes_.push_back(SensNode((msg->header.stamp - t_epoch_start_).toSec(), SensorType::MAG));
+     sens_nodes_.back().addVec3d(mag_, cov_sens_mag_.cov().diagonal());
+   }
 
 
   //Set the following variables for publishing tf and cov
-  xyz_gps_ = xyz_gps;
-  t_ep_gps_= msg_gps->header.stamp;
+  xyz_pos_ = pos;
+  t_ep_pos_= msg->header.stamp;
 
   if(first_call)
     first_call = false;
@@ -1384,7 +1413,16 @@ CallBackInsEkf::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg)
     cov_ctrl_acc_.updateCov(cov_acc_msg);//It updates everything based on what is the cov provider(either dyn, est or msg)
 
   if(!x0_.readyRAndCov() && cov_sens_mag_.msg_recvd_)
+  {
+//    cout<<"Trying to compute Ra and cov"<<endl;
+//    cout<<"acc_:"<<acc_.transpose()<<endl;
+//    cout<<"acc0:"<<sens_acc_.a0.transpose()<<endl;
+//    cout<<"mag_:"<<mag_.transpose()<<endl;
+//    cout<<"mag0:"<<sens_mag_.m0.transpose()<<endl;
+
     x0_.tryComputeRAndCov(acc_, sens_acc_.a0,mag_, sens_mag_.m0, first_call);
+    //getchar();
+  }
 
   if(!x0_.readyBaAndCov() )
     x0_.tryComputeBaAndCov(acc_,first_call);
@@ -1666,97 +1704,97 @@ CallBackInsEkf::updateOdomAndDiagMsg(void)
     seq_diag++;
   }
 }
-
-void
-CallBackInsEkf::cbSubMag(const sensor_msgs::MagneticField::ConstPtr& msg_mag)
-{
-  static bool first_call=true;
-
-  // Extract sensor value
-  Vector3d mag_raw;
-  mag_raw << msg_mag->magnetic_field.x, msg_mag->magnetic_field.y, msg_mag->magnetic_field.z;
-  mag_= magcal_trfm_*mag_raw;
-  double norm_mag = mag_.norm();
-  mag_.normalize();
-
-  // net Linear transformation between raw data and aligned final mag data
-  Matrix3d net_tfm_mag;
-  net_tfm_mag = magcal_trfm_.linear()/(norm_mag*norm_mag);
-
-  //Get aligned mag msg covariance
-  Map<Matrix3d> cov_mag_msg_unaligned((double*)msg_mag->magnetic_field_covariance.data());
-  Matrix3d cov_mag_msg; cov_mag_msg = net_tfm_mag * cov_mag_msg_unaligned * net_tfm_mag.transpose();
-
-  //  // Set filter ready stuff
-  if(!cov_sens_mag_.msg_recvd_)
-    cov_sens_mag_.msg_recvd_=true;
-
-  if(!cov_sens_mag_.ready())
-  {
-    if(cov_sens_mag_.type() == 1) //cov from msg
-      cov_sens_mag_.msgCovReady(true);
-    else if(cov_sens_mag_.type() == 2)//est cov
-      cov_sens_mag_.tryEstCov(mag_, first_call);
-  }
-  else
-    cov_sens_mag_.updateCov(cov_mag_msg);
-  //  Matrix3d cov_mag0; cov_mag0.setZero();cov_mag0.diagonal()<<1.0,1.0,1e-4;
-  //  sens_mag_.R = x_.R.transpose()*cov_mag0*x_.R.transpose();
-
-  if(fr_.is_filtering_on_ && config_.dyn_mag_on)
-  {
-    sens_nodes_.push_back(SensNode((msg_mag->header.stamp - t_epoch_start_).toSec(), SensorType::MAG));
-    sens_nodes_.back().addVec3d(mag_,cov_sens_mag_.cov().diagonal());
-  }
-
-  if(first_call)
-    first_call=false;
-}
-
-
-void
-CallBackInsEkf::cbSubMagV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_mag)
-{
-  cout<<"got magnetometer vector"<<endl;
-  static bool first_call=true;
-
-  // Extract sensor value
-  Vector3d mag_raw;
-  Matrix3d cov_mag;
-  mag_raw << msg_mag->vector.x, msg_mag->vector.y, msg_mag->vector.z;
-  mag_= magcal_trfm_*mag_raw;
-  double norm_mag = mag_.norm();
-  mag_.normalize();
-
-  //Get aligned mag msg covariance
-  //not available here
-
-  // Set filter ready stuff
-  if(!cov_sens_mag_.msg_recvd_)
-    cov_sens_mag_.msg_recvd_=true;
-
-  if(!cov_sens_mag_.ready())
-  {
-    if(cov_sens_mag_.type() == 1) //cov from msg
-    {
-      cout<<"Tried to use message covariance but this mag message doesn't have one"<<endl;
-      assert(0);
-    }
-    else if(cov_sens_mag_.type() == 2)//est cov
-      cov_sens_mag_.tryEstCov(mag_, first_call);//use when msg has covariance
-  }
-  else
-    cov_sens_mag_.updateCov(cov_mag);
-
-  if(fr_.is_filtering_on_ && config_.dyn_mag_on)
-  {
-    sens_nodes_.push_back(SensNode((msg_mag->header.stamp - t_epoch_start_).toSec(), SensorType::MAG));
-    sens_nodes_.back().addVec3d(mag_,cov_sens_mag_.cov().diagonal());
-  }
-
-  if(first_call)
-    first_call=false;
-}
+//
+//void
+//CallBackInsEkf::cbSubMag(const sensor_msgs::MagneticField::ConstPtr& msg_mag)
+//{
+//  static bool first_call=true;
+//
+//  // Extract sensor value
+//  Vector3d mag_raw;
+//  mag_raw << msg_mag->magnetic_field.x, msg_mag->magnetic_field.y, msg_mag->magnetic_field.z;
+//  mag_= magcal_trfm_*mag_raw;
+//  double norm_mag = mag_.norm();
+//  mag_.normalize();
+//
+//  // net Linear transformation between raw data and aligned final mag data
+//  Matrix3d net_tfm_mag;
+//  net_tfm_mag = magcal_trfm_.linear()/(norm_mag*norm_mag);
+//
+//  //Get aligned mag msg covariance
+//  Map<Matrix3d> cov_mag_msg_unaligned((double*)msg_mag->magnetic_field_covariance.data());
+//  Matrix3d cov_mag_msg; cov_mag_msg = net_tfm_mag * cov_mag_msg_unaligned * net_tfm_mag.transpose();
+//
+//  //  // Set filter ready stuff
+//  if(!cov_sens_mag_.msg_recvd_)
+//    cov_sens_mag_.msg_recvd_=true;
+//
+//  if(!cov_sens_mag_.ready())
+//  {
+//    if(cov_sens_mag_.type() == 1) //cov from msg
+//      cov_sens_mag_.msgCovReady(true);
+//    else if(cov_sens_mag_.type() == 2)//est cov
+//      cov_sens_mag_.tryEstCov(mag_, first_call);
+//  }
+//  else
+//    cov_sens_mag_.updateCov(cov_mag_msg);
+//  //  Matrix3d cov_mag0; cov_mag0.setZero();cov_mag0.diagonal()<<1.0,1.0,1e-4;
+//  //  sens_mag_.R = x_.R.transpose()*cov_mag0*x_.R.transpose();
+//
+//  if(fr_.is_filtering_on_ && config_.dyn_mag_on)
+//  {
+//    sens_nodes_.push_back(SensNode((msg_mag->header.stamp - t_epoch_start_).toSec(), SensorType::MAG));
+//    sens_nodes_.back().addVec3d(mag_,cov_sens_mag_.cov().diagonal());
+//  }
+//
+//  if(first_call)
+//    first_call=false;
+//}
+//
+//
+//void
+//CallBackInsEkf::cbSubMagV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg_mag)
+//{
+//  cout<<"got magnetometer vector"<<endl;
+//  static bool first_call=true;
+//
+//  // Extract sensor value
+//  Vector3d mag_raw;
+//  Matrix3d cov_mag;
+//  mag_raw << msg_mag->vector.x, msg_mag->vector.y, msg_mag->vector.z;
+//  mag_= magcal_trfm_*mag_raw;
+//  double norm_mag = mag_.norm();
+//  mag_.normalize();
+//
+//  //Get aligned mag msg covariance
+//  //not available here
+//
+//  // Set filter ready stuff
+//  if(!cov_sens_mag_.msg_recvd_)
+//    cov_sens_mag_.msg_recvd_=true;
+//
+//  if(!cov_sens_mag_.ready())
+//  {
+//    if(cov_sens_mag_.type() == 1) //cov from msg
+//    {
+//      cout<<"Tried to use message covariance but this mag message doesn't have one"<<endl;
+//      assert(0);
+//    }
+//    else if(cov_sens_mag_.type() == 2)//est cov
+//      cov_sens_mag_.tryEstCov(mag_, first_call);//use when msg has covariance
+//  }
+//  else
+//    cov_sens_mag_.updateCov(cov_mag);
+//
+//  if(fr_.is_filtering_on_ && config_.dyn_mag_on)
+//  {
+//    sens_nodes_.push_back(SensNode((msg_mag->header.stamp - t_epoch_start_).toSec(), SensorType::MAG));
+//    sens_nodes_.back().addVec3d(mag_,cov_sens_mag_.cov().diagonal());
+//  }
+//
+//  if(first_call)
+//    first_call=false;
+//}
 
 void
 CallBackInsEkf::cbSubAccV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg)
@@ -2029,12 +2067,12 @@ CallBackInsEkf::setupTopicsAndNames(void)
 
   type_sensor_msg_   = yaml_node_["type_sensor_msg"].as<int>();
 
-  strtop_gps_        = yaml_node_["strtop_gps"].as<string>();
+  strtop_pose_        = yaml_node_["strtop_pose"].as<string>();
   strtop_imu_        = yaml_node_["strtop_imu"].as<string>();
-  strtop_mag_        = yaml_node_["strtop_mag"].as<string>();
+  //strtop_mag_        = yaml_node_["strtop_mag"].as<string>();
   strtop_gyr_v3s_    = yaml_node_["strtop_gyr_v3s"].as<string>();
   strtop_acc_v3s_    = yaml_node_["strtop_acc_v3s"].as<string>();
-  strtop_mag_v3s_    = yaml_node_["strtop_mag_v3s"].as<string>();
+  //strtop_mag_v3s_    = yaml_node_["strtop_mag_v3s"].as<string>();
 
   strtop_odom_       = yaml_node_["strtop_odom"].as<string>();
   strtop_diag_       = yaml_node_["strtop_diag"].as<string>();
@@ -2049,7 +2087,7 @@ CallBackInsEkf::setupTopicsAndNames(void)
     cout<<"Topics are:"<<endl;
     if(type_sensor_msg_==1)
     {
-      cout<<"strtop_gps:"<<strtop_gps_<<endl;
+      cout<<"strtop_gps:"<<strtop_pose_<<endl;
       cout<<"strtop_imu:"<<strtop_imu_<<endl;
       cout<<"strtop_mag:"<<strtop_mag_<<endl;
     }
@@ -2069,17 +2107,17 @@ void
 CallBackInsEkf::initSubsPubsAndTimers(void)
 {
   //Subscribers
-  sub_gps_  = nh_.subscribe<sensor_msgs::NavSatFix>(strtop_gps_,1000,&CallBackInsEkf::cbSubGps, this,ros::TransportHints().tcpNoDelay());
+  sub_pose_  = nh_.subscribe<geometry_msgs::PoseWithCovarianceStamped>(strtop_pose_,1000,&CallBackInsEkf::cbSubPose, this,ros::TransportHints().tcpNoDelay());
 
   if(type_sensor_msg_==1)
   {
     sub_imu_ = nh_.subscribe<sensor_msgs::Imu>(strtop_imu_,1000,&CallBackInsEkf::cbSubImu, this, ros::TransportHints().tcpNoDelay());
-    sub_mag_ = nh_.subscribe<sensor_msgs::MagneticField>(strtop_mag_,1000,&CallBackInsEkf::cbSubMag, this, ros::TransportHints().tcpNoDelay());
+    //sub_mag_ = nh_.subscribe<sensor_msgs::MagneticField>(strtop_mag_,1000,&CallBackInsEkf::cbSubMag, this, ros::TransportHints().tcpNoDelay());
   }
   else if(type_sensor_msg_==0)
   {
     sub_acc_v3s_  = nh_.subscribe<geometry_msgs::Vector3Stamped>(strtop_acc_v3s_,1000,&CallBackInsEkf::cbSubAccV3S, this,ros::TransportHints().tcpNoDelay());
-    sub_mag_v3s_  = nh_.subscribe<geometry_msgs::Vector3Stamped>(strtop_mag_v3s_,1000,&CallBackInsEkf::cbSubMagV3S, this,ros::TransportHints().tcpNoDelay());
+    //sub_mag_v3s_  = nh_.subscribe<geometry_msgs::Vector3Stamped>(strtop_mag_v3s_,1000,&CallBackInsEkf::cbSubMagV3S, this,ros::TransportHints().tcpNoDelay());
     sub_gyr_v3s_  = nh_.subscribe<geometry_msgs::Vector3Stamped>(strtop_gyr_v3s_,1000,&CallBackInsEkf::cbSubGyrV3S, this,ros::TransportHints().tcpNoDelay());
   }
   else
@@ -2164,7 +2202,7 @@ CallBackInsEkf::loadYamlParams(void)
   sens_acc_.a0 = a0;
   sens_acc_.m0 = m0.normalized();
   sens_mag_.m0 = m0.normalized();
-  map0_ = yaml_node_["map0"].as<Vector3d>();
+  //map0_ = yaml_node_["map0"].as<Vector3d>();
 
 
   //set robot to sensors rotation
@@ -2195,18 +2233,18 @@ CallBackInsEkf::loadYamlParams(void)
   //gps noise
   cov_sens_pos_.setPointersOfCov(&sens_pos_.R);
 
-  //MagCalib setup
-  initMagCalib();
-}
+  //box2robot transformation
+  pose_box2robot_.linear()      = yaml_node_["box2robot_linear"].as<Matrix3d>();
+  pose_box2robot_.translation() = yaml_node_["box2robot_translation"].as<Vector3d>();
 
-void
-CallBackInsEkf::initMagCalib(void)
-{
+
+  //MagCalib setup
   magcal_trfm_.linear()      = yaml_node_["magcal_linear"].as<Matrix3d>();
   magcal_trfm_.translation() = yaml_node_["magcal_translation"].as<Vector3d>();
 
   acccal_trfm_.linear()      = yaml_node_["acccal_linear"].as<Matrix3d>();
   acccal_trfm_.translation() = yaml_node_["acccal_translation"].as<Vector3d>();
+
 }
 
 
@@ -2225,7 +2263,7 @@ CallBackInsEkf::setFromParamsConfig()
   cov_sens_mag_.initCov(type_n_vars);
   type_n_vars = yaml_node_["cov_sens_acc"].as<pair<string,Vector3d>>();
   cov_sens_acc_.initCov(type_n_vars);
-  type_n_vars = yaml_node_["cov_sens_gps"].as<pair<string,Vector3d>>();
+  type_n_vars = yaml_node_["cov_sens_pos"].as<pair<string,Vector3d>>();
   cov_sens_pos_.initCov(type_n_vars);
 
   //ctrl cov

@@ -42,4 +42,13 @@ void eig2TwistMsg(geometry_msgs::Twist& twist, const Vector3d& w, const Vector3d
   twist.linear.z  = v(2);
 }
 
+void poseMsg2Eig(Matrix3d& rot, Vector3d& pos, const geometry_msgs::Pose& pose)
+{
+  Vector4d wxyz;
+  wxyz << pose.orientation.w , pose.orientation.x , pose.orientation.y , pose.orientation.z;
+  SO3::Instance().quat2g(rot,wxyz);
+  pos << pose.position.x , pose.position.y , pose.position.z;
+}
+
+
 #endif /* EIGEN_ROS_CONV_H_ */
