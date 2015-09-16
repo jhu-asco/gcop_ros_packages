@@ -20,6 +20,10 @@
 
 #include <gcop_comm/CtrlTraj.h>
 
+#include <tf/transform_listener.h>
+
+#include "gcop_comm/gcop_trajectory_visualizer.h"
+
 class HrotorOVS
 {
 public:
@@ -50,6 +54,8 @@ private:
     cv::Mat& desc_gpu);
   void generateTrajectory(cv::Mat im, cv::Mat depths, cv::Mat im_goal);
 
+  GcopTrajectoryVisualizer gtv;
+
   bool has_intrinsics;
   ros::Time img_time_stamp;
 
@@ -74,6 +80,10 @@ private:
   double final_time;
   int b3d_iterations;
   int hrotor_iterations;
+  double imageQ;
+
+  tf::StampedTransform start_tf;
+  tf::TransformListener tflistener;
 };
 
 #endif
