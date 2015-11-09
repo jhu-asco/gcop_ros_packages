@@ -1,0 +1,7 @@
+<?xml version='1.0'?>
+<launch>
+  <node name="rampage_traj_plot_rviz" pkg="rampage_logger" type="rampage_traj_plot_rviz" output="screen" launch-prefix="">
+<param name="strfile_params" type="str" value="$(find gcop_ctrl)/params/dstar_ddp_planner.yaml"/> 
+</node>
+  <node name="reconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" output="screen" />
+</launch>

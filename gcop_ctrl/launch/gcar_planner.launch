@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
 <launch>
-	<node name="gcar_planner" pkg="gcop_ctrl" type="gcar_ddp_planner" output="screen" launch-prefix="ddd --args"/>
+	<node name="gcar_planner" pkg="gcop_ctrl" type="gcar_ddp_planner" output="screen" />
 
 </launch>

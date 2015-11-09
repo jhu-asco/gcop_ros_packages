@@ -89,7 +89,6 @@ typedef KalmanCorrector<InsState, 15, 6, Dynamic, Vector3d, 3> InsGpsKalmanCorre
 typedef Eigen::Matrix<double, 4, 4> Matrix4d;
 typedef Eigen::Matrix<double, 4, 1> Vector4d;
 typedef Eigen::Matrix<double, 7, 1> Vector7d;
-typedef Eigen::Transform<double,3, Affine> Transform3d;
 //-------------------------------------------------------------------------
 //-----------------------GLOBAL VARIABLES ---------------------------------
 //-------------------------------------------------------------------------
@@ -176,9 +175,9 @@ public:
     assert(type_==SensorType::GPS || type_==SensorType::MAG);
   }
 
-  void addPose3d(const Transform3d& tfm, const Vector6d& vec)
+  void addPose3d(const Affine3d& tfm, const Vector6d& vec)
   {
-    pose_ .reset( new Transform3d(tfm));
+    pose_ .reset( new Affine3d(tfm));
     pose_var_ .reset( new Vector6d(vec));
     assert(type_==SensorType::POSE3D);
   }
@@ -191,7 +190,7 @@ public:
   double t_;
   shared_ptr<Vector3d> val_;
   shared_ptr<Vector3d> var_;
-  shared_ptr<Transform3d> pose_;
+  shared_ptr<Affine3d> pose_;
   shared_ptr<Vector6d>    pose_var_;
   SensorType type_;
 };
@@ -227,9 +226,9 @@ public:
 
   }
 
-  void addSensPose(const Transform3d& val, const Vector6d& var)
+  void addSensPose(const Affine3d& val, const Vector6d& var)
   {
-    sens_pose_    .reset( new Transform3d(val));
+    sens_pose_    .reset( new Affine3d(val));
     sens_pose_var_.reset( new Vector6d(var));
   }
 
@@ -256,7 +255,7 @@ public:
   shared_ptr<Vector3d>    sens_pos_var_;
   shared_ptr<Vector3d>    sens_mag_;
   shared_ptr<Vector3d>    sens_mag_var_;
-  shared_ptr<Transform3d> sens_pose_;
+  shared_ptr<Affine3d>    sens_pose_;
   shared_ptr<Vector6d>    sens_pose_var_;        //First 3 for rotation and next 3 for translation
 
 };
@@ -1310,7 +1309,8 @@ CallBackInsEkf::cbSubPose(const geometry_msgs::PoseWithCovarianceStamped::ConstP
      else if(cov_sens_pos_.type() == 2)//est cov
        cov_sens_pos_.tryEstCov(pos, first_call);
    }
-   else
+
+   if(cov_sens_pos_.ready())
      cov_sens_pos_.updateCov(cov_msg);//It updates everything based on what is the cov provider(either dyn, est or msg)
 
    if(!x0_.readypAndCov() && cov_sens_pos_.ready())
@@ -1319,10 +1319,6 @@ CallBackInsEkf::cbSubPose(const geometry_msgs::PoseWithCovarianceStamped::ConstP
    //filter ready stuff for mag
    //Get aligned mag msg covariance
    mag_ = rot.transpose()*sens_mag_.m0;
-
-//   std::cout<<"mag0 from pose:"<<sens_mag_.m0.transpose()<<endl;
-//   std::cout<<"rot from pose:\n"<<rot<<endl;
-//   std::cout<<"mag_ from pose:"<<mag_.transpose()<<endl;
 
    Matrix3d cov_mag_msg = Matrix3d::Identity()*0.1;
    if(!cov_sens_mag_.msg_recvd_)
@@ -1335,7 +1331,8 @@ CallBackInsEkf::cbSubPose(const geometry_msgs::PoseWithCovarianceStamped::ConstP
      else if(cov_sens_mag_.type() == 2)//est cov
        cov_sens_mag_.tryEstCov(mag_, first_call);
    }
-   else
+
+   if(cov_sens_mag_.ready())
      cov_sens_mag_.updateCov(cov_mag_msg);
 
 
@@ -1399,7 +1396,8 @@ CallBackInsEkf::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg)
     else if(cov_sens_acc_.type() == 2)//est cov
       cov_sens_acc_.tryEstCov(acc_, first_call);
   }
-  else
+
+  if(cov_sens_acc_.ready())
     cov_sens_acc_.updateCov(cov_acc_msg);//It updates everything based on what is the cov provider(either dyn, est or msg)
 
   if(!cov_ctrl_acc_.ready())
@@ -1409,19 +1407,13 @@ CallBackInsEkf::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg)
     else if(cov_ctrl_acc_.type() == 2)//est cov
       cov_ctrl_acc_.tryEstCov(acc_, first_call);
   }
-  else
+
+  if(cov_ctrl_acc_.ready())
     cov_ctrl_acc_.updateCov(cov_acc_msg);//It updates everything based on what is the cov provider(either dyn, est or msg)
 
   if(!x0_.readyRAndCov() && cov_sens_mag_.msg_recvd_)
   {
-//    cout<<"Trying to compute Ra and cov"<<endl;
-//    cout<<"acc_:"<<acc_.transpose()<<endl;
-//    cout<<"acc0:"<<sens_acc_.a0.transpose()<<endl;
-//    cout<<"mag_:"<<mag_.transpose()<<endl;
-//    cout<<"mag0:"<<sens_mag_.m0.transpose()<<endl;
-
     x0_.tryComputeRAndCov(acc_, sens_acc_.a0,mag_, sens_mag_.m0, first_call);
-    //getchar();
   }
 
   if(!x0_.readyBaAndCov() )
@@ -1438,7 +1430,8 @@ CallBackInsEkf::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg)
     else if(cov_ctrl_gyr_.type() == 2)//est cov
       cov_ctrl_gyr_.tryEstCov(gyr_, first_call);
   }
-  else
+
+  if(cov_ctrl_gyr_.ready())
     cov_ctrl_gyr_.updateCov(cov_gyr_msg);//It updates everything based on what is the cov provider(either dyn, est or msg)
 
   if(!x0_.readyBgAndCov() && !fr_.isReady())
@@ -1821,7 +1814,8 @@ CallBackInsEkf::cbSubAccV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg)
     else if(cov_sens_acc_.type() == 2)//est cov
       cov_sens_acc_.tryEstCov(acc, first_call);
   }
-  else
+
+  if(cov_sens_acc_.ready())
     cov_sens_acc_.updateCov();//It updates everything based on what is the cov provider(either dyn, est or msg)
 
   if(!cov_ctrl_acc_.ready())
@@ -1834,7 +1828,8 @@ CallBackInsEkf::cbSubAccV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg)
     else if(cov_ctrl_acc_.type() == 2)//est cov
       cov_ctrl_acc_.tryEstCov(acc, first_call);
   }
-  else
+
+  if(cov_ctrl_acc_.ready())
     cov_ctrl_acc_.updateCov();//It updates everything based on what is the cov provider(either dyn, est or msg)
 
   if(!x0_.readyRAndCov() && cov_sens_mag_.msg_recvd_)
@@ -1893,7 +1888,8 @@ CallBackInsEkf::cbSubGyrV3S(const geometry_msgs::Vector3Stamped::ConstPtr& msg)
     else if(cov_ctrl_gyr_.type() == 2)//est cov
       cov_ctrl_gyr_.tryEstCov(gyr_, first_call);
   }
-  else
+
+  if(cov_ctrl_gyr_.ready())
     cov_ctrl_gyr_.updateCov(cov_gyr);//It updates everything based on what is the cov provider(either dyn, est or msg)
 
   if(!x0_.readyBgAndCov() )

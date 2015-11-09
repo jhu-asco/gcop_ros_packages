@@ -2,11 +2,9 @@
 
 ###################################
 pause:    false  #if true then it will pause at the first step of kalman filtering 
-debug_on: true  # Print important data on cout
-mag_on:   true # Perform mag update step
+debug_on: false  # Print important data on cout
+mag_on:   false # Perform mag update step
 gps_on:   true  # Preform gps update step
-diag_on:  true  # Publish diagnostics information on a topic
-tf_on:    true  # Display poses as tf data
 
 ###################################
 
@@ -54,7 +52,7 @@ strtop_marker_cov: "/visualization_marker"
 #   value<0.0 will disable puslishing the data 
 hz_tf:   10.0  # Freq at which TF & cov for gps_lcl and base_link is published
 hz_odom:  0.0  # Freq at which odometric data is published
-hz_diag: -1.0  # Freq at which diagnostic data is published
+hz_diag:  0.0  # Freq at which diagnostic data is published
 
 ###################################
 # Mag reference
@@ -68,7 +66,7 @@ m0: [1.0 , 0.0 , 0.0 ]
 #   (un-modifiable in reconfigure)
 a0: [0.0 , 0.0 , 9.80665]
 
-a0_tol: 0.4 # An acceleration reading with magnitude a0_tol more than a0.norm wont be used in correction step
+a0_tol: 0.7 # An acceleration reading with magnitude a0_tol more than a0.norm wont be used in correction step
 
 ###################################
 # Sensor relative position 
@@ -128,7 +126,7 @@ x0_v_cov: ["yaml", 1.0e-4 , 1.0e-4 , 1.0e-4]
 #     Evaluate the covariance upon startup. Note that the sensor has to be still for first 2 seconds
 
  
-cov_ctrl_gyr:  ["dyn",4.89057e-07, 4.43908e-07, 4.01957e-07]
+cov_ctrl_gyr:  ["dyn",4.89057e-02, 4.43908e-02, 4.01957e-02]
 #cov_ctrl_gyr: ["msg"]
 #cov_ctrl_gyr: ["est"]
 cov_ctrl_acc:  ["dyn",1.0,1.0,1.0] 
@@ -146,7 +144,7 @@ cov_ctrl_sa: ["dyn",9.0e-16,9.0e-16,9.0e-16]  #acceleration bias rate-of-change 
 #     Use covariance provided in the sensor msgs
 #   cov: ["est"]
 #     Evaluate the covariance upon startup. Note that the sensor has to be still for first 2 seconds
-cov_sens_mag:  ["dyn",1.0e-1,1.0e-1,1.0e-1] #covariance of the magnetometer where the readings lie on a unit sphere
+cov_sens_mag:  ["dyn",1.0e-9,1.0e-9,1.0e-9] #covariance of the magnetometer where the readings lie on a unit sphere
 #cov_sens_mag: ["msg"]
 #cov_sens_mag: ["est"]
 cov_sens_acc:  ["dyn", 1.0e-2,1.0e-2,1.0e-2]

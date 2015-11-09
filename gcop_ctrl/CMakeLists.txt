@@ -37,6 +37,13 @@ include(${OpenCV_INCLUDE_DIRS})
 set(LIBS ${LIBS} ${OpenCV_LIBRARIES})
 
 message("GCOP LIBS: ${GCOP_LIBRARIES}")
+pkg_check_modules(YAML_CPP yaml-cpp)
+if(${YAML_CPP_VERSION} VERSION_GREATER 0.5)
+    add_definitions(-DHAVE_NEW_YAMLCPP)
+endif()
+link_directories(${YAML_CPP_LIBRARY_DIRS})
+include_directories(${YAML_CPP_INCLUDE_DIRS})
+
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
 ## See http://ros.org/doc/api/catkin/html/user_guide/setup_dot_py.html
@@ -103,6 +110,7 @@ generate_dynamic_reconfigure_options(
 	cfg/MbsSimInterface.cfg
 	cfg/DMocInterface.cfg
 	cfg/MbsNodeInterface.cfg
+	cfg/DstarDdpPlanner.cfg
 )
 ###################################
 ## catkin specific configuration ##
@@ -171,6 +179,10 @@ add_dependencies(rccar_ddp_lcl_planner ${PROJECT_NAME}_gencfg)
 add_executable(gcar_ddp_planner src/gcar_ddp_planner.cpp)
 target_link_libraries(gcar_ddp_planner ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(gcar_ddp_planner ${PROJECT_NAME}_gencfg)
+
+add_executable(dstar_ddp_planner src/dstar_ddp_planner.cpp)
+target_link_libraries(dstar_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} )
+add_dependencies(dstar_ddp_planner ${PROJECT_NAME}_gencfg )
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes

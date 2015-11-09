@@ -1,0 +1,47 @@
+#parameters to be used with dstar_ddp_yaml.cpp
+
+###################################
+debug_on: false  # Print important data on cout
+
+###################################
+# frame names
+#   (un-modifiable in reconfigure)
+#   strfrm_map:     The frame of origin of world
+#   strfrm_robot:   The frame of origin of robot
+#   strfrm_og:      The location of origin of the og(as obtained from gmapping)
+strfrm_map: "/map"          
+strfrm_robot: "/base_link"  
+strfrm_og: "/map1"
+
+###################################
+# Topic name(Input)
+#   (un-modifiable in reconfigure)
+#   strtop_odom:       odometry msg from state estimator
+#   strtop_pose_start: initial pose
+#   strtop_pose_goal:  goal pose
+#   strtop_traj:       trajectory(what traj?)
+#   strtop_og:         topic for original occ grid
+strtop_odom:       "/insekf/odom"
+strtop_pose_start: "/initialpose"
+strtop_pose_goal:  "/move_base_simple/goal"
+strtop_og:         "/map"
+
+###################################
+# Topic name(Output)
+#   (un-modifiable in reconfigure)
+#   strtop_diag: diagnostic messages
+#   strtop_marker_rivz: change this name. This is where we send the traj to be plotted on rvizS
+#   strtop_og_dild: topic for dilated occ grid
+strtop_diag:       "/insekf/diag"
+strtop_marker_rivz: "/visualization_marker"
+strtop_og_dild: "/map_occgrid_dialated"
+strtop_traj:       "/traj_global"
+
+###################################
+# hz_var: frequency at which a message will be published
+#   (un-modifiable in reconfigure)
+#   value>0.0 will publish data at required frequency
+#   value=0.0 will result in the data to be sent at the max freq
+#   value<0.0 will disable puslishing the data 
+hz_diag: -1.0  # Freq at which diagnostic data is published
+
