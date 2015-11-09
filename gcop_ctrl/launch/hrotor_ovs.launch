@@ -1,11 +1,8 @@
 <?xml version="1.0"?>
 <launch>	
 	<node name="hrotor_ovs" pkg="gcop_ctrl" type="hrotor_ovs" output="screen" >
-    <remap from="image" to="/mesh_localize/image" />
-    <remap from="camera_info" to="/mesh_localize/camera_info" />
-    <remap from="depth" to="/mesh_localize/depth" />
     <remap from="/hrotor_ovs/traj" to="/mbsddp/traj_resp" />
     <remap from="/hrotor_ovs/traj_marker" to="/desired_traj" />
-    <param name="im_goal_filename" type="string" value="$(find gcop_ctrl)/data/frame0002.jpg" />
+    <param name="im_goal_filename" type="string" value="$(find gcop_ctrl)/data/frame0006.jpg" />
   </node>
 </launch>
