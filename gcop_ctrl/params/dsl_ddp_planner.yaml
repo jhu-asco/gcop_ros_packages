@@ -1,4 +1,4 @@
-#parameters to be used with dstar_ddp_yaml.cpp
+#parameters to be used with dsl_ddp_yaml.cpp
 
 ###################################
 debug_on: false  # Print important data on cout
@@ -9,9 +9,9 @@ debug_on: false  # Print important data on cout
 #   strfrm_map:     The frame of origin of world
 #   strfrm_robot:   The frame of origin of robot
 #   strfrm_og:      The location of origin of the og(as obtained from gmapping)
-strfrm_map: "/map"          
+strfrm_world: "/world"          
 strfrm_robot: "/base_link"  
-strfrm_og: "/map1"
+strfrm_og_org: "/og_org"
 
 ###################################
 # Topic name(Input)
@@ -32,10 +32,10 @@ strtop_og:         "/map"
 #   strtop_diag: diagnostic messages
 #   strtop_marker_rivz: change this name. This is where we send the traj to be plotted on rvizS
 #   strtop_og_dild: topic for dilated occ grid
-strtop_diag:       "/insekf/diag"
-strtop_marker_rivz: "/visualization_marker"
-strtop_og_dild: "/map_occgrid_dialated"
-strtop_traj:       "/traj_global"
+strtop_diag:        "/insekf/diag"
+strtop_marker_rviz: "/visualization_marker"
+strtop_og_dild:     "/map_occgrid_dialated"
+strtop_ctrl:        "/ctrl_si"
 
 ###################################
 # hz_var: frequency at which a message will be published
