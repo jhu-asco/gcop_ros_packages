@@ -110,7 +110,7 @@ generate_dynamic_reconfigure_options(
 	cfg/MbsSimInterface.cfg
 	cfg/DMocInterface.cfg
 	cfg/MbsNodeInterface.cfg
-	cfg/DstarDdpPlanner.cfg
+	cfg/DslDdpPlanner.cfg
 )
 ###################################
 ## catkin specific configuration ##
@@ -186,9 +186,9 @@ add_executable(gcar_ddp_planner src/gcar_ddp_planner.cpp)
 target_link_libraries(gcar_ddp_planner ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(gcar_ddp_planner ${PROJECT_NAME}_gencfg)
 
-add_executable(dstar_ddp_planner src/dstar_ddp_planner.cpp)
-target_link_libraries(dstar_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} )
-add_dependencies(dstar_ddp_planner ${PROJECT_NAME}_gencfg )
+add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
+target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} ${LIBS})
+add_dependencies(dsl_ddp_planner ${PROJECT_NAME}_gencfg )
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes

@@ -19,16 +19,28 @@ using namespace gcop;
 
 void eig2PoseMsg(geometry_msgs::Pose& pose, const Matrix3d& rot, const Vector3d& pos)
 {
-  Vector4d wxyz;
-  SO3::Instance().g2quat(wxyz,rot);
-  pose.orientation.w = wxyz(0);
-  pose.orientation.x = wxyz(1);
-  pose.orientation.y = wxyz(2);
-  pose.orientation.z = wxyz(3);
+  Quaterniond quat(rot);
+  pose.orientation.w = quat.w();
+  pose.orientation.x = quat.x();
+  pose.orientation.y = quat.y();
+  pose.orientation.z = quat.z();
 
   pose.position.x = pos(0);
   pose.position.y = pos(1);
   pose.position.z = pos(2);
+}
+
+void eig2PoseMsg(geometry_msgs::Pose& pose_ros, const Affine3d& pose_eig)
+{
+  Quaterniond quat(pose_eig.rotation());
+  pose_ros.orientation.w = quat.w();
+  pose_ros.orientation.x = quat.x();
+  pose_ros.orientation.y = quat.y();
+  pose_ros.orientation.z = quat.z();
+
+  pose_ros.position.x = pose_eig.translation()(0);
+  pose_ros.position.y = pose_eig.translation()(1);
+  pose_ros.position.z = pose_eig.translation()(2);
 }
 
 void eig2TwistMsg(geometry_msgs::Twist& twist, const Vector3d& w, const Vector3d& v)
@@ -44,10 +56,15 @@ void eig2TwistMsg(geometry_msgs::Twist& twist, const Vector3d& w, const Vector3d
 
 void poseMsg2Eig(Matrix3d& rot, Vector3d& pos, const geometry_msgs::Pose& pose)
 {
-  Vector4d wxyz;
-  wxyz << pose.orientation.w , pose.orientation.x , pose.orientation.y , pose.orientation.z;
-  SO3::Instance().quat2g(rot,wxyz);
+  Quaterniond quat(pose.orientation.w , pose.orientation.x , pose.orientation.y , pose.orientation.z);
+  rot=quat.matrix();
   pos << pose.position.x , pose.position.y , pose.position.z;
+}
+
+void poseMsg2Eig(Affine3d& pose_eig, const geometry_msgs::Pose& pose_ros)
+{
+  pose_eig = Translation3d(pose_ros.position.x,pose_ros.position.y,pose_ros.position.z)
+            *Quaterniond(pose_ros.orientation.w , pose_ros.orientation.x , pose_ros.orientation.y , pose_ros.orientation.z);
 }
 
 

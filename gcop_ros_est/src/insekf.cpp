@@ -211,7 +211,6 @@ public:
     ctrl_w_(w),          ctrl_w_var_(w_var)
 {
 
-
 }
   //adding a sensor reading will perform a sensor update on the present state value
   void addSensAcc(const Vector3d& val, const Vector3d& var)
