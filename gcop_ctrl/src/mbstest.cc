@@ -19,6 +19,7 @@
 #include "gcop_ctrl/MbsDMocInterfaceConfig.h"
 #include <tf/transform_listener.h>
 #include <XmlRpcValue.h>
+#include <fstream>
 
 #define USE_GN
 
@@ -119,6 +120,23 @@ void pubtraj() //N is the number of segments
 	//cout<<"nb: "<<nb<<endl;
 	Vector6d bpose;
 
+  ofstream logfile;
+  std::string logfile_name;
+  bool logfile_open = false;
+  ros::param::param<std::string>("/logfile_name", logfile_name, "/home/gowtham/hydro_workspace/src/gcop_ros_packages/gcop_ctrl/log/Trajectory.txt");
+  logfile.open(logfile_name);
+  if(logfile.is_open())
+    logfile_open = true;
+  //Write the Header:
+  {
+    logfile<<"#Time\tX\tY\tZ\tYaw\tVx\tVy\tVz";
+    for(int count = 1; count < nb; count++)
+      logfile<<"\tJ"<<count;
+    for(int count = 1; count < nb; count++)
+      logfile<<"\tJv"<<count;
+    logfile<<endl;
+  }
+
 	gcop::SE3::Instance().g2q(bpose,mbsopt->xs[0].gs[0]*gposeroot_i);
 	q2transform(trajectory.statemsg[0].basepose,bpose);
 
@@ -127,6 +145,24 @@ void pubtraj() //N is the number of segments
 		trajectory.statemsg[0].statevector[count1] = mbsopt->xs[0].r[count1];
 		trajectory.statemsg[0].names[count1] = mbsmodel->joints[count1].name;
 	}
+
+  //Logfile 0 state:
+  if(logfile_open)
+  {
+    logfile<<trajectory.time[0];//Time
+    logfile<<"\t"<<trajectory.statemsg[0].basepose.translation.x<<"\t"<<trajectory.statemsg[0].basepose.translation.y<<"\t"<<trajectory.statemsg[0].basepose.translation.z;//XYZ
+    logfile<<"\t"<<bpose[2];//Yaw
+    logfile<<"\t"<<trajectory.statemsg[0].basetwist.linear.x<<"\t"<<trajectory.statemsg[0].basetwist.linear.y<<"\t"<<trajectory.statemsg[0].basetwist.linear.z;
+    for(int count1 = 0; count1 < nb -1; count1++)
+    {
+      logfile<<"\t"<<trajectory.statemsg[0].statevector[count1];
+    }
+    for(int count1 = 0; count1 < nb -1; count1++)
+    {
+      logfile<<"\t"<<0;
+    }
+    logfile<<endl;
+  }
 
 	for (int i = 0; i < N; ++i) 
 	{
@@ -142,6 +178,23 @@ void pubtraj() //N is the number of segments
 		{
 			trajectory.ctrl[i].ctrlvec[count1] = mbsopt->us[i](count1);
 		}
+    //Logfile
+    if(logfile_open)
+    {
+      logfile<<trajectory.time[i+1];//Time
+      logfile<<"\t"<<trajectory.statemsg[i+1].basepose.translation.x<<"\t"<<trajectory.statemsg[i+1].basepose.translation.y<<"\t"<<trajectory.statemsg[i+1].basepose.translation.z;//XYZ
+      logfile<<"\t"<<bpose[2];//Yaw
+      logfile<<"\t"<<trajectory.statemsg[i+1].basetwist.linear.x<<"\t"<<trajectory.statemsg[i+1].basetwist.linear.y<<"\t"<<trajectory.statemsg[i+1].basetwist.linear.z;
+      for(int count1 = 0; count1 < nb -1; count1++)
+      {
+        logfile<<"\t"<<trajectory.statemsg[i+1].statevector[count1];
+      }
+      for(int count1 = 0; count1 < nb -1; count1++)
+      {
+        logfile<<"\t"<<trajectory.statemsg[i+1].statevector[nb-1+count1];
+      }
+      logfile<<endl;
+    }
 	}
 	//final goal:
 	gcop::SE3::Instance().g2q(bpose, xf->gs[0]*gposeroot_i);
