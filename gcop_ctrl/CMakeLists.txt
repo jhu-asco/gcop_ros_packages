@@ -152,13 +152,13 @@ include_directories(
 #target_link_libraries(chainload ${LIBS} ${catkin_LIBRARIES})
 #add_dependencies(chainload ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
-#add_executable(mbstest src/mbstest.cc)
-#target_link_libraries(mbstest ${LIBS} ${catkin_LIBRARIES})
-#add_dependencies(mbstest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+add_executable(mbstest src/mbstest.cc)
+target_link_libraries(mbstest ${LIBS} ${catkin_LIBRARIES})
+add_dependencies(mbstest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 #
-#add_executable(mbsnode src/mbsnode.cc)
-#target_link_libraries(mbsnode ${LIBS} ${catkin_LIBRARIES})
-#add_dependencies(mbsnode ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+add_executable(mbsnode src/mbsnode.cc)
+target_link_libraries(mbsnode ${LIBS} ${catkin_LIBRARIES})
+add_dependencies(mbsnode ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 #
 #add_executable(mbssim src/mbssim.cc)
 #target_link_libraries(mbssim ${LIBS} ${catkin_LIBRARIES})

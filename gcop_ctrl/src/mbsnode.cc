@@ -34,6 +34,8 @@
 #include <gcop_comm/Trajectory_req.h>
 #include <sensor_msgs/JointState.h>
 
+#include <fstream>
+
 //#include <signal.h>
 
 using namespace std;
@@ -153,6 +155,23 @@ void filltraj(gcop_comm::CtrlTraj &trajectory, int N1, bool resize=true) //N1 is
 	cout<<"nb: "<<nb<<endl;
 	Vector6d bpose;//Temp variable
 
+  ofstream logfile;
+  std::string logfile_name;
+  bool logfile_open = false;
+  ros::param::param<std::string>("/logfile_name", logfile_name, "/home/gowtham/hydro_workspace/src/gcop_ros_packages/gcop_ctrl/log/Trajectory.txt");
+  logfile.open(logfile_name);
+  if(logfile.is_open())
+    logfile_open = true;
+  //Write the Header:
+  {
+    logfile<<"#Time\tX\tY\tZ\tYaw\tVx\tVy\tVz";
+    for(int count = 1; count < nb; count++)
+      logfile<<"\tJ"<<count;
+    for(int count = 1; count < nb; count++)
+      logfile<<"\tJv"<<count;
+    logfile<<endl;
+  }
+
 	//Prepare trajectory msg:
 	//Will not be needed if we use nodelets and somehow pass it by pointer
 	//Or create a library to be used directly
@@ -189,6 +208,25 @@ void filltraj(gcop_comm::CtrlTraj &trajectory, int N1, bool resize=true) //N1 is
 		trajectory.statemsg[0].names[count1] = mbsmodel->joints[count1].name;
 	}
 	trajectory.time[0] = mbsddp->ts[0];
+
+  //Logfile 0 state:
+  if(logfile_open)
+  {
+    logfile<<trajectory.time[0];//Time
+    logfile<<"\t"<<trajectory.statemsg[0].basepose.translation.x<<"\t"<<trajectory.statemsg[0].basepose.translation.y<<"\t"<<trajectory.statemsg[0].basepose.translation.z;//XYZ
+    logfile<<"\t"<<bpose[2];//Yaw
+    logfile<<"\t"<<trajectory.statemsg[0].basetwist.linear.x<<"\t"<<trajectory.statemsg[0].basetwist.linear.y<<"\t"<<trajectory.statemsg[0].basetwist.linear.z;
+    for(int count1 = 0; count1 < nb -1; count1++)
+    {
+      logfile<<"\t"<<trajectory.statemsg[0].statevector[count1];
+    }
+    for(int count1 = 0; count1 < nb -1; count1++)
+    {
+      logfile<<"\t"<<0;
+    }
+    logfile<<endl;
+  }
+
 	cout<<"Filled init state"<<endl;
 
 	for (int i = 0; i < N1; ++i) 
@@ -208,6 +246,23 @@ void filltraj(gcop_comm::CtrlTraj &trajectory, int N1, bool resize=true) //N1 is
 			trajectory.ctrl[i].ctrlvec[count1] = mbsddp->us[i](count1);
 		}
 		trajectory.time[i+1] = mbsddp->ts[i+1];
+    //Logfile 0 state:
+    if(logfile_open)
+    {
+      logfile<<trajectory.time[i+1];//Time
+      logfile<<"\t"<<trajectory.statemsg[i+1].basepose.translation.x<<"\t"<<trajectory.statemsg[i+1].basepose.translation.y<<"\t"<<trajectory.statemsg[i+1].basepose.translation.z;//XYZ
+      logfile<<"\t"<<bpose[2];//Yaw
+      logfile<<"\t"<<trajectory.statemsg[i+1].basetwist.linear.x<<"\t"<<trajectory.statemsg[i+1].basetwist.linear.y<<"\t"<<trajectory.statemsg[i+1].basetwist.linear.z;
+      for(int count1 = 0; count1 < nb -1; count1++)
+      {
+        logfile<<"\t"<<trajectory.statemsg[i+1].statevector[count1];
+      }
+      for(int count1 = 0; count1 < nb -1; count1++)
+      {
+        logfile<<"\t"<<trajectory.statemsg[i+1].statevector[nb-1+count1];
+      }
+      logfile<<endl;
+    }
 	}
 	//final goal:
 	gcop::SE3::Instance().g2q(bpose, xf->gs[0]*gposeroot_i);
