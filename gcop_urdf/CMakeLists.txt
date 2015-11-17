@@ -25,9 +25,9 @@ find_package(OpenGL REQUIRED)
 
 
 
-if (BUILD_PLOTTER)
-	find_package(plplot REQUIRED)
-endif (BUILD_PLOTTER)
+#if (BUILD_PLOTTER)
+	#find_package(plplot REQUIRED)
+#endif (BUILD_PLOTTER)
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
