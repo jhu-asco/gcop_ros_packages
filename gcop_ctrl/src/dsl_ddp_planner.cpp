@@ -144,13 +144,15 @@ private:
 
   gcop_ctrl::DslDdpPlannerConfig config_;
   dynamic_reconfigure::Server<gcop_ctrl::DslDdpPlannerConfig> dyn_server_;
-  visualization_msgs::Marker marker_path_dsl_,marker_path_dsl_intp_,marker_path_ddp_, marker_wp_;
+  visualization_msgs::Marker marker_path_dsl_,marker_path_dsl_intp_,marker_path_ddp_;
+  visualization_msgs::Marker marker_wp_dsl_,marker_wp_dsl_intp_,marker_wp_ddp_;
   visualization_msgs::Marker marker_text_start_, marker_text_goal_;
   nav_msgs::OccupancyGrid occ_grid_;
   cv::Mat img_occ_grid_dilated_;
 
   // Frames and transformation
   Affine3d tfm_world2og_org_, tfm_world2og_ll_,tfm_og_org2og_ll_;
+  Transform2d tfm_world2og_ll_2d_;
   Affine3d pose_dsl_start_, pose_dsl_goal_, pose_ddp_start_, pose_ddp_goal_, pose_curr_;
   Vector3d pt_dsl_start_, pt_dsl_goal_, pt_ddp_start_, pt_ddp_goal_; //refers to grid point
 
@@ -159,16 +161,19 @@ private:
   double* map_dsl_;
   dsl::GridPath path_opt_;
   bool cond_feas_s_, cond_feas_g_;
-  VectorXd x_dsl_intp_, y_dsl_intp_,a_dsl_intp_, t_dsl_intp_;//x,y,angle,t of the path
+  VectorXd pt_x_dsl_intp_, pt_y_dsl_intp_,a_dsl_intp_, t_dsl_intp_;//x,y,angle,t of the path
 
   // DDP vars
-  double ddp_N_, ddp_nit_, ddp_tol_;
+  bool ddp_debug_on_;
+  double ddp_mu_;
+  int ddp_nseg_max_,ddp_nseg_min_, ddp_nit_max_;
+  double ddp_tseg_ideal_;
+  double ddp_tol_rel_, ddp_tol_abs_;
   Gcar sys_gcar_;
   LqCost< M3V1d, 4, 2> cost_lq_;
   vector<double> ddp_ts_;
   vector<pair<Matrix3d,double>> ddp_xs_;
   vector<Vector2d> ddp_us_;
-  GcarDdp ddp_solver_;
 
   gcop_comm::Trajectory_req traj_req_resp_;
 
@@ -212,26 +217,21 @@ private:
 };
 
 CallBackDslDdp::CallBackDslDdp():
-            nh_p_("~"),
-            cond_feas_s_(false),
-            cond_feas_g_(false),
-            p_gdsl_(nullptr),
-            map_dsl_(nullptr),
-            sys_gcar_(),
-            cost_lq_(sys_gcar_, 1, M3V1d(Matrix3d::Identity(), 0)),
-            ddp_solver_(sys_gcar_, cost_lq_, ddp_ts_, ddp_xs_, ddp_us_)
+                nh_p_("~"),
+                cond_feas_s_(false),
+                cond_feas_g_(false),
+                p_gdsl_(nullptr),
+                map_dsl_(nullptr),
+                sys_gcar_(),
+                cost_lq_(sys_gcar_, 1, M3V1d(Matrix3d::Identity(), 0))
 {
   cout<<"*Entering constructor of cbc"<<endl;
 
   //Setup YAML reading and parsing
   string strfile_params;nh_p_.getParam("strfile_params",strfile_params);
-#ifdef HAVE_NEW_YAMLCPP
   cout<<"loading yaml param file into yaml_node"<<endl;
   yaml_node_ = YAML::LoadFile(strfile_params);
-#else
-  cout<<"Wrong Yaml version used. Change source code or install version>0.5"<<endl;
-  assert(0);
-#endif
+
 
   //setup dynamic reconfigure
   dynamic_reconfigure::Server<gcop_ctrl::DslDdpPlannerConfig>::CallbackType dyn_cb_f;
@@ -256,6 +256,7 @@ CallBackDslDdp::CallBackDslDdp():
   //init ddp planner
   traj_req_resp_.request.itreq.x0.statevector.resize(4);
   traj_req_resp_.request.itreq.xf.statevector.resize(4);
+  ddpInit();
 
   cout<<"**************************************************************************"<<endl;
   cout<<"****************************DSL TRAJECTORY PLANNER************************"<<endl;
@@ -277,7 +278,6 @@ CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t leve
   //check for all change condition
   bool condn_dilate = occ_grid_.info.width && (config.dyn_obs_dilation_m != config_.dyn_obs_dilation_m || config.dyn_dilation_type != config_.dyn_dilation_type );
 
-  config_ = config;
   if(!first_time)
   {
     if(condn_dilate)
@@ -300,9 +300,15 @@ CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t leve
       config.dyn_ddp_plan_once = false;
     }
 
+    if(config_.dyn_dsl_avg_speed != config.dyn_dsl_avg_speed)
+    {
+      config_.dyn_dsl_avg_speed = config.dyn_dsl_avg_speed;
+      dslInterpolate();
+    }
   }
   else
     first_time = false;
+  config_ = config;
 }
 
 void
@@ -533,6 +539,11 @@ CallBackDslDdp::setTfms(void)
   poseMsg2Eig(tfm_og_org2og_ll_,occ_grid_.info.origin);
   tfm_world2og_ll_ = tfm_world2og_org_*tfm_og_org2og_ll_;
 
+  double th = atan2(tfm_world2og_ll_.matrix()(1,0),tfm_world2og_ll_.matrix()(0,0));
+  double x = tfm_world2og_ll_.matrix()(0,3);
+  double y = tfm_world2og_ll_.matrix()(1,3);
+  tfm_world2og_ll_2d_ = Translation2d(x,y)* Rotation2Dd(th);
+
 }
 
 void
@@ -594,13 +605,17 @@ CallBackDslDdp::endMarker(void)
   marker_path_ddp_.action      = visualization_msgs::Marker::DELETE;
   marker_text_start_.action    = visualization_msgs::Marker::DELETE;
   marker_text_goal_.action     = visualization_msgs::Marker::DELETE;
-  marker_wp_.action            = visualization_msgs::Marker::DELETE;
+  marker_wp_dsl_.action        = visualization_msgs::Marker::DELETE;
+  marker_wp_dsl_intp_.action   = visualization_msgs::Marker::DELETE;
+  marker_wp_ddp_.action        = visualization_msgs::Marker::DELETE;
   pub_vis_.publish( marker_path_dsl_ );
   pub_vis_.publish( marker_path_dsl_intp_ );
   pub_vis_.publish( marker_path_ddp_ );
   pub_vis_.publish( marker_text_start_ );
   pub_vis_.publish( marker_text_goal_ );
-  pub_vis_.publish( marker_wp_ );
+  pub_vis_.publish( marker_wp_dsl_ );
+  pub_vis_.publish( marker_wp_dsl_intp_ );
+  pub_vis_.publish( marker_wp_ddp_ );
 }
 
 void
@@ -632,20 +647,20 @@ CallBackDslDdp::initRvizMarkers(void)
 
   //Marker for dsl path way points
   id++;
-  marker_wp_.header.frame_id = strfrm_world_;
-  marker_wp_.header.stamp = ros::Time();
-  marker_wp_.ns = "dsl_ddp_planner";
-  marker_wp_.id = id;
-  marker_wp_.type = visualization_msgs::Marker::POINTS;
-  marker_wp_.action = visualization_msgs::Marker::ADD;
-  marker_wp_.lifetime = ros::Duration(0);
-  prop_wp = yaml_node_["prop_wp"].as<VectorXd>();
-  marker_wp_.color.r = prop_wp(0);
-  marker_wp_.color.g = prop_wp(1);
-  marker_wp_.color.b = prop_wp(2);
-  marker_wp_.color.a = prop_wp(3);
-  marker_wp_.scale.x = prop_wp(4);//width
-  marker_wp_.scale.y = prop_wp(4);//height
+  marker_wp_dsl_.header.frame_id = strfrm_world_;
+  marker_wp_dsl_.header.stamp = ros::Time();
+  marker_wp_dsl_.ns = "dsl_ddp_planner";
+  marker_wp_dsl_.id = id;
+  marker_wp_dsl_.type = visualization_msgs::Marker::POINTS;
+  marker_wp_dsl_.action = visualization_msgs::Marker::ADD;
+  marker_wp_dsl_.lifetime = ros::Duration(0);
+  prop_wp = yaml_node_["prop_wp_dsl"].as<VectorXd>();
+  marker_wp_dsl_.color.r = prop_wp(0);
+  marker_wp_dsl_.color.g = prop_wp(1);
+  marker_wp_dsl_.color.b = prop_wp(2);
+  marker_wp_dsl_.color.a = prop_wp(3);
+  marker_wp_dsl_.scale.x = prop_wp(4);//width
+  marker_wp_dsl_.scale.y = prop_wp(4);//height
 
   //Marker for dsl path interpolated
   id++;
@@ -663,6 +678,23 @@ CallBackDslDdp::initRvizMarkers(void)
   marker_path_dsl_intp_.color.a = prop_path(3);
   marker_path_dsl_intp_.scale.x = prop_path(4);
 
+  //Marker for dsl path interpolated way points
+  id++;
+  marker_wp_dsl_intp_.header.frame_id = strfrm_world_;
+  marker_wp_dsl_intp_.header.stamp = ros::Time();
+  marker_wp_dsl_intp_.ns = "dsl_ddp_planner";
+  marker_wp_dsl_intp_.id = id;
+  marker_wp_dsl_intp_.type = visualization_msgs::Marker::POINTS;
+  marker_wp_dsl_intp_.action = visualization_msgs::Marker::ADD;
+  marker_wp_dsl_intp_.lifetime = ros::Duration(0);
+  prop_wp = yaml_node_["prop_wp_dsl_intp"].as<VectorXd>();
+  marker_wp_dsl_intp_.color.r = prop_wp(0);
+  marker_wp_dsl_intp_.color.g = prop_wp(1);
+  marker_wp_dsl_intp_.color.b = prop_wp(2);
+  marker_wp_dsl_intp_.color.a = prop_wp(3);
+  marker_wp_dsl_intp_.scale.x = prop_wp(4);//width
+  marker_wp_dsl_intp_.scale.y = prop_wp(4);//height
+
   //Marker for ddp path
   id++;
   marker_path_ddp_.header.frame_id = strfrm_world_;
@@ -678,6 +710,23 @@ CallBackDslDdp::initRvizMarkers(void)
   marker_path_ddp_.color.b = prop_path(2);
   marker_path_ddp_.color.a = prop_path(3);
   marker_path_ddp_.scale.x = prop_path(4);
+
+  //Marker for ddp path way points
+  id++;
+  marker_wp_ddp_.header.frame_id = strfrm_world_;
+  marker_wp_ddp_.header.stamp = ros::Time();
+  marker_wp_ddp_.ns = "dsl_ddp_planner";
+  marker_wp_ddp_.id = id;
+  marker_wp_ddp_.type = visualization_msgs::Marker::POINTS;
+  marker_wp_ddp_.action = visualization_msgs::Marker::ADD;
+  marker_wp_ddp_.lifetime = ros::Duration(0);
+  prop_wp = yaml_node_["prop_wp_ddp"].as<VectorXd>();
+  marker_wp_ddp_.color.r = prop_wp(0);
+  marker_wp_ddp_.color.g = prop_wp(1);
+  marker_wp_ddp_.color.b = prop_wp(2);
+  marker_wp_ddp_.color.a = prop_wp(3);
+  marker_wp_ddp_.scale.x = prop_wp(4);//width
+  marker_wp_ddp_.scale.y = prop_wp(4);//height
 
   //Marker for "start" text
   id++;
@@ -790,7 +839,7 @@ CallBackDslDdp::dslInterpolate(void)
 
   //The time difference between 2 consecutive way points
   //is calculated as distance between the 2 way points divided by the top speed
-  delt = ((delx.array().square() + dely.array().square()).array().sqrt())*m_per_cell/config_.dyn_max_speed;
+  delt = ((delx.array().square() + dely.array().square()).array().sqrt())*m_per_cell/config_.dyn_dsl_avg_speed;
   for(int i=1;i<n;i++)
     t(i) =t(i-1) + delt(i);
 
@@ -803,17 +852,17 @@ CallBackDslDdp::dslInterpolate(void)
   int n_nodes = n_segs+1;
   double dt= (double)(t(n-1))/(double)n_segs;
 
-  x_dsl_intp_.resize(n_nodes); y_dsl_intp_.resize(n_nodes);a_dsl_intp_.resize(n_nodes); t_dsl_intp_.resize(n_nodes);
-  x_dsl_intp_(0) = x(0);     y_dsl_intp_(0) = y(0);     t_dsl_intp_(0) = t(0);
+  pt_x_dsl_intp_.resize(n_nodes); pt_y_dsl_intp_.resize(n_nodes);a_dsl_intp_.resize(n_nodes); t_dsl_intp_.resize(n_nodes);
+  pt_x_dsl_intp_(0) = x(0);     pt_y_dsl_intp_(0) = y(0);     t_dsl_intp_(0) = t(0);
 
   for(int i=1;i<n_nodes;i++)
   {
     t_dsl_intp_(i) = i*dt;
-    x_dsl_intp_(i) = intp_x[i*dt];
-    y_dsl_intp_(i) = intp_y[i*dt];
+    pt_x_dsl_intp_(i) = intp_x[i*dt];
+    pt_y_dsl_intp_(i) = intp_y[i*dt];
 
-    double dx = x_dsl_intp_(i) -x_dsl_intp_(i-1);
-    double dy = y_dsl_intp_(i) -y_dsl_intp_(i-1);
+    double dx = pt_x_dsl_intp_(i) -pt_x_dsl_intp_(i-1);
+    double dy = pt_y_dsl_intp_(i) -pt_y_dsl_intp_(i-1);
     a_dsl_intp_(i-1) = atan2(dy,dx);
   }
   a_dsl_intp_(n_nodes-1) = a_dsl_intp_(n_nodes-2);
@@ -822,16 +871,25 @@ CallBackDslDdp::dslInterpolate(void)
 bool
 CallBackDslDdp::ddpInit(void)
 {
+  if(config_.dyn_debug_on)
+    cout<<"*Setting DDP params"<<endl;
+
   //Fetch and set all the parameter from yaml file
   cost_lq_.Q  = yaml_node_["ddp_Q"].as<Matrix4d>();
   cost_lq_.Qf = yaml_node_["ddp_Qf"].as<Matrix4d>();
   cost_lq_.R  = yaml_node_["ddp_R"].as<Matrix2d>();
-  ddp_solver_.mu =yaml_node_["ddp_R"].as<double>();
-  ddp_solver_.debug =yaml_node_["ddp_debug_on"].as<bool>(); // turn off debug for speed
-  ddp_N_=yaml_node_["ddp_R"].as<double>();
-  ddp_nit_=yaml_node_["ddp_R"].as<double>();
-  ddp_tol_=yaml_node_["ddp_R"].as<double>();
+  ddp_mu_ =yaml_node_["ddp_mu"].as<double>();
+  ddp_debug_on_ =yaml_node_["ddp_debug_on"].as<bool>(); // turn off debug for speed
+  ddp_nseg_min_= (yaml_node_["ddp_nseg_minmax"].as<Vector2d>())(0);
+  ddp_nseg_max_= (yaml_node_["ddp_nseg_minmax"].as<Vector2d>())(1);
+  ddp_tseg_ideal_ =yaml_node_["ddp_tseg_ideal"].as<double>();
+  ddp_nit_max_=yaml_node_["ddp_nit_max"].as<int>();
+  ddp_tol_abs_=yaml_node_["ddp_tol_abs"].as<double>();
+  ddp_tol_rel_=yaml_node_["ddp_tol_rel"].as<double>();
+  //Update internal gains of cost_lq
+  cost_lq_.UpdateGains();
 }
+
 bool
 CallBackDslDdp::ddpPlan(void)
 {
@@ -850,111 +908,108 @@ CallBackDslDdp::ddpPlan(void)
   //Select ddp goal position by finding a point on the dsl way point
   //  that is t_away sec away from current position
 
-  // find nearest row(idx_nearest) on the [x_dsl_intp_ ,y_dsl_intp_] to posn_ddp_start_
-  int n_nodes = x_dsl_intp_.size();
+  //  find nearest row(idx_nearest) on the [x_dsl_intp_ ,y_dsl_intp_] to posn_ddp_start_
+  int n_nodes = pt_x_dsl_intp_.size();
   Vector3d pt_ddp_start = (tfm_world2og_ll_.inverse()*pose_ddp_start_).translation()/m_per_cell;
-  VectorXd dist_sq =(x_dsl_intp_ - VectorXd::Ones(n_nodes)*pt_ddp_start(0)).array().square()
-                   +(y_dsl_intp_ - VectorXd::Ones(n_nodes)*pt_ddp_start(1)).array().square();
+  VectorXd dist_sq =(pt_x_dsl_intp_ - VectorXd::Ones(n_nodes)*pt_ddp_start(0)).array().square()
+                       +(pt_y_dsl_intp_ - VectorXd::Ones(n_nodes)*pt_ddp_start(1)).array().square();
   VectorXd::Index idx_min; dist_sq.minCoeff(&idx_min);
   int idx_nearest = (int)idx_min;
 
-  //set pose_ddp_goal_ to t_away sec ahead from t_dsl_intp_ at idx_close
+  //  set pose_ddp_goal_ to xy_dsl_intp_(idx_t_away) where idx_t_away is the index of dsl_intp path
+  //    which is t_away sec ahead of dsl_intp path at idx_nearest
   vector<double> t_stl(t_dsl_intp_.size()); Map<VectorXd>(t_stl.data(),t_dsl_intp_.size()) = t_dsl_intp_;
   double t_away = config_.dyn_ddp_t_away;
   vector<double>::iterator it_t_away = upper_bound(t_stl.begin(),t_stl.end(),t_stl[idx_nearest]+t_away);
   int idx_t_away = it_t_away-t_stl.begin()==t_stl.size()? t_stl.size()-1: it_t_away-t_stl.begin();
 
-  //DDP goal
-    pose_ddp_goal_ = tfm_world2og_ll_
-                     *Translation3d(m_per_cell*x_dsl_intp_(idx_t_away),m_per_cell*y_dsl_intp_(idx_t_away),0)
-                     *AngleAxisd(a_dsl_intp_(idx_t_away), Vector3d::UnitZ());
+  //  DDP goal
+  pose_ddp_goal_ = tfm_world2og_ll_
+      *Translation3d(m_per_cell*pt_x_dsl_intp_(idx_t_away),m_per_cell*pt_y_dsl_intp_(idx_t_away),0)
+  *AngleAxisd(a_dsl_intp_(idx_t_away), Vector3d::UnitZ());
 
-  //DDP path length
-  double len_ddp_path(0);
-  for(int i=idx_nearest;i<idx_t_away;i++)
-  {
-    len_ddp_path+= (x_dsl_intp_(i+1) - x_dsl_intp_(i))*(x_dsl_intp_(i+1) - x_dsl_intp_(i))
-                  +(y_dsl_intp_(i+1) - y_dsl_intp_(i))*(y_dsl_intp_(i+1) - y_dsl_intp_(i));
-  }
-  len_ddp_path*=m_per_cell;
+  //DDP path length in distance and time
+  double tf = t_dsl_intp_(idx_t_away) - t_dsl_intp_(idx_nearest);
+  double len_ddp_path = tf*config_.dyn_dsl_avg_speed;
 
+  // Start and goal ddp state(M3V1d. M3 is se2 elem and V1 is forward vel)
+  Matrix3d se2_0; se2_0.setZero();
+  se2_0.block<2,2>(0,0)= (pose_ddp_start_.matrix()).block<2,2>(0,0);
+  se2_0.block<2,1>(0,2) = (pose_ddp_start_.matrix()).block<2,1>(0,3);
+  se2_0(2,2)=1;
+  M3V1d x0(se2_0,0);
 
-  //Prepare the service request
-  //Number of trajectory segments
-  traj_req_resp_.request.itreq.N = 32;
-  //Number of iterations
-  traj_req_resp_.request.itreq.Niter = 32;
-  //set t0
-  traj_req_resp_.request.itreq.t0 = 0;
-  //set tf
-  traj_req_resp_.request.itreq.tf = len_ddp_path/config_.dyn_max_speed;
-  //set x0
+  Matrix3d se2_f; se2_f.setZero();
+  se2_f.block<2,2>(0,0)= (pose_ddp_goal_.matrix()).block<2,2>(0,0);
+  se2_f.block<2,1>(0,2) = (pose_ddp_goal_.matrix()).block<2,1>(0,3);
+  se2_f(2,2)=1;
+  M3V1d xf(se2_f,0);
+
+  //Determine the number of segments for ddp based on tf, nseg_max, tseg_ideal
+  //  and resize ts xs and us based on that
+  int ddp_nseg = ceil(tf/ddp_tseg_ideal_);
+  ddp_nseg = ddp_nseg>ddp_nseg_max_?ddp_nseg_max_:ddp_nseg;
+  ddp_nseg = ddp_nseg<ddp_nseg_min_?ddp_nseg_min_:ddp_nseg;
+  ddp_ts_.resize(ddp_nseg+1);
+  ddp_xs_.resize(ddp_nseg+1);
+  ddp_us_.resize(ddp_nseg);
+
   Vector3d rpy_start; SO3::Instance().g2q(rpy_start,pose_ddp_start_.linear());
-  traj_req_resp_.request.itreq.x0.statevector[0] = pose_ddp_start_.translation()(0);
-  traj_req_resp_.request.itreq.x0.statevector[1] = pose_ddp_start_.translation()(1);
-  traj_req_resp_.request.itreq.x0.statevector[2] = rpy_start(2);
-  traj_req_resp_.request.itreq.x0.statevector[3] = 0;
-  //set xf
   Vector3d rpy_goal; SO3::Instance().g2q(rpy_goal,pose_ddp_goal_.linear());
-  traj_req_resp_.request.itreq.xf.statevector[0] = pose_ddp_goal_.translation()(0);
-  traj_req_resp_.request.itreq.xf.statevector[1] = pose_ddp_goal_.translation()(1);
-  traj_req_resp_.request.itreq.xf.statevector[2] = rpy_goal(2);
-  traj_req_resp_.request.itreq.xf.statevector[3] = 0;
-
   if(config_.dyn_debug_on)
   {
     cout<<"  The ddp request is as follows"<<endl;
     cout<<"    Start x:"<<pose_ddp_start_.translation()(0)<<"\ty:"<<pose_ddp_start_.translation()(1)<<"\ta:"<<rpy_start(2)<<endl;
     cout<<"    Goal x:"<<pose_ddp_goal_.translation()(0)<<"\ty:"<<pose_ddp_goal_.translation()(1)<<"\ta:"<<rpy_goal(2)<<endl;
-    cout<<"    tf:"<< traj_req_resp_.request.itreq.tf<<"\tTotal path length:"<<len_ddp_path<<endl;
+    cout<<"    tf:"<< tf<<" sec";
+    cout<<"    path length:"<<len_ddp_path<<endl;
+    cout<<"    nseg:"<<ddp_nseg<<endl;
   }
 
-  bool req_success = srvcl_traj_.call(traj_req_resp_);
+  //Set tf and xf for cost_lq_
+  cost_lq_.tf = tf;
+  cost_lq_.xf = &xf;
 
-  if(req_success && config_.dyn_enable_motors)
+  //Initialize trajectory(ts, us and xs)
+  double h=tf/ddp_nseg;
+  for (int k = 0; k <ddp_nseg+1; ++k)
+    ddp_ts_[k] = k*h;
+
+  for (int k = 0; k <ddp_nseg; ++k)
+    ddp_us_[k].setZero();// or put a function that sets the initial value of u
+
+  ddp_xs_[0]=x0;
+
+  //DDP update
+  GcarDdp ddp_solver(sys_gcar_, cost_lq_, ddp_ts_, ddp_xs_, ddp_us_);
+  ddp_solver.mu =ddp_mu_;
+  ddp_solver.debug = ddp_debug_on_;
+  //ddp_solver.Update()
+
+  //Run an iteration loop until convergence
+  int n_it(0);
+  bool ddp_conv=false;
+  double v_prev; v_prev=ddp_solver.V;
+
+  while(!ddp_conv && !g_shutdown_requested)
   {
-    cout<<"ctrl[0]"<<traj_req_resp_.response.traj.ctrl[0]<<endl;
-    cout<<"ctrl[1]"<<traj_req_resp_.response.traj.ctrl[1]<<endl;
-    double ctrl_vel_si(0);
-    double ctrl_str_si(0);
-    gcop_comm::Ctrl ctrl;
-    ctrl.ctrlvec.push_back(ctrl_vel_si);
-    ctrl.ctrlvec.push_back(ctrl_str_si);
+    if(config_.dyn_debug_on)
+      cout<<"Iteration number:"<<n_it<<endl;
+
+    ddp_solver.Iterate();
+
+    n_it++;
+
+    cout<<"tol_rel"<<abs(ddp_solver.V - v_prev)/abs(v_prev) <<endl;
+    cout<<"tol_abs"<<abs(ddp_solver.V - v_prev) <<endl;
+    if(                                     n_it  > ddp_nit_max_
+        ||             abs(ddp_solver.V - v_prev) < ddp_tol_abs_
+        || abs(ddp_solver.V - v_prev)/abs(v_prev) < ddp_tol_rel_)
+      ddp_conv=true;
+    v_prev=ddp_solver.V;
   }
 
-
-  if (req_success && config_.dyn_debug_on)
-    cout<<"  Response received and number of nodes is:"<<traj_req_resp_.response.traj.statemsg.size()<<endl;
-  else
-    cout<<"  Failed to call service optimization_requests"<<endl;
-
-  return req_success;
 }
-
-//void
-//CallBackDslDdp::dispPathDdpRviz(void)
-//{
-//  if(config_.dyn_debug_on)
-//    cout<<"*Displaying ddp path"<<endl;
-//
-//  float res = occ_grid_.info.resolution;
-//  marker_path_ddp_.points.clear();
-//  marker_wp_.points.clear();
-//  int n = traj_req_resp_.response.traj.statemsg.size();
-//  for (int i = 0; i < traj_req_resp_.response.traj.statemsg.size(); i++)
-//  {
-//    geometry_msgs::Point node;
-//    node.x    = traj_req_resp_.response.traj.statemsg[i].statevector[0];
-//    node.y    = traj_req_resp_.response.traj.statemsg[i].statevector[1];
-//    double th = traj_req_resp_.response.traj.statemsg[i].statevector[2];
-//    double v =  traj_req_resp_.response.traj.statemsg[i].statevector[3];
-//    node.z = 0.2;
-//    marker_path_ddp_.points.push_back(node);
-//    marker_wp_.points.push_back(node);
-//  }
-//  pub_vis_.publish( marker_path_ddp_ );
-//  pub_vis_.publish( marker_wp_ );
-//}
 
 void
 CallBackDslDdp::dispPathDdpRviz(void)
@@ -963,22 +1018,21 @@ CallBackDslDdp::dispPathDdpRviz(void)
     cout<<"*Displaying ddp path"<<endl;
 
   float res = occ_grid_.info.resolution;
-  marker_path_ddp_.points.clear();
-  marker_wp_.points.clear();
-  int n = traj_req_resp_.response.traj.statemsg.size();
-  for (int i = 0; i < traj_req_resp_.response.traj.statemsg.size(); i++)
+  marker_path_ddp_.points.resize(ddp_xs_.size());
+  marker_wp_ddp_.points.resize(ddp_xs_.size());
+  for (int i = 0; i < ddp_xs_.size(); i++)
   {
     geometry_msgs::Point node;
-    node.x    = traj_req_resp_.response.traj.statemsg[i].statevector[0];
-    node.y    = traj_req_resp_.response.traj.statemsg[i].statevector[1];
-    double th = traj_req_resp_.response.traj.statemsg[i].statevector[2];
-    double v =  traj_req_resp_.response.traj.statemsg[i].statevector[3];
+    node.x    = (ddp_xs_[i].first)(0,2);
+    node.y    = (ddp_xs_[i].first)(1,2);
+    double th = atan2(ddp_xs_[i].first(1,0),ddp_xs_[i].first(0,0));
+    double v = ddp_xs_[i].second;
     node.z = 0.2;
-    marker_path_ddp_.points.push_back(node);
-    marker_wp_.points.push_back(node);
+    marker_path_ddp_.points[i] =node;
+    marker_wp_ddp_.points[i] =node;
   }
   pub_vis_.publish( marker_path_ddp_ );
-  pub_vis_.publish( marker_wp_ );
+  pub_vis_.publish( marker_wp_ddp_ );
 }
 
 void
@@ -988,8 +1042,8 @@ CallBackDslDdp::dispPathDslRviz()
     cout<<"*Displaying dsl path"<<endl;
 
   float m_per_cell = occ_grid_.info.resolution;
-  marker_path_dsl_.points.clear();
-  marker_wp_.points.clear();
+  marker_path_dsl_.points.resize(path_opt_.count);
+  marker_wp_dsl_.points.resize(path_opt_.count);
   for (int i = 0; i < path_opt_.count; i++)
   {
     Vector3d posn_waypt_in_ll(m_per_cell*path_opt_.pos[2*i],m_per_cell*(path_opt_.pos[2*i+1]),0);
@@ -998,11 +1052,11 @@ CallBackDslDdp::dispPathDslRviz()
     node.x = posn_waypt_in_world(0);
     node.y = posn_waypt_in_world(1);
     node.z = 0.2;
-    marker_path_dsl_.points.push_back(node);
-    marker_wp_.points.push_back(node);
+    marker_path_dsl_.points[i] =node;
+    marker_wp_dsl_.points[i] =node;
   }
   pub_vis_.publish( marker_path_dsl_ );
-  pub_vis_.publish( marker_wp_ );
+  pub_vis_.publish( marker_wp_dsl_ );
 }
 
 void
@@ -1012,21 +1066,21 @@ CallBackDslDdp::dispPathDslInterpdRviz()
     cout<<"*Displaying interpolated dsl path"<<endl;
 
   float m_per_cell = occ_grid_.info.resolution;
-  marker_path_dsl_intp_.points.clear();
-  marker_wp_.points.clear();
-  for (int i = 0; i < x_dsl_intp_.size(); i++)
+  marker_path_dsl_intp_.points.resize(pt_x_dsl_intp_.size());
+  marker_wp_dsl_intp_.points.resize(pt_x_dsl_intp_.size());
+  for (int i = 0; i < pt_x_dsl_intp_.size(); i++)
   {
-    Vector3d posn_waypt_in_ll(m_per_cell*x_dsl_intp_(i),m_per_cell*y_dsl_intp_(i),0);
+    Vector3d posn_waypt_in_ll(m_per_cell*pt_x_dsl_intp_(i),m_per_cell*pt_y_dsl_intp_(i),0);
     Vector3d posn_waypt_in_world = tfm_world2og_ll_*posn_waypt_in_ll;
     geometry_msgs::Point node;
     node.x = posn_waypt_in_world(0);
     node.y = posn_waypt_in_world(1);
     node.z = 0.2;
-    marker_path_dsl_intp_.points.push_back(node);
-    marker_wp_.points.push_back(node);
+    marker_path_dsl_intp_.points[i] =node;
+    marker_wp_dsl_intp_.points[i] =node;
   }
   pub_vis_.publish( marker_path_dsl_intp_ );
-  pub_vis_.publish( marker_wp_ );
+  pub_vis_.publish( marker_wp_dsl_intp_ );
 }
 
 void

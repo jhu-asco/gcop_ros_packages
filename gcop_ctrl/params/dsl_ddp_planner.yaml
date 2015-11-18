@@ -51,35 +51,45 @@ hz_diag: -1.0  # Freq at which diagnostic data is published
 #   size: width of the path line in meters
 #   prop_wp is waypoint properties
 prop_path_dsl:      [0.0,1.0,0.0,0.5,0.4]
+prop_wp_dsl:        [0.0,0.5,0.0,0.5,0.18]
+
 prop_path_dsl_intp: [1.0,0.0,0.0,0.5,0.4]
+prop_wp_dsl_intp:   [0.5,0.0,0.0,0.5,0.18]
+
 prop_path_ddp:      [0.0,0.0,1.0,0.5,0.4]
-prop_wp:        [0.0,0.0,0.0,1.0,0.18]
+prop_wp_ddp:        [0.0,0.0,0.5,0.5,0.18]
 
 
 ###################################
 # DDP settings
-#   Q: 0.5*x'Qx give the state cost per unit time
-#   Qf:0.5*x'Qx give the terminal state cost
-#   R: 0.5*u'Ru control cost per unit time
-#   mu:
-#   n: number of segments of trajectory(number of nodes=n+1)
-#   niter: max number of iteration until convergence
-#   tol: convergence tolerance. iter stops when ||f(x_{k+1}-f(x_{k}||<tol
+#   ddp_Q: 0.5*x'Qx give the state cost per unit time
+#   ddp_Qf:0.5*x'Qx give the terminal state cost
+#   ddp_R: 0.5*u'Ru control cost per unit time
+#   ddp_mu:
+#   ddp_N: number of segments of trajectory(number of nodes=n+1)
+#   ddp_niter: max number of iteration until convergence
+#   ddp_tol: convergence tolerance. iter stops when ||f(x_{k+1}-f(x_{k}||<tol
 #   TODO: have better convergence criteria and warn user if convergence is not achieved
 
-ddp_Q:   [0.0, 0.0, 0.0, 0.0,
-          0.0, 0.0, 0.0, 0.0,
-          0.0, 0.0, 0.0, 0.0,
-          0.0, 0.0, 0.0, 0.0]
-ddp_Qf:  [0.0, 0.0, 0.0, 0.0,
-          0.0, 0.0, 0.0, 0.0,
-          0.0, 0.0, 0.0, 0.0,
-          0.0, 0.0, 0.0, 0.0]
-ddp_R:   [0.005, 0.0 
-          0.0  , 0.001]
-ddp_mu:  0.5
+#ddp_Q:   [1e-4,  0.00,  0.00,  0.00,
+#          0.00,  1e-4,  0.00,  0.00,
+#          0.00,  0.00,  1e-4,  0.00,
+#          0.00,  0.00,  0.00,  1e-4]
+ddp_Q:   [0.00,  0.00,  0.00,  0.00,
+          0.00,  0.00,  0.00,  0.00,
+          0.00,  0.00,  0.00,  0.00,
+          0.00,  0.00,  0.00,  0.00]
+ddp_Qf:  [1.0, 0.0, 0.0, 0.0,
+          0.0, 1.0, 0.0, 0.0,
+          0.0, 0.0, 1.0, 0.0,
+          0.0, 0.0, 0.0, 1.0]
+ddp_R:   [0.005, 0.000, 
+          0.000, 0.001]
+ddp_mu:       1
 ddp_debug_on: False
-ddp_N:   32
-ddp_nit: 32
-ddp_tol: 1e-10
+ddp_nseg_minmax: [7,32]
+ddp_tseg_ideal:  0.5
+ddp_nit_max: 100
+ddp_tol_abs: 1e-6
+ddp_tol_rel: 1e-3
      
