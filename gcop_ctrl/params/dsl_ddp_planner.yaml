@@ -1,9 +1,6 @@
 #parameters to be used with dsl_ddp_yaml.cpp
 
 ###################################
-debug_on: false  # Print important data on cout
-
-###################################
 # frame names
 #   (un-modifiable in reconfigure)
 #   strfrm_map:     The frame of origin of world
@@ -59,9 +56,43 @@ prop_wp_dsl_intp:   [0.5,0.0,0.0,0.5,0.18]
 prop_path_ddp:      [0.0,0.0,1.0,0.5,0.4]
 prop_wp_ddp:        [0.0,0.0,0.5,0.5,0.18]
 
+###################################
+# General settings(Reconfigurable)
+#   obs_dilation_m:    The amount by which obstacles are expanded in meters
+#   dilation_type: 0: MORPH_RECT 1: MORPH_CROSS 2: MORPH_ELLIPSE
+#   debug_on:          enable debug
+#   enable_motors:     Enable motors so that ctrl cmds can be sent
+obs_dilation_m: 1.0
+dilation_type: 2
+debug_on: True
+enable_motors: False
+   
+###################################
+# DSL settings(reconfigurable)
+#   dsl_avg_speed: average speed in m/sec for dsl planning. 
+#   dsl_interp_deg: degree of interpolation. Intp obtains piecewise polynomial curve in x and y wrt to t
+#   dsl_interp_delt: interp divides the global path to way points which are delt apart at avg_speed
+#   dsl_preint_delt: delt for pre-interpolation(deg1) as input to interpolation(deg 1/2/3)
+dsl_avg_speed: 0.6
+dsl_interp_deg: 3
+dsl_interp_delt: 0.5
+dsl_preint_delt: 5
+dsl_loop_durn: 0.1       
+dsl_from_curr_posn: False
+dsl_disp_rviz: True
 
 ###################################
-# DDP settings
+# DDP settings(reconfigurable)
+#   ddp_t_away: Choose a wpoint on dsl path which is t_away sec away
+#   ddp_loop_durn: duration after which ddp planning is called again
+#   ddp_from_curr_posn: if enabled plans(ddp) from current position else from rivz start
+ddp_t_away: 1.0
+ddp_loop_durn: 0.1
+ddp_from_curr_posn: False
+ddp_disp_rviz: True
+
+###################################
+# DDP settings(static)
 #   ddp_Q: 0.5*x'Qx give the state cost per unit time
 #   ddp_Qf:0.5*x'Qx give the terminal state cost
 #   ddp_R: 0.5*u'Ru control cost per unit time
@@ -70,11 +101,6 @@ prop_wp_ddp:        [0.0,0.0,0.5,0.5,0.18]
 #   ddp_niter: max number of iteration until convergence
 #   ddp_tol: convergence tolerance. iter stops when ||f(x_{k+1}-f(x_{k}||<tol
 #   TODO: have better convergence criteria and warn user if convergence is not achieved
-
-#ddp_Q:   [1e-4,  0.00,  0.00,  0.00,
-#          0.00,  1e-4,  0.00,  0.00,
-#          0.00,  0.00,  1e-4,  0.00,
-#          0.00,  0.00,  0.00,  1e-4]
 ddp_Q:   [0.00,  0.00,  0.00,  0.00,
           0.00,  0.00,  0.00,  0.00,
           0.00,  0.00,  0.00,  0.00,
@@ -88,8 +114,9 @@ ddp_R:   [0.005, 0.000,
 ddp_mu:       1
 ddp_debug_on: False
 ddp_nseg_minmax: [7,32]
-ddp_tseg_ideal:  0.5
+ddp_tseg_ideal:  1.0
 ddp_nit_max: 100
 ddp_tol_abs: 1e-6
 ddp_tol_rel: 1e-3
+
      

@@ -11,6 +11,9 @@
 #include <unsupported/Eigen/Splines>
 
 #include <iostream>
+#include <vector>
+
+using namespace std;
 
 class SplineFunction {
 public:
@@ -26,6 +29,18 @@ public:
                 std::min<int>(x_vec.rows() - 1, degree),
                 scaled_values(x_vec)))
   { }
+
+//  SplineFunction(vector<double> const &x_vec,
+//                 vector<double> const &y_vec,int degree)
+//    : x_min( (Map<VectorXd>(x_vec.data(),x_vec.size())).minCoeff()),
+//      x_max((Map<VectorXd>(x_vec.data(),x_vec.size())).maxCoeff()),
+//      // Spline fitting here. X values are scaled down to [0, 1] for this.
+//      spline_(Eigen::SplineFitting<Eigen::Spline<double, 1>>::Interpolate(
+//             (Map<VectorXd>(y_vec.data(),y_vec.size())).transpose(),
+//                 // No more than cubic spline, but accept short vectors.
+//                std::min<int>(x_vec.size() - 1, degree),
+//                scaled_values(Map<VectorXd>(x_vec.data(),x_vec.size()))))
+//  { }
 
   double operator[](double x) const {
     // x values need to be scaled down in extraction as well.

@@ -136,7 +136,7 @@ private:
 
   ros::Subscriber sub_odom_, sub_pose_start_, sub_pose_goal_, sub_og_;
   ros::Publisher pub_diag_, pub_vis_, pub_og_dild_, pub_ctrl_;
-  ros::Timer timer_vis_;
+  ros::Timer timer_vis_, timer_ddp_, timer_dsl_;
   ros::ServiceClient srvcl_traj_;
 
   tf::TransformBroadcaster tf_br_;
@@ -160,7 +160,7 @@ private:
   dsl::GridSearch* p_gdsl_;
   double* map_dsl_;
   dsl::GridPath path_opt_;
-  bool cond_feas_s_, cond_feas_g_;
+  bool dsl_cond_feas_s_, dsl_cond_feas_g_, dsl_done_;
   VectorXd pt_x_dsl_intp_, pt_y_dsl_intp_,a_dsl_intp_, t_dsl_intp_;//x,y,angle,t of the path
 
   // DDP vars
@@ -169,6 +169,7 @@ private:
   int ddp_nseg_max_,ddp_nseg_min_, ddp_nit_max_;
   double ddp_tseg_ideal_;
   double ddp_tol_rel_, ddp_tol_abs_;
+
   Gcar sys_gcar_;
   LqCost< M3V1d, 4, 2> cost_lq_;
   vector<double> ddp_ts_;
@@ -187,6 +188,8 @@ private:
   void cbOccGrid(const nav_msgs::OccupancyGridConstPtr& msg_occ_grid);
 
   void cbTimerVis(const ros::TimerEvent& event);
+  void cbTimerDsl(const ros::TimerEvent& event);
+  void cbTimerDdp(const ros::TimerEvent& event);
   void endMarker(void);
 
   void setupTopicsAndNames(void);
@@ -202,10 +205,11 @@ private:
 
   void dslInit(void);
   void dslDelete(void);
-  void dslPlan(void);
+  bool dslPlan(void);
   bool dslFeasible(void);
   void dslInterpolate(void);
 
+  bool ddpFeasible(void);
   bool ddpInit(void);
   bool ddpPlan(void);
 
@@ -217,14 +221,17 @@ private:
 };
 
 CallBackDslDdp::CallBackDslDdp():
-                nh_p_("~"),
-                cond_feas_s_(false),
-                cond_feas_g_(false),
-                p_gdsl_(nullptr),
-                map_dsl_(nullptr),
-                sys_gcar_(),
-                cost_lq_(sys_gcar_, 1, M3V1d(Matrix3d::Identity(), 0))
+                        nh_p_("~"),
+                        dsl_cond_feas_s_(false),
+                        dsl_cond_feas_g_(false),
+                        dsl_done_(false),
+                        p_gdsl_(nullptr),
+                        map_dsl_(nullptr),
+                        sys_gcar_(),
+                        cost_lq_(sys_gcar_, 1, M3V1d(Matrix3d::Identity(), 0))
 {
+  cout<<"**************************************************************************"<<endl;
+  cout<<"***************************DSL-DDP TRAJECTORY PLANNER*********************"<<endl;
   cout<<"*Entering constructor of cbc"<<endl;
 
   //Setup YAML reading and parsing
@@ -258,8 +265,6 @@ CallBackDslDdp::CallBackDslDdp():
   traj_req_resp_.request.itreq.xf.statevector.resize(4);
   ddpInit();
 
-  cout<<"**************************************************************************"<<endl;
-  cout<<"****************************DSL TRAJECTORY PLANNER************************"<<endl;
   cout<<"Waiting for start and goal position.\nSelect start through Publish Point button and select goal through 2D nav goal."<<endl;
 }
 
@@ -285,29 +290,81 @@ CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t leve
       dilateObs();
     }
 
+    //dsl settings
     if(config.dyn_dsl_plan_once)
     {
-      dslPlan();
-      dispPathDslRviz();
-      dispPathDslInterpdRviz();
+      if(dslPlan() && config.dyn_dsl_disp_rviz)
+      {
+        dispPathDslRviz();
+        dispPathDslInterpdRviz();
+      }
       config.dyn_dsl_plan_once = false;
     }
 
-    if(config.dyn_ddp_plan_once)
-    {
-      if(ddpPlan())
-        dispPathDdpRviz();
-      config.dyn_ddp_plan_once = false;
-    }
+    if(config_.dyn_dsl_loop_durn != config.dyn_dsl_loop_durn)
+      timer_dsl_.setPeriod(ros::Duration(config.dyn_dsl_loop_durn));
+
+    if(config_.dyn_dsl_plan_loop != config.dyn_dsl_plan_loop && config.dyn_dsl_plan_loop )
+      timer_dsl_.start();
+
+    if(config_.dyn_dsl_plan_loop != config.dyn_dsl_plan_loop && !config.dyn_dsl_plan_loop )
+      timer_dsl_.stop();
 
     if(config_.dyn_dsl_avg_speed != config.dyn_dsl_avg_speed)
     {
       config_.dyn_dsl_avg_speed = config.dyn_dsl_avg_speed;
       dslInterpolate();
     }
+
+    //ddp settings
+    if(config.dyn_ddp_plan_once)
+    {
+      if(ddpPlan() && config_.dyn_ddp_disp_rviz)
+        dispPathDdpRviz();
+      config.dyn_ddp_plan_once = false;
+    }
+
+    if(config_.dyn_ddp_loop_durn != config.dyn_ddp_loop_durn)
+      timer_ddp_.setPeriod(ros::Duration(config.dyn_ddp_loop_durn));
+
+    if(config_.dyn_ddp_plan_loop != config.dyn_ddp_plan_loop && config.dyn_ddp_plan_loop )
+      timer_ddp_.start();
+
+    if(config_.dyn_ddp_plan_loop != config.dyn_ddp_plan_loop && !config.dyn_ddp_plan_loop )
+      timer_ddp_.stop();
+
   }
   else
+  {
+    cout<<"First time in reconfig. Setting config from yaml"<<endl;
+
+    //general settings
+    config.dyn_obs_dilation_m     = yaml_node_["obs_dilation_m"].as<double>();
+    config.dyn_dilation_type      = yaml_node_["dilation_type"].as<int>();
+    config.dyn_debug_on           = yaml_node_["debug_on"].as<bool>();
+    config.dyn_enable_motors      = yaml_node_["enable_motors"].as<bool>();
+
+    //dsl settings
+    config.dyn_dsl_avg_speed      = yaml_node_["dsl_avg_speed"].as<double>();
+    config.dyn_dsl_interp_deg     = yaml_node_["dsl_interp_deg"].as<double>();
+    config.dyn_dsl_interp_delt    = yaml_node_["dsl_interp_delt"].as<double>();
+    config.dyn_dsl_preint_delt    = yaml_node_["dsl_preint_delt"].as<double>();
+    config.dyn_dsl_from_curr_posn = yaml_node_["dsl_from_curr_posn"].as<bool>();
+    config.dyn_dsl_loop_durn      = yaml_node_["dsl_loop_durn"].as<double>();
+    config.dyn_dsl_plan_once      = false;
+    config.dyn_dsl_plan_loop      = false;
+    config.dyn_dsl_disp_rviz      = yaml_node_["dsl_disp_rviz"].as<bool>();
+
+    //ddp settings
+    config.dyn_ddp_from_curr_posn = yaml_node_["ddp_from_curr_posn"].as<bool>();
+    config.dyn_ddp_t_away         = yaml_node_["ddp_t_away"].as<double>();
+    config.dyn_ddp_loop_durn      = yaml_node_["ddp_loop_durn"].as<double>();
+    config.dyn_ddp_plan_once=false;
+    config.dyn_ddp_plan_loop=false;
+    config.dyn_ddp_disp_rviz      = yaml_node_["ddp_disp_rviz"].as<bool>();
+
     first_time = false;
+  }
   config_ = config;
 }
 
@@ -400,13 +457,35 @@ CallBackDslDdp::initSubsPubsAndTimers(void)
   //Setup timers
   timer_vis_ = nh_.createTimer(ros::Duration(0.1), &CallBackDslDdp::cbTimerVis, this);
   timer_vis_.stop();
-}
 
+  timer_dsl_ = nh_.createTimer(ros::Duration(config_.dyn_dsl_loop_durn), &CallBackDslDdp::cbTimerDsl, this);
+  timer_dsl_.stop();
+
+  timer_ddp_ = nh_.createTimer(ros::Duration(config_.dyn_ddp_loop_durn), &CallBackDslDdp::cbTimerDdp, this);
+   timer_ddp_.stop();
+}
 
 void
 CallBackDslDdp::cbTimerVis(const ros::TimerEvent& event)
 {
   pub_vis_.publish( marker_path_dsl_ );
+}
+
+void
+CallBackDslDdp::cbTimerDsl(const ros::TimerEvent& event)
+{
+  if(dslPlan() && config_.dyn_dsl_disp_rviz)
+  {
+    dispPathDslRviz();
+    dispPathDslInterpdRviz();
+  }
+}
+
+void
+CallBackDslDdp::cbTimerDdp(const ros::TimerEvent& event)
+{
+  if(ddpPlan() && config_.dyn_ddp_disp_rviz)
+    dispPathDdpRviz();
 }
 
 void
@@ -428,11 +507,11 @@ CallBackDslDdp::cbPoseStart(const geometry_msgs::PoseWithCovarianceStampedConstP
   poseMsg2Eig(pose_dsl_start_,msg_pose_start->pose.pose);
   pt_dsl_start_ = (tfm_world2og_ll_.inverse()*pose_dsl_start_).translation()/m_per_cell;
   dispStartRviz();
-  cond_feas_s_ = (pt_dsl_start_(0)>=0) && (pt_dsl_start_(1)>=0) && (pt_dsl_start_(0)<w) && (pt_dsl_start_(1)<h);
-  if(cond_feas_s_)
+  dsl_cond_feas_s_ = (pt_dsl_start_(0)>=0) && (pt_dsl_start_(1)>=0) && (pt_dsl_start_(0)<w) && (pt_dsl_start_(1)<h);
+  if(dsl_cond_feas_s_)
     p_gdsl_->SetStart((int)pt_dsl_start_(0),(int)pt_dsl_start_(1));
 
-  if(cond_feas_s_ && config_.dyn_debug_on)
+  if(dsl_cond_feas_s_ && config_.dyn_debug_on)
   {
     cout<<"*Start position received at ("
         <<pose_dsl_start_.translation().transpose() <<") in world frame and ("
@@ -440,7 +519,7 @@ CallBackDslDdp::cbPoseStart(const geometry_msgs::PoseWithCovarianceStampedConstP
     cout<<"pose_dsl_start rotation:\n"<<pose_dsl_start_.rotation()<<endl;
   }
 
-  if(!cond_feas_s_ && config_.dyn_debug_on)
+  if(!dsl_cond_feas_s_ && config_.dyn_debug_on)
   {
     cout<<"*Invalid Start position received at ("
         <<pose_dsl_start_.translation().transpose() <<") in world frame and ("
@@ -463,11 +542,11 @@ CallBackDslDdp::cbPoseGoal(const geometry_msgs::PoseStampedConstPtr& msg_pose_go
   poseMsg2Eig(pose_dsl_goal_,msg_pose_goal->pose);
   pt_dsl_goal_ = (tfm_world2og_ll_.inverse()*pose_dsl_goal_).translation()/m_per_cell;
   dispGoalRviz();
-  cond_feas_g_ = (pt_dsl_goal_(0)>=0) && (pt_dsl_goal_(1)>=0) && (pt_dsl_goal_(0)<w) && (pt_dsl_goal_(1)<h);
-  if(cond_feas_g_)
+  dsl_cond_feas_g_ = (pt_dsl_goal_(0)>=0) && (pt_dsl_goal_(1)>=0) && (pt_dsl_goal_(0)<w) && (pt_dsl_goal_(1)<h);
+  if(dsl_cond_feas_g_)
     p_gdsl_->SetGoal((int)pt_dsl_goal_(0),(int)pt_dsl_goal_(1));
 
-  if(cond_feas_g_ && config_.dyn_debug_on)
+  if(dsl_cond_feas_g_ && config_.dyn_debug_on)
   {
     cout<<"*goal position received at ("
         <<pose_dsl_goal_.translation().transpose() <<") in world frame and ("
@@ -475,7 +554,7 @@ CallBackDslDdp::cbPoseGoal(const geometry_msgs::PoseStampedConstPtr& msg_pose_go
     cout<<"pose_dsl_goal rotation:\n"<<pose_dsl_goal_.rotation()<<endl;
   }
 
-  if(!cond_feas_g_ && config_.dyn_debug_on)
+  if(!dsl_cond_feas_g_ && config_.dyn_debug_on)
   {
     cout<<"*Invalid goal position received at ("
         <<pose_dsl_goal_.translation().transpose() <<") in world frame and ("
@@ -786,13 +865,14 @@ CallBackDslDdp::dslInit()
 }
 
 bool
-CallBackDslDdp::dslFeasible()
+CallBackDslDdp::dslFeasible(void)
 {
   float w = occ_grid_.info.width;
   float h = occ_grid_.info.height;
-  return w && h && cond_feas_s_ && cond_feas_g_;
+  return w && h && dsl_cond_feas_s_ && dsl_cond_feas_g_;
 }
-void
+
+bool
 CallBackDslDdp::dslPlan()
 {
   if(dslFeasible())
@@ -808,6 +888,7 @@ CallBackDslDdp::dslPlan()
       cout<<"  delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
     }
     dslInterpolate();
+    dsl_done_ = true;
   }
   else
   {
@@ -815,7 +896,13 @@ CallBackDslDdp::dslPlan()
     {
       cout<<"*Planning with DSL not possible because it's infeasible"<<endl;
     }
+    dsl_done_=false;
   }
+
+  if(dslFeasible())
+    return true;
+  else
+    return false;
 }
 
 void
@@ -825,35 +912,93 @@ CallBackDslDdp::dslInterpolate(void)
   float m_per_cell = occ_grid_.info.resolution;
   int n = path_opt_.count;
   //std::vector<double> x(path_opt_.count), y(path_opt_.count),d(path_opt_.count), t(path_opt_.count);
-  VectorXd x(n),y(n);    x.setZero(); y.setZero();
+  VectorXd pt_x_opt(n),pt_y_opt(n);    pt_x_opt.setZero(); pt_y_opt.setZero();
   VectorXd delx(n),dely(n); delx.setZero(); dely.setZero();
-  VectorXd delt(n),t(n);  delt.setZero(); t.setZero();
+  VectorXd delt(n),t_opt(n);  delt.setZero(); t_opt.setZero();
 
   for (int i = 0; i < n; i++)
   {
-    x(i) = path_opt_.pos[2*i];
-    y(i) = path_opt_.pos[2*i+1];
+    pt_x_opt(i) = path_opt_.pos[2*i];
+    pt_y_opt(i) = path_opt_.pos[2*i+1];
   }
-  delx.tail(n-1) = x.tail(n-1) - x.head(n-1);
-  dely.tail(n-1) = y.tail(n-1) - y.head(n-1);
+  delx.tail(n-1) = pt_x_opt.tail(n-1) - pt_x_opt.head(n-1);
+  dely.tail(n-1) = pt_y_opt.tail(n-1) - pt_y_opt.head(n-1);
 
   //The time difference between 2 consecutive way points
   //is calculated as distance between the 2 way points divided by the top speed
   delt = ((delx.array().square() + dely.array().square()).array().sqrt())*m_per_cell/config_.dyn_dsl_avg_speed;
   for(int i=1;i<n;i++)
-    t(i) =t(i-1) + delt(i);
+    t_opt(i) =t_opt(i-1) + delt(i);
 
-  //Create spline interpolator
-  SplineFunction intp_x(t,x,config_.dyn_dsl_interp_deg);
-  SplineFunction intp_y(t,y,config_.dyn_dsl_interp_deg);
+  //Create linear interpolator for pre-interpolation from opt points
+  SplineFunction lint_x(t_opt,pt_x_opt,1);
+  SplineFunction lint_y(t_opt,pt_y_opt,1);
+
+  //Pre-Interpolate
+  bool update_dyn_server=false;
+  if(config_.dyn_dsl_preint_delt > t_opt(n-1) )
+  {
+    config_.dyn_dsl_preint_delt = t_opt(n-1);
+    update_dyn_server = true;
+  }
+
+  int n_segs_reg; n_segs_reg = round((double)(t_opt(n-1))/config_.dyn_dsl_preint_delt);
+  int n_nodes_reg = n_segs_reg+1;//regularly spaced points
+  double dt_reg= (double)(t_opt(n-1))/(double)n_segs_reg;
+
+
+  //  Reserve space for regularly spaced nodes and the original nodes.
+  //    n-2 because the 1st and last interpolated points are same as original
+  vector<double> pt_x_dsl_preint_stl;vector<double> pt_y_dsl_preint_stl;vector<double> t_dsl_preint_stl;
+  pt_x_dsl_preint_stl.reserve(n_nodes_reg + n-2); pt_x_dsl_preint_stl.push_back(pt_x_opt(0));
+  pt_y_dsl_preint_stl.reserve(n_nodes_reg + n-2); pt_y_dsl_preint_stl.push_back(pt_y_opt(0));
+  t_dsl_preint_stl.reserve(n_nodes_reg + n-2);    t_dsl_preint_stl.push_back(t_opt(0));
+
+  int idx_opt=1; //index of original
+  int idx_reg=1;
+  double tol=1e-10;
+  while( abs(t_opt(n-1) - t_dsl_preint_stl.back()) > tol)
+  {
+    //insert the original points if they are not already there
+    double t_next = idx_reg*dt_reg;
+    while( t_opt(idx_opt)<= t_next && idx_opt<n-1)
+    {
+      if(abs(t_opt(idx_opt) - t_next ) > 1e-8)
+      {
+        pt_x_dsl_preint_stl.push_back(pt_x_opt(idx_opt));
+        pt_y_dsl_preint_stl.push_back(pt_y_opt(idx_opt));
+        t_dsl_preint_stl.push_back(t_opt(idx_opt));
+      }
+      idx_opt++;
+    }
+    //insert the regularly spaced linear interpolation points
+    pt_x_dsl_preint_stl.push_back(lint_x[t_next]);
+    pt_y_dsl_preint_stl.push_back(lint_y[t_next]);
+    t_dsl_preint_stl.push_back(t_next);
+    idx_reg++;
+  }
+
+  //convert stl vectors to eigen vectors
+  VectorXd pt_x_dsl_preint = Map<VectorXd>(pt_x_dsl_preint_stl.data(),pt_x_dsl_preint_stl.size());
+  VectorXd pt_y_dsl_preint = Map<VectorXd>(pt_y_dsl_preint_stl.data(),pt_y_dsl_preint_stl.size());
+  VectorXd t_dsl_preint    = Map<VectorXd>(t_dsl_preint_stl.data(),t_dsl_preint_stl.size());
+
+  //Create spline interpolator from preint points
+  SplineFunction intp_x(t_dsl_preint,pt_x_dsl_preint,config_.dyn_dsl_interp_deg);
+  SplineFunction intp_y(t_dsl_preint,pt_y_dsl_preint,config_.dyn_dsl_interp_deg);
 
   //Interpolate
-  int n_segs; n_segs = floor((double)(t(n-1))/config_.dyn_dsl_interp_delt);
+  if(config_.dyn_dsl_interp_delt > t_opt(n-1) )
+  {
+    config_.dyn_dsl_interp_delt = t_opt(n-1);
+    update_dyn_server = true;
+  }
+  int n_segs; n_segs = round((double)(t_opt(n-1))/config_.dyn_dsl_interp_delt);
   int n_nodes = n_segs+1;
-  double dt= (double)(t(n-1))/(double)n_segs;
+  double dt= (double)(t_opt(n-1))/(double)n_segs;
 
   pt_x_dsl_intp_.resize(n_nodes); pt_y_dsl_intp_.resize(n_nodes);a_dsl_intp_.resize(n_nodes); t_dsl_intp_.resize(n_nodes);
-  pt_x_dsl_intp_(0) = x(0);     pt_y_dsl_intp_(0) = y(0);     t_dsl_intp_(0) = t(0);
+  pt_x_dsl_intp_(0) = pt_x_opt(0);     pt_y_dsl_intp_(0) = pt_y_opt(0);     t_dsl_intp_(0) = t_opt(0);
 
   for(int i=1;i<n_nodes;i++)
   {
@@ -866,6 +1011,15 @@ CallBackDslDdp::dslInterpolate(void)
     a_dsl_intp_(i-1) = atan2(dy,dx);
   }
   a_dsl_intp_(n_nodes-1) = a_dsl_intp_(n_nodes-2);
+
+  if(update_dyn_server)
+    dyn_server_.updateConfig(config_);
+}
+
+bool
+CallBackDslDdp::ddpFeasible(void)
+{
+  return dsl_done_;
 }
 
 bool
@@ -896,6 +1050,8 @@ CallBackDslDdp::ddpPlan(void)
   if(config_.dyn_debug_on)
     cout<<"*Entering local path planning"<<endl;
 
+  if(!ddpFeasible())
+    return false;
   float m_per_cell = occ_grid_.info.resolution;
 
   //DDP start
@@ -912,7 +1068,7 @@ CallBackDslDdp::ddpPlan(void)
   int n_nodes = pt_x_dsl_intp_.size();
   Vector3d pt_ddp_start = (tfm_world2og_ll_.inverse()*pose_ddp_start_).translation()/m_per_cell;
   VectorXd dist_sq =(pt_x_dsl_intp_ - VectorXd::Ones(n_nodes)*pt_ddp_start(0)).array().square()
-                       +(pt_y_dsl_intp_ - VectorXd::Ones(n_nodes)*pt_ddp_start(1)).array().square();
+                               +(pt_y_dsl_intp_ - VectorXd::Ones(n_nodes)*pt_ddp_start(1)).array().square();
   VectorXd::Index idx_min; dist_sq.minCoeff(&idx_min);
   int idx_nearest = (int)idx_min;
 
@@ -1009,6 +1165,7 @@ CallBackDslDdp::ddpPlan(void)
     v_prev=ddp_solver.V;
   }
 
+  return true;
 }
 
 void
@@ -1125,7 +1282,7 @@ int main(int argc, char** argv)
 
   double a=10;
 
-  ros::Rate loop_rate(100);
+  ros::Rate loop_rate(1000);
   while(!g_shutdown_requested)
   {
     ros::spinOnce();
