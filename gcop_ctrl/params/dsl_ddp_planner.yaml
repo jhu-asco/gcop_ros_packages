@@ -58,15 +58,22 @@ prop_wp_ddp:        [0.0,0.0,0.5,0.5,0.18]
 
 ###################################
 # General settings(Reconfigurable)
-#   obs_dilation_m:    The amount by which obstacles are expanded in meters
 #   dilation_type: 0: MORPH_RECT 1: MORPH_CROSS 2: MORPH_ELLIPSE
 #   debug_on:          enable debug
 #   enable_motors:     Enable motors so that ctrl cmds can be sent
-obs_dilation_m: 1.0
 dilation_type: 2
 debug_on: True
 enable_motors: False
    
+###################################
+# General settings(Reconfigurable)   
+#   obs_dilation_m:    The amount by which obstacles are expanded in meters
+#   dilation_min_m: To be used in close corridors
+#   dilation_max_m: To be used in open spaces
+obs_dilation_m: 0.5
+dilation_max_m: 2.0  #unimplemented
+dilation_min_m: 0.5  #unimplemented
+
 ###################################
 # DSL settings(reconfigurable)
 #   dsl_avg_speed: average speed in m/sec for dsl planning. 
@@ -112,11 +119,10 @@ ddp_Qf:  [1.0, 0.0, 0.0, 0.0,
 ddp_R:   [0.005, 0.000, 
           0.000, 0.001]
 ddp_mu:       1
-ddp_debug_on: False
+ddp_debug_on: True
 ddp_nseg_minmax: [7,32]
 ddp_tseg_ideal:  1.0
 ddp_nit_max: 100
 ddp_tol_abs: 1e-6
 ddp_tol_rel: 1e-3
-
      

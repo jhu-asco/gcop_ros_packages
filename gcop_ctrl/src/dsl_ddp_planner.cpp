@@ -153,8 +153,8 @@ private:
   // Frames and transformation
   Affine3d tfm_world2og_org_, tfm_world2og_ll_,tfm_og_org2og_ll_;
   Transform2d tfm_world2og_ll_2d_;
-  Affine3d pose_dsl_start_, pose_dsl_goal_, pose_ddp_start_, pose_ddp_goal_, pose_curr_;
-  Vector3d pt_dsl_start_, pt_dsl_goal_, pt_ddp_start_, pt_ddp_goal_; //refers to grid point
+
+
 
   // DSL vars
   dsl::GridSearch* p_gdsl_;
@@ -162,6 +162,8 @@ private:
   dsl::GridPath path_opt_;
   bool dsl_cond_feas_s_, dsl_cond_feas_g_, dsl_done_;
   VectorXd pt_x_dsl_intp_, pt_y_dsl_intp_,a_dsl_intp_, t_dsl_intp_;//x,y,angle,t of the path
+  Affine3d pose_dsl_start_, pose_dsl_goal_;
+  Vector3d pt_dsl_start_, pt_dsl_goal_;//refers to grid point
 
   // DDP vars
   bool ddp_debug_on_;
@@ -169,6 +171,9 @@ private:
   int ddp_nseg_max_,ddp_nseg_min_, ddp_nit_max_;
   double ddp_tseg_ideal_;
   double ddp_tol_rel_, ddp_tol_abs_;
+  Affine3d pose_ddp_start_, pose_ddp_goal_, pose_ddp_curr_;
+  double vel_ddp_start_,     vel_ddp_goal_,  vel_ddp_curr_;
+  Vector3d pt_ddp_start_, pt_ddp_goal_; //refers to grid point
 
   Gcar sys_gcar_;
   LqCost< M3V1d, 4, 2> cost_lq_;
@@ -281,12 +286,16 @@ CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t leve
   static bool first_time=true;
 
   //check for all change condition
-  bool condn_dilate = occ_grid_.info.width && (config.dyn_obs_dilation_m != config_.dyn_obs_dilation_m || config.dyn_dilation_type != config_.dyn_dilation_type );
+  bool condn_dilate =     occ_grid_.info.width
+      && (   config.dyn_obs_dilation_m != config_.dyn_obs_dilation_m
+          || config.dyn_dilation_type != config_.dyn_dilation_type );
 
   if(!first_time)
   {
     if(condn_dilate)
     {
+      config_.dyn_obs_dilation_m = config.dyn_obs_dilation_m;
+      config_.dyn_dilation_type = config.dyn_dilation_type;
       dilateObs();
     }
 
@@ -491,7 +500,8 @@ CallBackDslDdp::cbTimerDdp(const ros::TimerEvent& event)
 void
 CallBackDslDdp::cbOdom(const nav_msgs::OdometryConstPtr& msg_odom)
 {
-  poseMsg2Eig(pose_curr_,msg_odom->pose.pose);
+  poseMsg2Eig(pose_ddp_curr_,msg_odom->pose.pose);
+  vel_ddp_curr_ = msg_odom->twist.twist.linear.x;
 }
 
 void
@@ -1057,10 +1067,15 @@ CallBackDslDdp::ddpPlan(void)
   //DDP start
   //if dyn_ddp_from_curr_posn=true then start is current position else
   if(config_.dyn_ddp_from_curr_posn)
-    pose_ddp_start_ = pose_curr_;
+  {
+    pose_ddp_start_ = pose_ddp_curr_;
+    vel_ddp_start_  =  vel_ddp_curr_;
+  }
   else
+  {
     pose_ddp_start_ = pose_dsl_start_;
-
+    vel_ddp_start_  = 0;
+  }
   //Select ddp goal position by finding a point on the dsl way point
   //  that is t_away sec away from current position
 
@@ -1093,13 +1108,13 @@ CallBackDslDdp::ddpPlan(void)
   se2_0.block<2,2>(0,0)= (pose_ddp_start_.matrix()).block<2,2>(0,0);
   se2_0.block<2,1>(0,2) = (pose_ddp_start_.matrix()).block<2,1>(0,3);
   se2_0(2,2)=1;
-  M3V1d x0(se2_0,0);
+  M3V1d x0(se2_0,vel_ddp_start_);
 
   Matrix3d se2_f; se2_f.setZero();
   se2_f.block<2,2>(0,0)= (pose_ddp_goal_.matrix()).block<2,2>(0,0);
   se2_f.block<2,1>(0,2) = (pose_ddp_goal_.matrix()).block<2,1>(0,3);
   se2_f(2,2)=1;
-  M3V1d xf(se2_f,0);
+  M3V1d xf(se2_f,config_.dyn_dsl_avg_speed);
 
   //Determine the number of segments for ddp based on tf, nseg_max, tseg_ideal
   //  and resize ts xs and us based on that
