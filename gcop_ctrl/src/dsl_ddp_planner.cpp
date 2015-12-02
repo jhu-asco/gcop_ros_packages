@@ -120,7 +120,7 @@ public:
   typedef Matrix<float, 4, 4> Matrix4f;
   typedef Matrix<double, 4, 4> Matrix4d;
   typedef Matrix<double, 5, 1> Vector5d;
-  typedef Ddp<pair<Matrix3d, double>, 4, 2> GcarDdp;
+  typedef Ddp<GcarState, 4, 2> GcarDdp;
   typedef Transform<double,2,Affine> Transform2d;
 
 public:
@@ -176,9 +176,9 @@ private:
   Vector3d pt_ddp_start_, pt_ddp_goal_; //refers to grid point
 
   Gcar sys_gcar_;
-  LqCost< M3V1d, 4, 2> cost_lq_;
+  LqCost< GcarState, 4, 2> cost_lq_;
   vector<double> ddp_ts_;
-  vector<pair<Matrix3d,double>> ddp_xs_;
+  vector<GcarState> ddp_xs_;
   vector<Vector2d> ddp_us_;
 
   gcop_comm::Trajectory_req traj_req_resp_;
@@ -233,7 +233,7 @@ CallBackDslDdp::CallBackDslDdp():
                         p_gdsl_(nullptr),
                         map_dsl_(nullptr),
                         sys_gcar_(),
-                        cost_lq_(sys_gcar_, 1, M3V1d(Matrix3d::Identity(), 0))
+                        cost_lq_(sys_gcar_, 1, GcarState(Matrix3d::Identity(), 0))
 {
   cout<<"**************************************************************************"<<endl;
   cout<<"***************************DSL-DDP TRAJECTORY PLANNER*********************"<<endl;
@@ -1103,18 +1103,19 @@ CallBackDslDdp::ddpPlan(void)
   double tf = t_dsl_intp_(idx_t_away) - t_dsl_intp_(idx_nearest);
   double len_ddp_path = tf*config_.dyn_dsl_avg_speed;
 
-  // Start and goal ddp state(M3V1d. M3 is se2 elem and V1 is forward vel)
+  // Start and goal ddp state(GcarState. M3 is se2 elem and V1 is forward vel)
   Matrix3d se2_0; se2_0.setZero();
   se2_0.block<2,2>(0,0)= (pose_ddp_start_.matrix()).block<2,2>(0,0);
   se2_0.block<2,1>(0,2) = (pose_ddp_start_.matrix()).block<2,1>(0,3);
   se2_0(2,2)=1;
-  M3V1d x0(se2_0,vel_ddp_start_);
+  GcarState x0(se2_0,vel_ddp_start_);
+
 
   Matrix3d se2_f; se2_f.setZero();
   se2_f.block<2,2>(0,0)= (pose_ddp_goal_.matrix()).block<2,2>(0,0);
   se2_f.block<2,1>(0,2) = (pose_ddp_goal_.matrix()).block<2,1>(0,3);
   se2_f(2,2)=1;
-  M3V1d xf(se2_f,config_.dyn_dsl_avg_speed);
+  GcarState xf(se2_f, config_.dyn_dsl_avg_speed);
 
   //Determine the number of segments for ddp based on tf, nseg_max, tseg_ideal
   //  and resize ts xs and us based on that
@@ -1195,10 +1196,10 @@ CallBackDslDdp::dispPathDdpRviz(void)
   for (int i = 0; i < ddp_xs_.size(); i++)
   {
     geometry_msgs::Point node;
-    node.x    = (ddp_xs_[i].first)(0,2);
-    node.y    = (ddp_xs_[i].first)(1,2);
-    double th = atan2(ddp_xs_[i].first(1,0),ddp_xs_[i].first(0,0));
-    double v = ddp_xs_[i].second;
+    node.x    = (ddp_xs_[i].g)(0,2);
+    node.y    = (ddp_xs_[i].g)(1,2);
+    double th = atan2(ddp_xs_[i].g(1,0),ddp_xs_[i].g(0,0));
+    double v = ddp_xs_[i].v;
     node.z = 0.2;
     marker_path_ddp_.points[i] =node;
     marker_wp_ddp_.points[i] =node;

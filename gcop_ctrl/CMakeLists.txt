@@ -182,10 +182,6 @@ add_executable(rccar_ddp_lcl_planner src/rccar_ddp_lcl_planner.cpp)
 target_link_libraries(rccar_ddp_lcl_planner ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(rccar_ddp_lcl_planner ${PROJECT_NAME}_gencfg)
 
-add_executable(gcar_ddp_planner src/gcar_ddp_planner.cpp)
-target_link_libraries(gcar_ddp_planner ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(gcar_ddp_planner ${PROJECT_NAME}_gencfg)
-
 add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
 target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} ${LIBS})
 add_dependencies(dsl_ddp_planner ${PROJECT_NAME}_gencfg )
