@@ -144,8 +144,10 @@ private:
 
   gcop_ctrl::DslDdpPlannerConfig config_;
   dynamic_reconfigure::Server<gcop_ctrl::DslDdpPlannerConfig> dyn_server_;
-  visualization_msgs::Marker marker_path_dsl_,marker_path_dsl_intp_,marker_path_ddp_;
-  visualization_msgs::Marker marker_wp_dsl_,marker_wp_dsl_intp_,marker_wp_ddp_;
+  visualization_msgs::Marker marker_path_dsl_,marker_wp_dsl_;
+  visualization_msgs::Marker marker_path_dsl_intp_ ,marker_wp_dsl_intp_;
+  VectorXd prop_path_pve_ddp_, prop_path_nve_ddp_, prop_wp_pve_ddp_, prop_wp_nve_ddp_ ;
+  visualization_msgs::Marker marker_path_ddp_,marker_wp_ddp_;
   visualization_msgs::Marker marker_text_start_, marker_text_goal_;
   nav_msgs::OccupancyGrid occ_grid_;
   cv::Mat img_occ_grid_dilated_;
@@ -200,6 +202,9 @@ private:
   void setupTopicsAndNames(void);
   void initSubsPubsAndTimers(void);
   void initRvizMarkers(void);
+  void editColorMsg(std_msgs::ColorRGBA& rgba_msg, VectorXd& rgba_vec);
+  void editRvizMarker(visualization_msgs::Marker& marker, VectorXd& prop);
+
 
   void dispPathDslRviz(void);
   void dispPathDslInterpdRviz();
@@ -714,9 +719,14 @@ CallBackDslDdp::initRvizMarkers(void)
   {
     cout<<"*Initializing all rviz markers."<<endl;
   }
-  Vector5d prop_path;
-  Vector5d prop_wp;
+  VectorXd prop_path_n_wp;
   int id=-1;
+
+
+  prop_path_pve_ddp_ = yaml_node_["prop_path_pve_ddp"].as<VectorXd>();
+  prop_path_nve_ddp_ = yaml_node_["prop_path_nve_ddp"].as<VectorXd>();
+  prop_wp_pve_ddp_ = yaml_node_["prop_wp_pve_ddp"].as<VectorXd>();
+  prop_wp_nve_ddp_ = yaml_node_["prop_wp_nve_ddp"].as<VectorXd>();
 
   //Marker for dsl path
   id++;
@@ -727,12 +737,8 @@ CallBackDslDdp::initRvizMarkers(void)
   marker_path_dsl_.type = visualization_msgs::Marker::LINE_STRIP;
   marker_path_dsl_.action = visualization_msgs::Marker::ADD;
   marker_path_dsl_.lifetime = ros::Duration(0);
-  prop_path = yaml_node_["prop_path_dsl"].as<VectorXd>();
-  marker_path_dsl_.color.r = prop_path(0);
-  marker_path_dsl_.color.g = prop_path(1);
-  marker_path_dsl_.color.b = prop_path(2);
-  marker_path_dsl_.color.a = prop_path(3);
-  marker_path_dsl_.scale.x = prop_path(4);//width of line segment
+  prop_path_n_wp = yaml_node_["prop_path_dsl"].as<VectorXd>();
+  editRvizMarker(marker_path_dsl_,prop_path_n_wp);
 
   //Marker for dsl path way points
   id++;
@@ -743,13 +749,8 @@ CallBackDslDdp::initRvizMarkers(void)
   marker_wp_dsl_.type = visualization_msgs::Marker::POINTS;
   marker_wp_dsl_.action = visualization_msgs::Marker::ADD;
   marker_wp_dsl_.lifetime = ros::Duration(0);
-  prop_wp = yaml_node_["prop_wp_dsl"].as<VectorXd>();
-  marker_wp_dsl_.color.r = prop_wp(0);
-  marker_wp_dsl_.color.g = prop_wp(1);
-  marker_wp_dsl_.color.b = prop_wp(2);
-  marker_wp_dsl_.color.a = prop_wp(3);
-  marker_wp_dsl_.scale.x = prop_wp(4);//width
-  marker_wp_dsl_.scale.y = prop_wp(4);//height
+  prop_path_n_wp = yaml_node_["prop_wp_dsl"].as<VectorXd>();
+  editRvizMarker(marker_wp_dsl_,prop_path_n_wp);
 
   //Marker for dsl path interpolated
   id++;
@@ -760,12 +761,8 @@ CallBackDslDdp::initRvizMarkers(void)
   marker_path_dsl_intp_.type = visualization_msgs::Marker::LINE_STRIP;
   marker_path_dsl_intp_.action = visualization_msgs::Marker::ADD;
   marker_path_dsl_intp_.lifetime = ros::Duration(0);
-  prop_path = yaml_node_["prop_path_dsl_intp"].as<VectorXd>();
-  marker_path_dsl_intp_.color.r = prop_path(0);
-  marker_path_dsl_intp_.color.g = prop_path(1);
-  marker_path_dsl_intp_.color.b = prop_path(2);
-  marker_path_dsl_intp_.color.a = prop_path(3);
-  marker_path_dsl_intp_.scale.x = prop_path(4);
+  prop_path_n_wp = yaml_node_["prop_path_dsl_intp"].as<VectorXd>();
+  editRvizMarker(marker_path_dsl_intp_,prop_path_n_wp);
 
   //Marker for dsl path interpolated way points
   id++;
@@ -776,15 +773,10 @@ CallBackDslDdp::initRvizMarkers(void)
   marker_wp_dsl_intp_.type = visualization_msgs::Marker::POINTS;
   marker_wp_dsl_intp_.action = visualization_msgs::Marker::ADD;
   marker_wp_dsl_intp_.lifetime = ros::Duration(0);
-  prop_wp = yaml_node_["prop_wp_dsl_intp"].as<VectorXd>();
-  marker_wp_dsl_intp_.color.r = prop_wp(0);
-  marker_wp_dsl_intp_.color.g = prop_wp(1);
-  marker_wp_dsl_intp_.color.b = prop_wp(2);
-  marker_wp_dsl_intp_.color.a = prop_wp(3);
-  marker_wp_dsl_intp_.scale.x = prop_wp(4);//width
-  marker_wp_dsl_intp_.scale.y = prop_wp(4);//height
+  prop_path_n_wp = yaml_node_["prop_wp_dsl_intp"].as<VectorXd>();
+  editRvizMarker(marker_wp_dsl_intp_,prop_path_n_wp);
 
-  //Marker for ddp path
+  //Marker for pve ddp path
   id++;
   marker_path_ddp_.header.frame_id = strfrm_world_;
   marker_path_ddp_.header.stamp = ros::Time();
@@ -793,12 +785,7 @@ CallBackDslDdp::initRvizMarkers(void)
   marker_path_ddp_.type = visualization_msgs::Marker::LINE_STRIP;
   marker_path_ddp_.action = visualization_msgs::Marker::ADD;
   marker_path_ddp_.lifetime = ros::Duration(0);
-  prop_path = yaml_node_["prop_path_ddp"].as<VectorXd>();
-  marker_path_ddp_.color.r = prop_path(0);
-  marker_path_ddp_.color.g = prop_path(1);
-  marker_path_ddp_.color.b = prop_path(2);
-  marker_path_ddp_.color.a = prop_path(3);
-  marker_path_ddp_.scale.x = prop_path(4);
+  editRvizMarker(marker_path_ddp_,prop_path_pve_ddp_);
 
   //Marker for ddp path way points
   id++;
@@ -809,13 +796,7 @@ CallBackDslDdp::initRvizMarkers(void)
   marker_wp_ddp_.type = visualization_msgs::Marker::POINTS;
   marker_wp_ddp_.action = visualization_msgs::Marker::ADD;
   marker_wp_ddp_.lifetime = ros::Duration(0);
-  prop_wp = yaml_node_["prop_wp_ddp"].as<VectorXd>();
-  marker_wp_ddp_.color.r = prop_wp(0);
-  marker_wp_ddp_.color.g = prop_wp(1);
-  marker_wp_ddp_.color.b = prop_wp(2);
-  marker_wp_ddp_.color.a = prop_wp(3);
-  marker_wp_ddp_.scale.x = prop_wp(4);//width
-  marker_wp_ddp_.scale.y = prop_wp(4);//height
+  editRvizMarker(marker_wp_ddp_,prop_wp_pve_ddp_);
 
   //Marker for "start" text
   id++;
@@ -827,10 +808,10 @@ CallBackDslDdp::initRvizMarkers(void)
   marker_text_start_.action = visualization_msgs::Marker::ADD;
   marker_text_start_.text="S";
   marker_text_start_.scale.z = 4;
-  marker_text_start_.color.a = 1.0; // Don't forget to set the alpha!
   marker_text_start_.color.r = 1.0;
   marker_text_start_.color.g = 0.0;
   marker_text_start_.color.b = 0.0;
+  marker_text_start_.color.a = 1.0; // Don't forget to set the alpha!
   marker_text_start_.lifetime = ros::Duration(0);
 
   //Marker for "goal" text
@@ -848,6 +829,51 @@ CallBackDslDdp::initRvizMarkers(void)
   marker_text_goal_.color.g = 0.0;
   marker_text_goal_.color.b = 0.0;
   marker_text_goal_.lifetime = ros::Duration(0);
+}
+void
+CallBackDslDdp::editColorMsg(std_msgs::ColorRGBA& rgba_msg, VectorXd& rgba_vec)
+{
+  rgba_msg.r = rgba_vec(0);
+  rgba_msg.g = rgba_vec(1);
+  rgba_msg.b = rgba_vec(2);
+  rgba_msg.a = rgba_vec(3);
+}
+
+void
+CallBackDslDdp::editRvizMarker(visualization_msgs::Marker& marker, VectorXd& prop)
+{
+  switch(prop.size())
+  {
+    case 3:
+      marker.color.r = prop(0);// red
+      marker.color.g = prop(1);// blue
+      marker.color.b = prop(2);// green
+      break;
+    case 4:
+      marker.color.r = prop(0);// red
+      marker.color.g = prop(1);// blue
+      marker.color.b = prop(2);// green
+      marker.color.a = prop(3);//alpha
+      break;
+    case 5:
+      marker.color.r = prop(0);// red
+      marker.color.g = prop(1);// blue
+      marker.color.b = prop(2);// green
+      marker.color.a = prop(3);//alpha
+      marker.scale.x = prop(4);//width
+      break;
+    case 6:
+      marker.color.r = prop(0);// red
+      marker.color.g = prop(1);// blue
+      marker.color.b = prop(2);// green
+      marker.color.a = prop(3);//alpha
+      marker.scale.x = prop(4);//width
+      marker.scale.y = prop(5);//height
+      break;
+    default:
+      cout<<"Error setting marker properties"<<endl;
+      break;
+  }
 }
 
 void
@@ -1191,8 +1217,12 @@ CallBackDslDdp::dispPathDdpRviz(void)
     cout<<"*Displaying ddp path"<<endl;
 
   float res = occ_grid_.info.resolution;
+
   marker_path_ddp_.points.resize(ddp_xs_.size());
+  marker_path_ddp_.colors.resize(ddp_xs_.size());
   marker_wp_ddp_.points.resize(ddp_xs_.size());
+  marker_wp_ddp_.colors.resize(ddp_xs_.size());
+
   for (int i = 0; i < ddp_xs_.size(); i++)
   {
     geometry_msgs::Point node;
@@ -1203,6 +1233,17 @@ CallBackDslDdp::dispPathDdpRviz(void)
     node.z = 0.2;
     marker_path_ddp_.points[i] =node;
     marker_wp_ddp_.points[i] =node;
+
+    if(v>0)
+    {
+      editColorMsg(marker_path_ddp_.colors[i],prop_path_pve_ddp_);
+      editColorMsg(marker_wp_ddp_.colors[i],prop_wp_pve_ddp_);
+    }
+    else
+    {
+      editColorMsg(marker_path_ddp_.colors[i],prop_path_nve_ddp_);
+      editColorMsg(marker_wp_ddp_.colors[i],prop_wp_nve_ddp_);
+    }
   }
   pub_vis_.publish( marker_path_ddp_ );
   pub_vis_.publish( marker_wp_ddp_ );
