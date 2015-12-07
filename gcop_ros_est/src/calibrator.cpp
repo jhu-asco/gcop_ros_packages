@@ -178,13 +178,17 @@ private:
 
   ofstream ofs_acc_, ofs_mag_;
   Vector3d acc_,mag_;
+  string strfile_acc_calib_;
+  bool new_reading_;
+
 public:
   ros::Rate loop_rate_;
 };
 
 CallBackCalibrator::CallBackCalibrator():
     nh_p_("~"),
-    loop_rate_(500)
+    loop_rate_(500),
+    new_reading_(false)
 {
   cout<<"*Entering constructor of cbc"<<endl;
   //setup dynamic reconfigure
@@ -203,7 +207,7 @@ CallBackCalibrator::CallBackCalibrator():
 
   //Setup output file stream
   string path_pkg = ros::package::getPath("gcop_ros_est");
-  ofs_acc_.open(path_pkg+"/calib/acc_calib.dat", ofstream::out);
+  ofs_acc_.open(path_pkg+ strfile_acc_calib_, ofstream::out);
 }
 
 CallBackCalibrator::~CallBackCalibrator()
@@ -247,8 +251,12 @@ CallBackCalibrator::sendMarkersAndTF(Vector3d xyz_gps)
 void
 CallBackCalibrator::cbSubImu(const sensor_msgs::Imu::ConstPtr& msg_imu)
 {
-
+  acc_(0) = msg_imu->linear_acceleration.x;
+  acc_(1) = msg_imu->linear_acceleration.y;
+  acc_(2) = msg_imu->linear_acceleration.z;
+  new_reading_ = true;
 }
+
 void
 CallBackCalibrator::cbSubMag(const sensor_msgs::MagneticField::ConstPtr& msg_mag)
 {
@@ -288,6 +296,8 @@ CallBackCalibrator::setupTopicsAndNames(void)
   if(config_.dyn_debug_on)
     cout<<"setting up topic names"<<endl;
 
+  nh_p_.getParam("strfile_acc_calib",strfile_acc_calib_);
+
   nh_p_.getParam("strtop_imu",strtop_imu_);
   nh_p_.getParam("strtop_mag",strtop_mag_);
 
@@ -304,10 +314,12 @@ CallBackCalibrator::setupTopicsAndNames(void)
 void
 CallBackCalibrator::initSubsPubsAndTimers(void)
 {
+  cout<<"* initSubsPubsAndTimers"<<endl;
   //Publishers
   pub_viz_cov_ = nh_.advertise<visualization_msgs::Marker>( "visualization_marker", 0 );
 
   //Subscribers
+  cout<<"subscribing to:"<<strtop_imu_<<endl;
   sub_imu_ = nh_.subscribe<sensor_msgs::Imu>(strtop_imu_,1000,&CallBackCalibrator::cbSubImu, this);
   sub_mag_ = nh_.subscribe<sensor_msgs::MagneticField>(strtop_mag_,1000,&CallBackCalibrator::cbSubMag, this);
 
@@ -331,7 +343,19 @@ CallBackCalibrator::cbReconfig(gcop_ros_est::CalibratorConfig &config, uint32_t 
   {
     if(config_.save_one_acc_reading)
     {
-      writeOneAcc();
+      int count=0;
+      while(count<10)
+      {
+        if(new_reading_)
+        {
+          writeOneAcc();
+          count++;
+          new_reading_ = false;
+        }
+        ros::spinOnce();
+        loop_rate_.sleep();
+      }
+
       config_.save_one_acc_reading=false;
     }
   }

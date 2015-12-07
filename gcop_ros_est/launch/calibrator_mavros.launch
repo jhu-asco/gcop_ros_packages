@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <launch>
-  <include file="$(find gcop_ros_est)/launchpx4.launch">
+  <!--<include file="$(find gcop_ros_est)/launch/sensors_px4.launch" />-->
   <node pkg="gcop_ros_est" type="calibrator" name="calibrator"  output="screen">
-  <rosparam command="load" file="$(find gcop_ros_est)/params/calibrator_mavros.yaml"/>
+    <rosparam command="load" file="$(find gcop_ros_est)/params/calibrator_mavros.yaml"/>
   </node>
 </launch>

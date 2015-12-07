@@ -6,11 +6,13 @@
 #   1:RosDefault
 type_sensor_msg: 1
 
+# write to file
+strfile_acc_calib: "/calib/rampage_acc_calib.dat"
 
 # Topic name
 #   (un-modifiable in reconfigure)
 
-strtop_imu: "/mavros/imu/imu_data"
+strtop_imu: "/mavros/imu/data_raw"
 strtop_mag: "/mavros/imu/mag"
 
 strtop_mag_v3s: "/multisense/imu/magnetometer_vector"

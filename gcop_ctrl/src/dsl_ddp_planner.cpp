@@ -162,6 +162,7 @@ private:
   dsl::GridSearch* p_gdsl_;
   double* map_dsl_;
   dsl::GridPath path_opt_;
+  dsl::GridCost grid_cost_;
   bool dsl_cond_feas_s_, dsl_cond_feas_g_, dsl_done_;
   VectorXd pt_x_dsl_intp_, pt_y_dsl_intp_,a_dsl_intp_, t_dsl_intp_;//x,y,angle,t of the path
   Affine3d pose_dsl_start_, pose_dsl_goal_;
@@ -891,7 +892,7 @@ CallBackDslDdp::dslInit()
   map_dsl_ = new double[occ_grid_.info.width*occ_grid_.info.height];
   for (int i = 0; i < occ_grid_.info.width*occ_grid_.info.height; ++i)
     map_dsl_[i] = 1000*(double)img_occ_grid_dilated_.data[i];
-  p_gdsl_ = new dsl::GridSearch(occ_grid_.info.width, occ_grid_.info.height, new dsl::DistEdgeCost(), map_dsl_);
+  p_gdsl_ = new dsl::GridSearch(occ_grid_.info.width, occ_grid_.info.height, grid_cost_, map_dsl_);
   ros::Time t_end =  ros::Time::now();
   if(config_.dyn_debug_on)
   {
@@ -920,7 +921,7 @@ CallBackDslDdp::dslPlan()
     ros::Time t_end =  ros::Time::now();
     if(config_.dyn_debug_on)
     {
-      cout<<"*Planned a path and optimized it and obtained a path(with "<<path_opt_.count<<"nodes)"<<endl;
+      cout<<"*Planned a path and optimized it and obtained a path(with "<<path_opt_.cells.size()<<"nodes)"<<endl;
       cout<<"  delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
     }
     dslInterpolate();
@@ -946,7 +947,7 @@ CallBackDslDdp::dslInterpolate(void)
 {
 
   float m_per_cell = occ_grid_.info.resolution;
-  int n = path_opt_.count;
+  int n = path_opt_.cells.size();
   //std::vector<double> x(path_opt_.count), y(path_opt_.count),d(path_opt_.count), t(path_opt_.count);
   VectorXd pt_x_opt(n),pt_y_opt(n);    pt_x_opt.setZero(); pt_y_opt.setZero();
   VectorXd delx(n),dely(n); delx.setZero(); dely.setZero();
@@ -954,8 +955,8 @@ CallBackDslDdp::dslInterpolate(void)
 
   for (int i = 0; i < n; i++)
   {
-    pt_x_opt(i) = path_opt_.pos[2*i];
-    pt_y_opt(i) = path_opt_.pos[2*i+1];
+    pt_x_opt(i) = path_opt_.cells[i][0];
+    pt_y_opt(i) = path_opt_.cells[i][1];
   }
   delx.tail(n-1) = pt_x_opt.tail(n-1) - pt_x_opt.head(n-1);
   dely.tail(n-1) = pt_y_opt.tail(n-1) - pt_y_opt.head(n-1);
@@ -1256,11 +1257,11 @@ CallBackDslDdp::dispPathDslRviz()
     cout<<"*Displaying dsl path"<<endl;
 
   float m_per_cell = occ_grid_.info.resolution;
-  marker_path_dsl_.points.resize(path_opt_.count);
-  marker_wp_dsl_.points.resize(path_opt_.count);
-  for (int i = 0; i < path_opt_.count; i++)
+  marker_path_dsl_.points.resize(path_opt_.cells.size());
+  marker_wp_dsl_.points.resize(path_opt_.cells.size());
+  for (int i = 0; i < path_opt_.cells.size(); i++)
   {
-    Vector3d posn_waypt_in_ll(m_per_cell*path_opt_.pos[2*i],m_per_cell*(path_opt_.pos[2*i+1]),0);
+    Vector3d posn_waypt_in_ll(m_per_cell*path_opt_.cells[i][0],m_per_cell*(path_opt_.cells[i][1]),0);
     Vector3d posn_waypt_in_world = tfm_world2og_ll_*posn_waypt_in_ll;
     geometry_msgs::Point node;
     node.x = posn_waypt_in_world(0);
