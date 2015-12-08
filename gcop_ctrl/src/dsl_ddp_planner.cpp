@@ -47,7 +47,6 @@
 
 //D* Lite algorithm
 #include <dsl/gridsearch.h>
-#include <dsl/distedgecost.h>
 
 //gcop include
 #include <gcop/so3.h>
