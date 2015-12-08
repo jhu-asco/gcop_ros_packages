@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 project(gcop_urdf)
 
 #option(BUILD_PLOTTER "builds plotter needs plplot library" on)
-set(BUILD_PLOTTER ON)
+set(BUILD_PLOTTER OFF)
 
 #set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
 ## Find catkin macros and libraries
@@ -154,9 +154,10 @@ target_link_libraries(chain_viz
 )
 if (BUILD_PLOTTER)
 	target_link_libraries(plotter
-		plplotcxx
+		plplotcxxd
 		${catkin_LIBRARIES}
 		)
+#plplotcxx if above does not work
 endif (BUILD_PLOTTER)
 
 #############
