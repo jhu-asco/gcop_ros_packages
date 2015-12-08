@@ -25,6 +25,9 @@ find_package(GCOP REQUIRED algos systems)
 include_directories(${GCOP_INCLUDE_DIRS})
 set(LIBS ${LIBS} ${GCOP_LIBRARIES})
 
+find_package(DSL REQUIRED algos systems)
+include_directories(${DSL_INCLUDE_DIRS})
+
 find_package(TinyXML REQUIRED)
 include_directories(${TINYXML_INCLUDE_DIR})
 set(LIBS ${LIBS} ${TINYXML_LIBRARIES})

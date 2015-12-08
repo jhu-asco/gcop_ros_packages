@@ -36,6 +36,8 @@ generate_dynamic_reconfigure_options(
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 find_package(GCOP REQUIRED)
+find_package(TinyXML REQUIRED)
+set(GCOP_LIBRARIES ${GCOP_LIBRARIES} ${TINYXML_LIBRARIES})
 find_package(OpenCV REQUIRED core highgui imgproc calib3d)
 find_package(Eigen3 REQUIRED)
 #find_package(GLU REQUIRED)
@@ -142,7 +144,7 @@ CATKIN_DEPENDS message_runtime
 # include_directories(include)
 #message(" Hello ---- ${EIGEN3_INCLUDE_DIR}___")
 include_directories(
-include ${catkin_INCLUDE_DIRS} ${GCOP_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${CV_BRIDGE_INCLUDE_DIRS}
+include ${catkin_INCLUDE_DIRS} ${TINYXML_INCLUDE_DIR} ${GCOP_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${CV_BRIDGE_INCLUDE_DIRS}
 )
 
 ## Declare a cpp library
