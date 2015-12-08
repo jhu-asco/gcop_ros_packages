@@ -31,7 +31,7 @@
 #include <gcop_ros_est/InsekfDiag.h>
 
 // utils
-#include <eigen_ros_conv.h>
+#include <gcop_ros_utils/eigen_ros_conv.h>
 
 //GCOP includes
 #include <gcop/utils.h>
@@ -59,7 +59,7 @@
 #include <limits>
 #include <algorithm>
 #include <yaml-cpp/yaml.h>
-#include "yaml_eig_conv.h"
+#include <gcop_ros_utils/yaml_eig_conv.h>
 #include <algorithm>
 
 //Eigen Lib Includes

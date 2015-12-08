@@ -39,7 +39,7 @@
 #include <gcop/insmag.h>
 
 //GIS
-#include "llh_enu_cov.h"
+#include <gcop_ros_utils/llh_enu_cov.h>
 
 //Other includes
 #include <iostream>

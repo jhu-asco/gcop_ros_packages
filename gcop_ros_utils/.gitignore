@@ -1,0 +1,12 @@
+*.cpp.swp
+*.swp
+*.tar.gz
+*.bag
+*.bak
+*.csv
+*.dat
+*.pyc
+build*
+bin*
+msg_gen*
+src/

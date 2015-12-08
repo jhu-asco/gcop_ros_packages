@@ -18,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_ros
   cv_bridge
   tf_conversions
+  gcop_ros_utils
 )
 
 ## System dependencies are found with CMake's conventions
@@ -39,7 +40,6 @@ find_package(OpenCV REQUIRED)
 include(${OpenCV_INCLUDE_DIRS})
 set(LIBS ${LIBS} ${OpenCV_LIBRARIES})
 
-message("GCOP LIBS: ${GCOP_LIBRARIES}")
 pkg_check_modules(YAML_CPP yaml-cpp)
 if(${YAML_CPP_VERSION} VERSION_GREATER 0.5)
     add_definitions(-DHAVE_NEW_YAMLCPP)

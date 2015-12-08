@@ -40,6 +40,7 @@
   <!-- Use test_depend for packages you need only for testing: -->
   <!--   <test_depend>gtest</test_depend> -->
   <buildtool_depend>catkin</buildtool_depend>
+  
   <build_depend>dynamic_reconfigure</build_depend>
   <build_depend>gcop_comm</build_depend>
   <build_depend>geometry_msgs</build_depend>
@@ -50,6 +51,9 @@
   <build_depend>tf</build_depend>
   <build_depend>tf_conversions</build_depend>
   <build_depend>tf2_ros</build_depend>
+  <build_depend>gcop_ros_utils</build_depend>
+    
+  
   <run_depend>dynamic_reconfigure</run_depend>
   <run_depend>gcop_comm</run_depend>
   <run_depend>geometry_msgs</run_depend>
@@ -60,6 +64,7 @@
   <run_depend>tf</run_depend>
   <run_depend>tf_conversions</run_depend>
   <run_depend>tf2_ros</run_depend>
+  <run_depend>gcop_ros_utils</run_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->

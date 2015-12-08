@@ -60,9 +60,9 @@
 #include <yaml-cpp/yaml.h>
 
 //local includes
-#include <eigen_ros_conv.h>
-#include <eig_splinterp.h>
-#include "yaml_eig_conv.h"
+#include <gcop_ros_utils/eigen_ros_conv.h>
+#include <gcop_ros_utils/eig_splinterp.h>
+#include <gcop_ros_utils/yaml_eig_conv.h>
 
 // Eigen Includes
 #include <Eigen/Dense>

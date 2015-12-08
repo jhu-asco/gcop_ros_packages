@@ -1,0 +1,6 @@
+<?xml version='1.0'?>
+<launch>
+  <node name="gcar_sim" pkg="gcop_ctrl" type="gcar_sim" output="screen" launch-prefix="">
+    <param name="strfile_params" type="str" value="$(find gcop_ctrl)/params/gcar_sim.yaml"/> 
+  </node>
+</launch>

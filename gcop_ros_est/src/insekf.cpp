@@ -34,11 +34,11 @@
 #include <gcop_comm/Trajectory_req.h>
 
 // gps, utm, local coord conversions
-#include "llh_enu_cov.h"
+#include <gcop_ros_utils/llh_enu_cov.h>
 #include <enu/enu.h>  // ROS wrapper for conversion functions
 
 // utils
-#include <eigen_ros_conv.h>
+#include <gcop_ros_utils/eigen_ros_conv.h>
 
 //GCOP includes
 #include <gcop/utils.h>
@@ -65,7 +65,7 @@
 #include <limits>
 #include <algorithm>
 #include <yaml-cpp/yaml.h>
-#include "yaml_eig_conv.h"
+#include <gcop_ros_utils/yaml_eig_conv.h>
 #include <algorithm>
 
 //Eigen Lib Includes
