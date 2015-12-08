@@ -126,6 +126,9 @@ public:
 public:
   CallBackDslDdp();
   ~CallBackDslDdp();
+public:
+  ros::Rate loop_rate_main_;
+
 private:
   ros::NodeHandle nh_, nh_p_;
   YAML::Node yaml_node_;
@@ -137,9 +140,7 @@ private:
   ros::Subscriber sub_odom_, sub_pose_start_, sub_pose_goal_, sub_og_;
   ros::Publisher pub_diag_, pub_vis_, pub_og_dild_, pub_ctrl_;
   ros::Timer timer_vis_, timer_ddp_, timer_dsl_;
-  ros::ServiceClient srvcl_traj_;
 
-  tf::TransformBroadcaster tf_br_;
   tf::TransformListener tf_lr_;
 
   gcop_ctrl::DslDdpPlannerConfig config_;
@@ -233,6 +234,7 @@ private:
 
 CallBackDslDdp::CallBackDslDdp():
                         nh_p_("~"),
+                        loop_rate_main_(1000),
                         dsl_cond_feas_s_(false),
                         dsl_cond_feas_g_(false),
                         dsl_done_(false),
@@ -249,7 +251,6 @@ CallBackDslDdp::CallBackDslDdp():
   string strfile_params;nh_p_.getParam("strfile_params",strfile_params);
   cout<<"loading yaml param file into yaml_node"<<endl;
   yaml_node_ = YAML::LoadFile(strfile_params);
-
 
   //setup dynamic reconfigure
   dynamic_reconfigure::Server<gcop_ctrl::DslDdpPlannerConfig>::CallbackType dyn_cb_f;
@@ -268,12 +269,7 @@ CallBackDslDdp::CallBackDslDdp():
   initRvizMarkers();
   cout<<"Initialized Rviz Markers"<<endl;
 
-  //Setup service clients
-  srvcl_traj_  = nh_.serviceClient<gcop_comm::Trajectory_req>("req_ddp_lcl");
-
   //init ddp planner
-  traj_req_resp_.request.itreq.x0.statevector.resize(4);
-  traj_req_resp_.request.itreq.xf.statevector.resize(4);
   ddpInit();
 
   cout<<"Waiting for start and goal position.\nSelect start through Publish Point button and select goal through 2D nav goal."<<endl;
@@ -293,17 +289,21 @@ CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t leve
 
   //check for all change condition
   bool condn_dilate =     occ_grid_.info.width
-      && (   config.dyn_obs_dilation_m != config_.dyn_obs_dilation_m
+      && (   config.dyn_dilation_obs_m != config_.dyn_dilation_obs_m
           || config.dyn_dilation_type != config_.dyn_dilation_type );
 
   if(!first_time)
   {
     if(condn_dilate)
     {
-      config_.dyn_obs_dilation_m = config.dyn_obs_dilation_m;
+      config_.dyn_dilation_obs_m = config.dyn_dilation_obs_m;
       config_.dyn_dilation_type = config.dyn_dilation_type;
       dilateObs();
     }
+
+    //loop rate setting
+    if(config_.dyn_loop_rate_main != config.dyn_loop_rate_main)
+      loop_rate_main_= ros::Rate(config.dyn_loop_rate_main);
 
     //dsl settings
     if(config.dyn_dsl_plan_once)
@@ -354,10 +354,16 @@ CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t leve
     cout<<"First time in reconfig. Setting config from yaml"<<endl;
 
     //general settings
-    config.dyn_obs_dilation_m     = yaml_node_["obs_dilation_m"].as<double>();
-    config.dyn_dilation_type      = yaml_node_["dilation_type"].as<int>();
     config.dyn_debug_on           = yaml_node_["debug_on"].as<bool>();
     config.dyn_enable_motors      = yaml_node_["enable_motors"].as<bool>();
+    config.dyn_loop_rate_main     = yaml_node_["loop_rate_main"].as<double>();
+    loop_rate_main_= ros::Rate(config.dyn_loop_rate_main);
+
+    //dilation settings
+    config.dyn_dilation_type      = yaml_node_["dilation_type"].as<int>();
+    config.dyn_dilation_obs_m     = yaml_node_["dilation_obs_m"].as<double>();
+    config.dyn_dilation_min_m     = yaml_node_["dilation_min_m"].as<double>();
+    config.dyn_dilation_max_m     = yaml_node_["dilation_max_m"].as<double>();
 
     //dsl settings
     config.dyn_dsl_avg_speed      = yaml_node_["dsl_avg_speed"].as<double>();
@@ -477,7 +483,8 @@ CallBackDslDdp::initSubsPubsAndTimers(void)
   timer_dsl_.stop();
 
   timer_ddp_ = nh_.createTimer(ros::Duration(config_.dyn_ddp_loop_durn), &CallBackDslDdp::cbTimerDdp, this);
-   timer_ddp_.stop();
+  timer_ddp_.stop();
+
 }
 
 void
@@ -666,7 +673,7 @@ CallBackDslDdp::dilateObs(void)
 
   //create cv::Mat for the occ_grid
   cv::Mat img_occ_grid = cv::Mat(occ_grid_.info.height,occ_grid_.info.width,CV_8UC1,(uint8_t*)occ_grid_.data.data());
-  int dilation_size = config_.dyn_obs_dilation_m/occ_grid_.info.resolution;
+  int dilation_size = config_.dyn_dilation_obs_m/occ_grid_.info.resolution;
   cv::Mat dilation_element = cv::getStructuringElement(dyn_dilation_type,
                                                        cv::Size( 2*dilation_size + 1, 2*dilation_size+1 ) );
 
@@ -1338,13 +1345,11 @@ int main(int argc, char** argv)
 
   CallBackDslDdp cbc;
 
-  double a=10;
-
-  ros::Rate loop_rate(1000);
   while(!g_shutdown_requested)
   {
     ros::spinOnce();
-    loop_rate.sleep();
+
+    cbc.loop_rate_main_.sleep();
   }
   return 0;
 

@@ -1,6 +1,27 @@
 #parameters to be used with dsl_ddp_yaml.cpp
 
 ###################################
+# General settings(Reconfigurable)
+#   debug_on:          enable debug
+#   enable_motors:     Enable motors so that ctrl cmds can be sent
+#   loop_rate_main:    rate at which ros::spinOnce is called
+
+debug_on: True
+enable_motors: False
+loop_rate_main: 1000
+
+###################################
+# Dilation settings(Reconfigurable)   
+#   dilation_type: 0: MORPH_RECT 1: MORPH_CROSS 2: MORPH_ELLIPSE
+#   dilation_obs_m:    The amount by which obstacles are expanded in meters
+#   dilation_min_m: To be used in close corridors
+#   dilation_max_m: To be used in open spaces
+dilation_type: 2
+dilation_obs_m: 0.5
+dilation_max_m: 2.0  #unimplemented
+dilation_min_m: 0.5  #unimplemented
+
+###################################
 # frame names
 #   (un-modifiable in reconfigure)
 #   strfrm_map:     The frame of origin of world
@@ -60,26 +81,8 @@ prop_wp_pve_ddp:        [0.0,0.0,0.5,0.5,0.18,0.18]
 
 prop_path_nve_ddp:      [0.0,0.5,0.5,0.5,0.4]
 prop_wp_nve_ddp:        [0.0,0.25,0.25,0.5,0.18,0.18]
-
-
-
-###################################
-# General settings(Reconfigurable)
-#   dilation_type: 0: MORPH_RECT 1: MORPH_CROSS 2: MORPH_ELLIPSE
-#   debug_on:          enable debug
-#   enable_motors:     Enable motors so that ctrl cmds can be sent
-dilation_type: 2
-debug_on: True
-enable_motors: False
    
-###################################
-# General settings(Reconfigurable)   
-#   obs_dilation_m:    The amount by which obstacles are expanded in meters
-#   dilation_min_m: To be used in close corridors
-#   dilation_max_m: To be used in open spaces
-obs_dilation_m: 0.5
-dilation_max_m: 2.0  #unimplemented
-dilation_min_m: 0.5  #unimplemented
+
 
 ###################################
 # DSL settings(reconfigurable)

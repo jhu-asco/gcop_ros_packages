@@ -186,6 +186,9 @@ add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
 target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} ${LIBS})
 add_dependencies(dsl_ddp_planner ${PROJECT_NAME}_gencfg )
 
+add_executable(gcar_sim src/gcar_sim.cpp)
+target_link_libraries(gcar_sim ${catkin_LIBRARIES} ${YAML_CPP_LIBRARIES} ${LIBS})
+
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(gcop_ctrl_node gcop_ctrl_generate_messages_cpp)
