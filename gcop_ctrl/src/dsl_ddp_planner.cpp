@@ -26,9 +26,7 @@
 #include <geometry_msgs/PoseStamped.h>
 
 //gcop_comm msgs
-#include <gcop_comm/State.h>
-#include <gcop_comm/CtrlTraj.h>
-#include <gcop_comm/Trajectory_req.h>
+#include <gcop_comm/GcarCtrl.h>
 
 //ROS dynamic reconfigure
 #include <dynamic_reconfigure/server.h>
@@ -175,6 +173,7 @@ private:
   double ddp_tseg_ideal_;
   double ddp_tol_rel_, ddp_tol_abs_;
   Affine3d pose_ddp_start_, pose_ddp_goal_, pose_ddp_curr_;
+  ros::Time time_ddp_start_, time_ddp_curr_;
   double vel_ddp_start_,     vel_ddp_goal_,  vel_ddp_curr_;
   Vector3d pt_ddp_start_, pt_ddp_goal_; //refers to grid point
 
@@ -183,8 +182,6 @@ private:
   vector<double> ddp_ts_;
   vector<GcarState> ddp_xs_;
   vector<Vector2d> ddp_us_;
-
-  gcop_comm::Trajectory_req traj_req_resp_;
 
 private:
 
@@ -267,6 +264,10 @@ CallBackDslDdp::CallBackDslDdp():
   //Setup rviz markers
   initRvizMarkers();
   cout<<"Initialized Rviz Markers"<<endl;
+
+  //Set gcar properties
+  sys_gcar_.l = yaml_node_["gcar_l"].as<double>();
+  sys_gcar_.r = yaml_node_["gcar_r"].as<double>();
 
   //init ddp planner
   ddpInit();
@@ -354,7 +355,7 @@ CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t leve
 
     //general settings
     config.dyn_debug_on           = yaml_node_["debug_on"].as<bool>();
-    config.dyn_enable_motors      = yaml_node_["enable_motors"].as<bool>();
+    config.dyn_send_gcar_ctrl      = yaml_node_["send_gcar_ctrl"].as<bool>();
     config.dyn_loop_rate_main     = yaml_node_["loop_rate_main"].as<double>();
     loop_rate_main_= ros::Rate(config.dyn_loop_rate_main);
 
@@ -472,7 +473,7 @@ CallBackDslDdp::initSubsPubsAndTimers(void)
   pub_diag_    = nh_.advertise<visualization_msgs::Marker>( strtop_diag_, 0 );
   pub_vis_     = nh_.advertise<visualization_msgs::Marker>( strtop_marker_rviz_, 0 );
   pub_og_dild_ = nh_.advertise<nav_msgs::OccupancyGrid>(strtop_og_dild_,0,true);
-  pub_ctrl_    = nh_.advertise<gcop_comm::Ctrl>(strtop_ctrl_,0);
+  pub_ctrl_    = nh_.advertise<gcop_comm::GcarCtrl>(strtop_ctrl_,0);
 
   //Setup timers
   timer_vis_ = nh_.createTimer(ros::Duration(0.1), &CallBackDslDdp::cbTimerVis, this);
@@ -512,6 +513,7 @@ CallBackDslDdp::cbTimerDdp(const ros::TimerEvent& event)
 void
 CallBackDslDdp::cbOdom(const nav_msgs::OdometryConstPtr& msg_odom)
 {
+  time_ddp_curr_ = msg_odom->header.stamp;
   poseMsg2Eig(pose_ddp_curr_,msg_odom->pose.pose);
   vel_ddp_curr_ = msg_odom->twist.twist.linear.x;
 }
@@ -1101,11 +1103,13 @@ CallBackDslDdp::ddpPlan(void)
   //if dyn_ddp_from_curr_posn=true then start is current position else
   if(config_.dyn_ddp_from_curr_posn)
   {
+    time_ddp_start_ = time_ddp_curr_;
     pose_ddp_start_ = pose_ddp_curr_;
     vel_ddp_start_  =  vel_ddp_curr_;
   }
   else
   {
+    time_ddp_start_ = ros::Time::now();
     pose_ddp_start_ = pose_dsl_start_;
     vel_ddp_start_  = 0;
   }
@@ -1129,8 +1133,8 @@ CallBackDslDdp::ddpPlan(void)
 
   //  DDP goal
   pose_ddp_goal_ = tfm_world2og_ll_
-      *Translation3d(m_per_cell*pt_x_dsl_intp_(idx_t_away),m_per_cell*pt_y_dsl_intp_(idx_t_away),0)
-  *AngleAxisd(a_dsl_intp_(idx_t_away), Vector3d::UnitZ());
+                  *Translation3d(m_per_cell*pt_x_dsl_intp_(idx_t_away),m_per_cell*pt_y_dsl_intp_(idx_t_away),0)
+                  *AngleAxisd(a_dsl_intp_(idx_t_away), Vector3d::UnitZ());
 
   //DDP path length in distance and time
   double tf = t_dsl_intp_(idx_t_away) - t_dsl_intp_(idx_nearest);
@@ -1212,6 +1216,22 @@ CallBackDslDdp::ddpPlan(void)
         || abs(ddp_solver.V - v_prev)/abs(v_prev) < ddp_tol_rel_)
       ddp_conv=true;
     v_prev=ddp_solver.V;
+  }
+
+  //create the GcarCtrl message and publish it
+  if(config_.dyn_send_gcar_ctrl)
+  {
+    gcop_comm::GcarCtrl msg_ctrl;
+    msg_ctrl.ts_eph.resize(ddp_us_.size());
+    msg_ctrl.us_vel.resize(ddp_us_.size());
+    msg_ctrl.us_phi.resize(ddp_us_.size());
+    for (int i = 0; i < ddp_us_.size(); ++i)
+    {
+      msg_ctrl.ts_eph[i] = time_ddp_start_+ ros::Duration(ddp_ts_[i]);
+      msg_ctrl.us_vel[i] = ddp_xs_[i].v;
+      msg_ctrl.us_phi[i] = atan(ddp_us_[i](1));
+    }
+    pub_ctrl_.publish(msg_ctrl);
   }
 
   return true;

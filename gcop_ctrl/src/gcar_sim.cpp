@@ -121,8 +121,8 @@ private:
 
   string strtop_odom_,strtop_ctrl_;
 
-  ros::Publisher sub_odom_;
-  ros::Subscriber pub_ctrl_;
+  ros::Publisher pub_odom_;
+  ros::Subscriber sub_ctrl_;
   ros::Timer timer_vis_;
 
   tf::TransformBroadcaster tf_br_;
@@ -134,6 +134,8 @@ private:
 
   void setupTopicsAndNames(void);
   void initSubsPubsAndTimers(void);
+
+  void cbCtrl(const gcop_comm::CtrlConstPtr& msg_ctrl);
 
 };
 
@@ -182,14 +184,16 @@ CallBackGcarSim::setupTopicsAndNames(void)
     cout<<"setting up topic names"<<endl;
 
   // Input Topics
-
+  strtop_ctrl_ = yaml_node_["strtop_ctrl"].as<string>();
 
   // output Topics
-
+  strtop_odom_ = yaml_node_["strtop_odom"].as<string>();
 
   if(debug_on_)
   {
     cout<<"Topics are(put here):"<<endl;
+    cout<<"strtop_ctrl:"<<strtop_ctrl_<<endl;
+    cout<<"strtop_odom:"<<strtop_odom_<<endl;
   }
 }
 
@@ -197,13 +201,19 @@ void
 CallBackGcarSim::initSubsPubsAndTimers(void)
 {
   //Setup subscribers
+  sub_ctrl_ = nh_.subscribe(strtop_ctrl_,1, &CallBackGcarSim::cbCtrl,this);
 
   //Setup Publishers
-
+  pub_odom_ = nh_.advertise<nav_msgs::Odometry>( strtop_odom_, 0 );
   //Setup timers
 
 }
 
+void
+CallBackGcarSim::cbCtrl(const gcop_comm::CtrlConstPtr& msg_ctrl)
+{
+
+}
 
 //------------------------------------------------------------------------
 //--------------------------------MAIN -----------------------------------

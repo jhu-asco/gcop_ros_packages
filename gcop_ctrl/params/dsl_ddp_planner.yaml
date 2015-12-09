@@ -3,11 +3,11 @@
 ###################################
 # General settings(Reconfigurable)
 #   debug_on:          enable debug
-#   enable_motors:     Enable motors so that ctrl cmds can be sent
+#   send_gcar_ctrl:     Enable motors so that ctrl cmds can be sent
 #   loop_rate_main:    rate at which ros::spinOnce is called
 
-debug_on: True
-enable_motors: False
+debug_on: False
+send_gcar_ctrl: True
 loop_rate_main: 1000
 
 ###################################
@@ -22,7 +22,7 @@ dilation_max_m: 2.0  #unimplemented
 dilation_min_m: 0.5  #unimplemented
 
 ###################################
-# frame names
+# frame names(static)
 #   (un-modifiable in reconfigure)
 #   strfrm_map:     The frame of origin of world
 #   strfrm_robot:   The frame of origin of robot
@@ -32,7 +32,7 @@ strfrm_robot: "/base_link"
 strfrm_og_org: "/og_org"
 
 ###################################
-# Topic name(Input)
+# Topic name(Input)(static)
 #   (un-modifiable in reconfigure)
 #   strtop_odom:       odometry msg from state estimator
 #   strtop_pose_start: initial pose
@@ -45,7 +45,7 @@ strtop_pose_goal:  "/move_base_simple/goal"
 strtop_og:         "/map"
 
 ###################################
-# Topic name(Output)
+# Topic name(Output)(static)
 #   (un-modifiable in reconfigure)
 #   strtop_diag: diagnostic messages
 #   strtop_marker_rivz: change this name. This is where we send the traj to be plotted on rvizS
@@ -56,15 +56,15 @@ strtop_og_dild:     "/map_occgrid_dialated"
 strtop_ctrl:        "/ctrl_si"
 
 ###################################
-# hz_var: frequency at which a message will be published
-#   (un-modifiable in reconfigure)
+# Publishing frequency(static)
+#   hz_var: frequency at which a message will be published
 #   value>0.0 will publish data at required frequency
 #   value=0.0 will result in the data to be sent at the max freq
 #   value<0.0 will disable puslishing the data 
 hz_diag: -1.0  # Freq at which diagnostic data is published
 
 ###################################
-# path colors and scale
+# path colors and scale(static)
 #   path_dsl = [red(max),green(max),blue(max),alpha,scale(width m)]
 #   wp_dsl   = [red(max),green(max),blue(max),alpha,scalex(width m), scaley(height m)]
 #   size: width of the path line in meters
@@ -81,8 +81,7 @@ prop_wp_pve_ddp:        [0.0,0.0,0.5,0.5,0.18,0.18]
 
 prop_path_nve_ddp:      [0.0,0.5,0.5,0.5,0.4]
 prop_wp_nve_ddp:        [0.0,0.25,0.25,0.5,0.18,0.18]
-   
-
+ 
 
 ###################################
 # DSL settings(reconfigurable)
@@ -94,7 +93,7 @@ dsl_avg_speed: 0.6
 dsl_interp_deg: 3
 dsl_interp_delt: 0.5
 dsl_preint_delt: 5
-dsl_loop_durn: 0.1       
+dsl_loop_durn: 5.0       
 dsl_from_curr_posn: False
 dsl_disp_rviz: True
 
@@ -103,8 +102,8 @@ dsl_disp_rviz: True
 #   ddp_t_away: Choose a wpoint on dsl path which is t_away sec away
 #   ddp_loop_durn: duration after which ddp planning is called again
 #   ddp_from_curr_posn: if enabled plans(ddp) from current position else from rivz start
-ddp_t_away: 1.0
-ddp_loop_durn: 0.1
+ddp_t_away: 5.0
+ddp_loop_durn: 1.0
 ddp_from_curr_posn: False
 ddp_disp_rviz: True
 
@@ -131,8 +130,14 @@ ddp_R:   [0.005, 0.000,
 ddp_mu:       1
 ddp_debug_on: True
 ddp_nseg_minmax: [7,32]
-ddp_tseg_ideal:  1.0
-ddp_nit_max: 100
+ddp_tseg_ideal:  0.1
+ddp_nit_max: 40
 ddp_tol_abs: 1e-6
 ddp_tol_rel: 1e-3
      
+###################################
+# Gcar settings(static)
+#   gcar_l: Axle length in meters
+#   gcar_r: Gain relating wheel torque to forward acceleration
+gcar_l: 0.5
+gcar_r: 1.0

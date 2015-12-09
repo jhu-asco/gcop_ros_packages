@@ -47,10 +47,11 @@ find_package(catkin REQUIRED COMPONENTS
 ## Generate messages in the 'msg' folder
  add_message_files(
    FILES
+     GcarCtrl.msg
 	 Ctrl.msg
 	 State.msg
 	 CtrlTraj.msg
-   CurrPose.msg
+     CurrPose.msg
 	 Iteration_req.msg
  )
 
