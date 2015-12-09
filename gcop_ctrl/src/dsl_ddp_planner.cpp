@@ -171,7 +171,7 @@ private:
   double ddp_mu_;
   int ddp_nseg_max_,ddp_nseg_min_, ddp_nit_max_;
   double ddp_tseg_ideal_;
-  double ddp_tol_rel_, ddp_tol_abs_;
+  double ddp_tol_rel_, ddp_tol_abs_, ddp_tol_goal_m_;
   Affine3d pose_ddp_start_, pose_ddp_goal_, pose_ddp_curr_;
   ros::Time time_ddp_start_, time_ddp_curr_;
   double vel_ddp_start_,     vel_ddp_goal_,  vel_ddp_curr_;
@@ -203,13 +203,14 @@ private:
   void editColorMsg(std_msgs::ColorRGBA& rgba_msg, VectorXd& rgba_vec);
   void editRvizMarker(visualization_msgs::Marker& marker, VectorXd& prop);
 
-
   void dispPathDslRviz(void);
-  void dispPathDslInterpdRviz();
+  void removePathDslRviz(void);
+  void dispPathDslInterpdRviz(void);
+  void removePathDslInterpdRviz(void);
   void dispPathDdpRviz(void);
+  void removePathDdpRviz(void);
   void dispStartRviz(void);
   void dispGoalRviz(void);
-
 
   void dslInit(void);
   void dslDelete(void);
@@ -313,6 +314,11 @@ CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t leve
         dispPathDslRviz();
         dispPathDslInterpdRviz();
       }
+      else
+      {
+        removePathDslRviz();
+        removePathDslInterpdRviz();
+      }
       config.dyn_dsl_plan_once = false;
     }
 
@@ -336,6 +342,8 @@ CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t leve
     {
       if(ddpPlan() && config_.dyn_ddp_disp_rviz)
         dispPathDdpRviz();
+      else
+        removePathDdpRviz();
       config.dyn_ddp_plan_once = false;
     }
 
@@ -501,6 +509,11 @@ CallBackDslDdp::cbTimerDsl(const ros::TimerEvent& event)
     dispPathDslRviz();
     dispPathDslInterpdRviz();
   }
+  else
+  {
+    removePathDslRviz();
+    removePathDslInterpdRviz();
+  }
 }
 
 void
@@ -508,6 +521,8 @@ CallBackDslDdp::cbTimerDdp(const ros::TimerEvent& event)
 {
   if(ddpPlan() && config_.dyn_ddp_disp_rviz)
     dispPathDdpRviz();
+  else
+    removePathDdpRviz();
 }
 
 void
@@ -1085,6 +1100,8 @@ CallBackDslDdp::ddpInit(void)
   ddp_nit_max_=yaml_node_["ddp_nit_max"].as<int>();
   ddp_tol_abs_=yaml_node_["ddp_tol_abs"].as<double>();
   ddp_tol_rel_=yaml_node_["ddp_tol_rel"].as<double>();
+  ddp_tol_goal_m_=yaml_node_["ddp_tol_goal_m"].as<double>();
+
   //Update internal gains of cost_lq
   cost_lq_.UpdateGains();
 }
@@ -1139,6 +1156,10 @@ CallBackDslDdp::ddpPlan(void)
   //DDP path length in distance and time
   double tf = t_dsl_intp_(idx_t_away) - t_dsl_intp_(idx_nearest);
   double len_ddp_path = tf*config_.dyn_dsl_avg_speed;
+
+  //Stop DDP planning if start position is close to goal position
+  if(len_ddp_path<ddp_tol_goal_m_)
+    return false;
 
   // Start and goal ddp state(GcarState. M3 is se2 elem and V1 is forward vel)
   Matrix3d se2_0; se2_0.setZero();
@@ -1244,6 +1265,8 @@ CallBackDslDdp::dispPathDdpRviz(void)
     cout<<"*Displaying ddp path"<<endl;
 
   float res = occ_grid_.info.resolution;
+  marker_path_ddp_.action      = visualization_msgs::Marker::ADD;
+  marker_wp_ddp_.action        = visualization_msgs::Marker::ADD;
 
   marker_path_ddp_.points.resize(ddp_xs_.size());
   marker_path_ddp_.colors.resize(ddp_xs_.size());
@@ -1277,11 +1300,21 @@ CallBackDslDdp::dispPathDdpRviz(void)
 }
 
 void
+CallBackDslDdp::removePathDdpRviz(void)
+{
+  //remove ddp related visualization marker
+  marker_path_ddp_.action      = visualization_msgs::Marker::DELETE;
+  marker_wp_ddp_.action        = visualization_msgs::Marker::DELETE;
+  pub_vis_.publish( marker_path_ddp_ );
+  pub_vis_.publish( marker_wp_ddp_ );
+}
+void
 CallBackDslDdp::dispPathDslRviz()
 {
   if(config_.dyn_debug_on)
     cout<<"*Displaying dsl path"<<endl;
-
+  marker_path_dsl_.action      = visualization_msgs::Marker::ADD;
+  marker_wp_dsl_.action        = visualization_msgs::Marker::ADD;
   float m_per_cell = occ_grid_.info.resolution;
   marker_path_dsl_.points.resize(path_opt_.cells.size());
   marker_wp_dsl_.points.resize(path_opt_.cells.size());
@@ -1300,11 +1333,25 @@ CallBackDslDdp::dispPathDslRviz()
   pub_vis_.publish( marker_wp_dsl_ );
 }
 
+
 void
-CallBackDslDdp::dispPathDslInterpdRviz()
+CallBackDslDdp::removePathDslRviz(void)
+{
+  //remove visualization marker
+  marker_path_dsl_.action      = visualization_msgs::Marker::DELETE;
+  marker_wp_dsl_.action        = visualization_msgs::Marker::DELETE;
+
+  pub_vis_.publish( marker_path_dsl_ );
+  pub_vis_.publish( marker_wp_dsl_ );
+}
+
+void
+CallBackDslDdp::dispPathDslInterpdRviz(void)
 {
   if(config_.dyn_debug_on)
     cout<<"*Displaying interpolated dsl path"<<endl;
+  marker_path_dsl_intp_.action = visualization_msgs::Marker::ADD;
+  marker_wp_dsl_intp_.action   = visualization_msgs::Marker::ADD;
 
   float m_per_cell = occ_grid_.info.resolution;
   marker_path_dsl_intp_.points.resize(pt_x_dsl_intp_.size());
@@ -1320,6 +1367,17 @@ CallBackDslDdp::dispPathDslInterpdRviz()
     marker_path_dsl_intp_.points[i] =node;
     marker_wp_dsl_intp_.points[i] =node;
   }
+  pub_vis_.publish( marker_path_dsl_intp_ );
+  pub_vis_.publish( marker_wp_dsl_intp_ );
+}
+
+
+void
+CallBackDslDdp::removePathDslInterpdRviz(void)
+{
+  //remove visualization marker
+  marker_path_dsl_intp_.action = visualization_msgs::Marker::DELETE;
+  marker_wp_dsl_intp_.action   = visualization_msgs::Marker::DELETE;
   pub_vis_.publish( marker_path_dsl_intp_ );
   pub_vis_.publish( marker_wp_dsl_intp_ );
 }

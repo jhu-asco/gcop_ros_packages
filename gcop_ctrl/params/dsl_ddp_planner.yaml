@@ -116,6 +116,7 @@ ddp_disp_rviz: True
 #   ddp_N: number of segments of trajectory(number of nodes=n+1)
 #   ddp_niter: max number of iteration until convergence
 #   ddp_tol: convergence tolerance. iter stops when ||f(x_{k+1}-f(x_{k}||<tol
+#   ddp_tol_goal_m: if the dist from goal to start < tol_goal_m then no planning is done
 #   TODO: have better convergence criteria and warn user if convergence is not achieved
 ddp_Q:   [0.00,  0.00,  0.00,  0.00,
           0.00,  0.00,  0.00,  0.00,
@@ -134,6 +135,7 @@ ddp_tseg_ideal:  0.1
 ddp_nit_max: 40
 ddp_tol_abs: 1e-6
 ddp_tol_rel: 1e-3
+ddp_tol_goal_m: 0.5
      
 ###################################
 # Gcar settings(static)
