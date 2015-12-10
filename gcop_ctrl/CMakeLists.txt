@@ -19,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   tf_conversions
   gcop_ros_utils
+  map_server
 )
 
 ## System dependencies are found with CMake's conventions
@@ -36,7 +37,7 @@ set(LIBS ${LIBS} ${TINYXML_LIBRARIES})
 find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
-find_package(OpenCV REQUIRED)
+find_package(OpenCV REQUIRED )
 include(${OpenCV_INCLUDE_DIRS})
 set(LIBS ${LIBS} ${OpenCV_LIBRARIES})
 

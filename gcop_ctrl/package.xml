@@ -65,6 +65,7 @@
   <run_depend>tf_conversions</run_depend>
   <run_depend>tf2_ros</run_depend>
   <run_depend>gcop_ros_utils</run_depend>
+  <run_depend>map_server</run_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->
