@@ -10,6 +10,24 @@
 #include <tf/transform_broadcaster.h>
 #include <tf_conversions/tf_eigen.h>
 
+//ROS dynamic reconfigure
+#include <dynamic_reconfigure/server.h>
+#include <gcop_ctrl/DslDdpPlannerConfig.h>
+
+//yaml
+#include <yaml-cpp/yaml.h>
+
+//local includes
+#include <gcop_ros_utils/eigen_ros_conv.h>
+#include <gcop_ros_utils/eig_splinterp.h>
+#include <gcop_ros_utils/yaml_eig_conv.h>
+
+// Eigen Includes
+#include <Eigen/Dense>
+#include <Eigen/Geometry>
+#include <Eigen/Eigenvalues>
+#include <unsupported/Eigen/Splines>
+
 //ROS & opencv
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -27,10 +45,6 @@
 
 //gcop_comm msgs
 #include <gcop_comm/GcarCtrl.h>
-
-//ROS dynamic reconfigure
-#include <dynamic_reconfigure/server.h>
-#include <gcop_ctrl/DslDdpPlannerConfig.h>
 
 //Other includes
 #include <iostream>
@@ -54,19 +68,7 @@
 #include <gcop/se2.h>
 #include <gcop/ddp.h>
 
-//yaml
-#include <yaml-cpp/yaml.h>
 
-//local includes
-#include <gcop_ros_utils/eigen_ros_conv.h>
-#include <gcop_ros_utils/eig_splinterp.h>
-#include <gcop_ros_utils/yaml_eig_conv.h>
-
-// Eigen Includes
-#include <Eigen/Dense>
-#include <Eigen/Geometry>
-#include <Eigen/Eigenvalues>
-#include <unsupported/Eigen/Splines>
 
 //-------------------------------------------------------------------------
 //-----------------------NAME SPACES ---------------------------------
@@ -129,6 +131,8 @@ public:
 private:
   ros::NodeHandle nh_, nh_p_;
   YAML::Node yaml_node_;
+  gcop_ctrl::DslDdpPlannerConfig config_;
+  dynamic_reconfigure::Server<gcop_ctrl::DslDdpPlannerConfig> dyn_server_;
 
   string strtop_odom_, strtop_pose_start_, strtop_pose_goal_, strtop_og_;
   string strtop_diag_, strtop_marker_rviz_, strtop_og_dild_, strtop_ctrl_;
@@ -140,8 +144,6 @@ private:
 
   tf::TransformListener tf_lr_;
 
-  gcop_ctrl::DslDdpPlannerConfig config_;
-  dynamic_reconfigure::Server<gcop_ctrl::DslDdpPlannerConfig> dyn_server_;
   visualization_msgs::Marker marker_path_dsl_,marker_wp_dsl_;
   visualization_msgs::Marker marker_path_dsl_intp_ ,marker_wp_dsl_intp_;
   VectorXd prop_path_pve_ddp_, prop_path_nve_ddp_, prop_wp_pve_ddp_, prop_wp_nve_ddp_ ;
@@ -403,63 +405,22 @@ CallBackDslDdp::setupTopicsAndNames(void)
   if(config_.dyn_debug_on)
     cout<<"setting up topic names"<<endl;
 
-  // Input Topics
-  string strtop_odom_str("strtop_odom");
-  string strtop_pose_start_str("strtop_pose_start");
-  string strtop_pose_goal_str("strtop_pose_goal");
-  string strtop_og_str("strtop_og");
-
-  // output Topics
-  string strtop_diag_str("strtop_diag");
-  string strtop_marker_rviz_str("strtop_marker_rviz");
-  string strtop_og_dild_str("strtop_og_dild");
-  string strtop_ctrl_str("strtop_ctrl");
-
-  // Frame Names
-  string strfrm_world_str("strfrm_world");
-  string strfrm_robot_str("strfrm_robot");
-  string strfrm_og_org_str("strfrm_og_org");
-
-  //check and report missing params
-  if(!yaml_node_[strtop_odom_str])
-    cout<<"missing in yaml file:"<<strtop_odom_str<<endl;
-  if(!yaml_node_[strtop_pose_start_str])
-    cout<<"missing in yaml file:"<<strtop_pose_start_str<<endl;
-  if(!yaml_node_[strtop_pose_goal_str])
-    cout<<"missing in yaml file:"<<strtop_pose_goal_str<<endl;
-  if(!yaml_node_[strtop_og_str])
-    cout<<"missing in yaml file:"<<strtop_og_str<<endl;
-  if(!yaml_node_[strtop_diag_str])
-    cout<<"missing in yaml file:"<<strtop_diag_str<<endl;
-  if(!yaml_node_[strtop_marker_rviz_str])
-    cout<<"missing in yaml file:"<<strtop_marker_rviz_str<<endl;
-  if(!yaml_node_[strtop_og_dild_str])
-    cout<<"missing in yaml file:"<<strtop_og_dild_str<<endl;
-  if(!yaml_node_[strtop_ctrl_str])
-    cout<<"missing in yaml file:"<<strtop_ctrl_str<<endl;
-  if(!yaml_node_[strfrm_world_str])
-    cout<<"missing in yaml file:"<<strfrm_world_str<<endl;
-  if(!yaml_node_[strfrm_robot_str])
-    cout<<"missing in yaml file:"<<strfrm_robot_str<<endl;
-  if(!yaml_node_[strfrm_og_org_str])
-    cout<<"missing in yaml file:"<<strfrm_og_org_str<<endl;
-
   // Input topics
-  strtop_odom_       = yaml_node_[strtop_odom_str].as<string>();
-  strtop_pose_start_ = yaml_node_[strtop_pose_start_str].as<string>();
-  strtop_pose_goal_  = yaml_node_[strtop_pose_goal_str].as<string>();
-  strtop_og_          = yaml_node_[strtop_og_str].as<string>();
+  strtop_odom_       = yaml_node_["strtop_odom"].as<string>();
+  strtop_pose_start_ = yaml_node_["strtop_pose_start"].as<string>();
+  strtop_pose_goal_  = yaml_node_["strtop_pose_goal"].as<string>();
+  strtop_og_          = yaml_node_["strtop_og"].as<string>();
 
   // output topics
-  strtop_diag_        = yaml_node_[strtop_diag_str].as<string>();
-  strtop_marker_rviz_ = yaml_node_[strtop_marker_rviz_str].as<string>();
-  strtop_og_dild_     = yaml_node_[strtop_og_dild_str].as<string>();
-  strtop_ctrl_       = yaml_node_[strtop_ctrl_str].as<string>();
+  strtop_diag_        = yaml_node_["strtop_diag"].as<string>();
+  strtop_marker_rviz_ = yaml_node_["strtop_marker_rviz"].as<string>();
+  strtop_og_dild_     = yaml_node_["strtop_og_dild"].as<string>();
+  strtop_ctrl_       = yaml_node_["strtop_ctrl"].as<string>();
 
   // Frames
-  strfrm_world_        = yaml_node_[strfrm_world_str].as<string>();
-  strfrm_robot_      = yaml_node_[strfrm_robot_str].as<string>();
-  strfrm_og_org_         = yaml_node_[strfrm_og_org_str].as<string>();
+  strfrm_world_        = yaml_node_["strfrm_world"].as<string>();
+  strfrm_robot_      = yaml_node_["strfrm_robot"].as<string>();
+  strfrm_og_org_         = yaml_node_["strfrm_og_org"].as<string>();
 
   if(config_.dyn_debug_on)
   {

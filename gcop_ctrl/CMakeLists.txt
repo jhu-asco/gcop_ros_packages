@@ -108,7 +108,7 @@ generate_dynamic_reconfigure_options(
 	#cfg/paramedit.cfg
 	#cfg/mbsnode.cfg
   cfg/HrotorOVS.cfg
-	cfg/GcarDDP.cfg
+	cfg/GcarSim.cfg
 	cfg/MbsDMocInterface.cfg
 	cfg/MbsSimInterface.cfg
 	cfg/DMocInterface.cfg
@@ -191,6 +191,7 @@ add_dependencies(dsl_ddp_planner ${PROJECT_NAME}_gencfg )
 
 add_executable(gcar_sim src/gcar_sim.cpp)
 target_link_libraries(gcar_sim ${catkin_LIBRARIES} ${YAML_CPP_LIBRARIES} ${LIBS})
+add_dependencies(gcar_sim ${PROJECT_NAME}_gencfg )
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
