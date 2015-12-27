@@ -18,6 +18,7 @@
 
 #include <ros/ros.h>
 #include <ros/package.h>
+#include <resource_retriever/retriever.h>
 
 //ROS & OpenCV
 #include <opencv2/opencv.hpp>
@@ -32,6 +33,15 @@
 //Other includes
 #include <iostream>
 #include <signal.h>
+
+//gcop ros utils
+#include <gcop_ros_utils/eigen_ros_conv.h>
+#include <gcop_ros_utils/eig_splinterp.h>
+#include <gcop_ros_utils/yaml_eig_conv.h>
+#include <gcop_ros_utils/resource_url_parser.h>
+
+//operations on path
+#include <boost/filesystem/path.hpp>
 
 //-------------------------------------------------------------------------
 //-----------------------NAME SPACES ---------------------------------
@@ -52,9 +62,9 @@ void mySigIntHandler(int signal)
   g_shutdown_requested=1;
 }
 
-void initMarker(void)
+void initMarker(YAML::Node& node)
 {
-  g_marker.header.frame_id = "map";
+  g_marker.header.frame_id = node["strfrm_mesh"].as<string>();
   g_marker.header.stamp = ros::Time();
   g_marker.ns = "rampage";
   g_marker.id = 0;
@@ -75,7 +85,7 @@ void initMarker(void)
   g_marker.color.b = 0.0;
   g_marker.mesh_use_embedded_materials = true;
   //g_marker.lifetime = ros::Duration(1);
-  g_marker.mesh_resource = "package://rampage_logger/map/latrobe_low.dae";
+  g_marker.mesh_resource = node["strurl_mesh"].as<string>();
 }
 
 //------------------------------------------------------------------------
@@ -90,9 +100,27 @@ signal(SIGINT,mySigIntHandler);
 ros::NodeHandle nh;
 ros::NodeHandle nh_p("~");
 
-string satmap_file;nh_p.getParam("satmap_file",satmap_file);
-cout<<"satmap_file:"<<satmap_file<<endl;
-cv::Mat mat_jhu1 = cv::imread(satmap_file,CV_LOAD_IMAGE_GRAYSCALE);
+YAML::Node yaml_node_params, yaml_node_map;
+string strfile_params;nh_p.getParam("strfile_params",strfile_params);
+cout<<"loading yaml param file into yaml_node"<<endl;
+yaml_node_params = YAML::LoadFile(strfile_params);
+
+//Find map.yaml file and load it to a yaml node
+string strurl_map_yaml = yaml_node_params["strurl_map"].as<string>();
+resource_retriever::Retriever ret;
+resource_retriever::MemoryResource resource;
+resource = ret.get(strurl_map_yaml);
+yaml_node_map = YAML::Load(reinterpret_cast<const char*>(resource.data.get()));
+
+//Find map jpg file
+string strfile_map_yaml = getPathFromPkgUrl(strurl_map_yaml);
+cout<<"satmap_yaml_file:"<<strfile_map_yaml<<endl;
+boost::filesystem::path path_map_yaml(strfile_map_yaml);
+string strfile_map_img = path_map_yaml.parent_path().string() +string("/") +yaml_node_map["image"].as<string>();
+cout<<"satmap_img_file:"<<strfile_map_img<<endl;
+
+//Read map jpg file
+cv::Mat mat_jhu1 = cv::imread(strfile_map_img,CV_LOAD_IMAGE_GRAYSCALE);
 if(mat_jhu1.data==NULL)
   ROS_ERROR("Couldn't read the map image");
 
@@ -102,7 +130,7 @@ cv::Mat mat_jhu2;
 cv::flip(mat_jhu1,mat_jhu2,0);
 
 nav_msgs::OccupancyGrid og_jhu;
-og_jhu.header.frame_id="/map";
+og_jhu.header.frame_id=yaml_node_params["strfrm_map"].as<string>();
 og_jhu.header.stamp = ros::Time::now();
 og_jhu.info.height = mat_jhu2.rows;
 og_jhu.info.width = mat_jhu2.cols;
@@ -125,18 +153,19 @@ int len = mat_jhu2.rows*mat_jhu2.cols;
 og_jhu.data.reserve(mat_jhu2.rows*mat_jhu2.cols);
 og_jhu.data.assign(mat_jhu2.data, mat_jhu2.data+len) ;
 
-ros::Publisher pub_oc = nh.advertise<nav_msgs::OccupancyGrid>("jhu_map",1,true);
+string strtop_map_sat = yaml_node_params["strtop_map_sat"].as<string>();
+ros::Publisher pub_oc = nh.advertise<nav_msgs::OccupancyGrid>(strtop_map_sat,1,true);
 pub_oc.publish(og_jhu);
 
+string strtop_mesh = yaml_node_params["strtop_mesh"].as<string>();
 ros::Publisher pub_vis = nh.advertise<visualization_msgs::Marker>( "mesh_latrobe", 1, true );
-initMarker();
+initMarker(yaml_node_params);
 pub_vis.publish( g_marker);
 
 ros::Rate loop_rate(0.5);
 
 while(!g_shutdown_requested)
 {
-  //pub_vis.publish( g_marker);
   ros::spinOnce();
   loop_rate.sleep();
 }

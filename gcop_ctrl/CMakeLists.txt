@@ -27,7 +27,7 @@ find_package(GCOP REQUIRED algos systems)
 include_directories(${GCOP_INCLUDE_DIRS})
 set(LIBS ${LIBS} ${GCOP_LIBRARIES})
 
-find_package(DSL REQUIRED algos systems)
+find_package(DSL REQUIRED)
 include_directories(${DSL_INCLUDE_DIRS})
 
 find_package(TinyXML REQUIRED)
@@ -36,17 +36,17 @@ set(LIBS ${LIBS} ${TINYXML_LIBRARIES})
 
 find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
-
+  
 find_package(OpenCV REQUIRED )
 include(${OpenCV_INCLUDE_DIRS})
 set(LIBS ${LIBS} ${OpenCV_LIBRARIES})
 
-pkg_check_modules(YAML_CPP yaml-cpp)
-if(${YAML_CPP_VERSION} VERSION_GREATER 0.5)
-    add_definitions(-DHAVE_NEW_YAMLCPP)
-endif()
-link_directories(${YAML_CPP_LIBRARY_DIRS})
-include_directories(${YAML_CPP_INCLUDE_DIRS})
+#pkg_check_modules(YAML_CPP yaml-cpp)
+#if(${YAML_CPP_VERSION} VERSION_GREATER 0.5)
+#    add_definitions(-DHAVE_NEW_YAMLCPP)
+#endif()
+#link_directories(${YAML_CPP_LIBRARY_DIRS})
+#include_directories(${YAML_CPP_INCLUDE_DIRS})
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -129,7 +129,7 @@ catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES gcop_ctrl
 #  CATKIN_DEPENDS dynamic_reconfigure gcop_comm geometry_msgs roscpp rospy tf
-#  DEPENDS system_lib
+#  DEPENDS YAML_CPP
 )
 
 ###########
@@ -187,11 +187,17 @@ target_link_libraries(rccar_ddp_lcl_planner ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(rccar_ddp_lcl_planner ${PROJECT_NAME}_gencfg)
 
 add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
-target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} ${LIBS})
+target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${LIBS})
 add_dependencies(dsl_ddp_planner ${PROJECT_NAME}_gencfg )
 
+add_executable(cv_remap_test src/cv_remap_test.cpp)
+target_link_libraries(cv_remap_test ${OpenCV_LIBRARIES})
+
+add_executable(blob src/blob.cpp)
+target_link_libraries(blob ${OpenCV_LIBRARIES})
+
 add_executable(gcar_sim src/gcar_sim.cpp)
-target_link_libraries(gcar_sim ${catkin_LIBRARIES} ${YAML_CPP_LIBRARIES} ${LIBS})
+target_link_libraries(gcar_sim ${catkin_LIBRARIES} ${LIBS})
 add_dependencies(gcar_sim ${PROJECT_NAME}_gencfg )
 
 ## Add cmake target dependencies of the executable/library

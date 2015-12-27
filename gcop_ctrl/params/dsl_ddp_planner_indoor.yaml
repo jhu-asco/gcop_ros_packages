@@ -6,7 +6,7 @@
 #   send_gcar_ctrl:     Enable motors so that ctrl cmds can be sent
 #   loop_rate_main:    rate at which ros::spinOnce is called
 
-debug_on: False
+debug_on: True
 send_gcar_ctrl: True
 loop_rate_main: 1000
 
@@ -17,8 +17,8 @@ loop_rate_main: 1000
 #   og_tol_unseen_msq: a means if area of connected unseen cells < a sqm then they are set to unoccupied
 #                      which should be little bit less than size of your vehicle
 og_downsample_factor: 3
-og_cell_m_resized: 0.1
-og_tol_unseen_sqm: 8
+og_cell_m_resized: 0.05
+og_tol_unseen_sqm: 1
 
 ###################################
 # Dilation settings(Reconfigurable)   
@@ -27,7 +27,7 @@ og_tol_unseen_sqm: 8
 #   dilation_min_m: To be used in close corridors
 #   dilation_max_m: To be used in open spaces
 dilation_type: 2
-dilation_obs_m: 0.5
+dilation_obs_m: 0.05
 dilation_max_m: 2.0  #unimplemented
 dilation_min_m: 0.5  #unimplemented
 

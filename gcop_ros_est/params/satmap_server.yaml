@@ -1,0 +1,18 @@
+###################################
+# Resource files(static) 
+#   tags are (http://, ftp://, package:// file:// )
+#   map: The location of the yaml file corresponding to the satellite map(package:// and file:// supported)
+#   mesh: The location of the static mesh file that you want to 
+#   strurl_map:  "file:///home/subhransu/projects/ws_catkin_lab/src/gcop_ros_packages/gcop_ros_est/maps/map_sat_jhu.yaml"
+strurl_map:  "package://gcop_ros_est/maps/map_sat_jhu.yaml"
+strurl_mesh: "package://rampage_logger/map/latrobe_low.dae"
+
+###################################
+# Frame names (static)
+strfrm_map: "/world"
+strfrm_mesh: "/world"
+
+###################################
+# Topic name(Output)(static)
+strtop_map_sat: "/map_jhu"
+strtop_mesh: "/mesh_latrobe"

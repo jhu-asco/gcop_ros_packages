@@ -3,18 +3,29 @@
   <!-- Displays the hopkins satellite image -->
   <include file="$(find gcop_ros_est)/launch/satmap_server.launch"/>
 
-  <!-- Displays the occ grid map obtained from gmapping -->
-  <node name='map1_server' pkg='map_server' type='map_server' args='$(find gcop_ctrl)/map/map_latrobe_400.yaml' output="screen">
-    <param name='frame_id' value='og_org'/>
-  </node>
-  
-  <!-- Transformation between satellite map and occ tree map -->
-  <node pkg="tf" type="static_transform_publisher" name="world_to_og_org" args="103 244 0 1.30899694 0 0 world og_org 50" />
-  
+<!--    map server and static transformation for outdoor ma	 -->
+  <!--<node name='map_og_original_server' pkg='map_server' type='map_server' args='$(find gcop_ctrl)/map/map.yaml' output="screen">-->
+    <!--<param name='frame_id' value='og_org_original'/>-->
+    <!--<remap from='map' to='map_original'/>-->
+    <!--<remap from='map_metadata' to='map_original_metadata'/>-->
+    <!--<remap from="static_map" to="static_map_original"/> -->
+  <!--</node>-->
+  <!--<node pkg="tf" type="static_transform_publisher" name="world_to_og_org_original" args="103 244 0 1.30899694 0 0 world og_org_original 50" />-->
+
+<!--    static transformation for indoor map	 -->
+  <node name='map_og_original_server' pkg='map_server' type='map_server' args='$(find gcop_ctrl)/map/map_hackerman.yaml' output="screen">
+    <param name='frame_id' value='og_org_original'/>
+    <remap from='map' to='map_original'/>
+    <remap from='map_metadata' to='map_original_metadata'/>
+    <remap from="static_map" to="static_map_original"/> 
+  </node>	
+  <node pkg="tf" type="static_transform_publisher" name="world_to_og_org_original" args="127 108 0 1.65 0 0 world og_org_original 50" />
+ 
+
  <!-- Dynamic reconfigure -->
  <node pkg="rqt_reconfigure" type="rqt_reconfigure" name="reconfigure" output="screen" />
 
   <!-- Rviz node -->
-   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find gcop_ctrl)/dsl_ddp.rviz" output="screen"/> 
+   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find gcop_ctrl)/launch/dsl_ddp.rviz" output="screen"/> 
 </launch>
 

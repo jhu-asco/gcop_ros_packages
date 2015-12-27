@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Displays the hopkins satellite image -->
+  <include file="$(find gcop_ros_est)/launch/sensors_px4.launch"/>
+  <include file="$(find gcop_ros_est)/launch/sensors_3dm.launch"/>
+  <include file="$(find rampage_logger)/launch/rampage_rosserial_ctrl.launch"/>
+</launch>
+

@@ -1,8 +1,7 @@
 <?xml version="1.0"?>
 <launch>
   <node name="satmap_server" pkg="gcop_ros_est" type="satmap_server" output="screen">
-	<param name="satmap_file"       value="$(find gcop_ros_est)/maps/satmap_jhu.jpg" />
-	<param name="satmap_param_file" value="$(find gcop_ros_est)/maps/satmap_jhu.yaml" /> 	
+  	<param name="strfile_params" value="$(find gcop_ros_est)/params/satmap_server.yaml"/>
   </node>
 </launch>
 

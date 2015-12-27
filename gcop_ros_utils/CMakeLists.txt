@@ -94,7 +94,7 @@ catkin_package(
   INCLUDE_DIRS include
 #  LIBRARIES gcop_comm
   CATKIN_DEPENDS geometry_msgs roscpp 
-#  DEPENDS system_lib
+  DEPENDS YAML_CPP
 )
 
 ###########
