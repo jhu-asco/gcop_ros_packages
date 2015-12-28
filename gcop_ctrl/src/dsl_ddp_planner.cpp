@@ -34,8 +34,6 @@
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
 
-//cvBlob lib
-#include <cvblob.h>
 
 // ROS standard messages
 #include <std_msgs/String.h>
