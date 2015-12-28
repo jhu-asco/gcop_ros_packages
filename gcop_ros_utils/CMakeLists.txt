@@ -76,10 +76,10 @@ include_directories(${YAML_CPP_INCLUDE_DIRS})
 # )
 
 ## Generate added messages and services with any dependencies listed here
- generate_messages(
-   DEPENDENCIES
-   geometry_msgs
- )
+ #generate_messages(
+   #DEPENDENCIES
+   #geometry_msgs
+ #)
 
 ###################################
 ## catkin specific configuration ##
