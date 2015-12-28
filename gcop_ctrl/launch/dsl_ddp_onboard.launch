@@ -3,4 +3,11 @@
   <node name="dsl_ddp_planner" pkg="gcop_ctrl" type="dsl_ddp_planner" output="screen" launch-prefix="">
 <param name="strfile_params" type="str" value="$(find gcop_ctrl)/params/dsl_ddp_planner_indoor.yaml"/> 
 </node>
+<!--    static transformation for indoor map     -->
+  <node name='map_og_original_server' pkg='map_server' type='map_server' args='$(find gcop_ctrl)/map/map_hackerman.yaml' output="screen">
+    <param name='frame_id' value='og_org'/>
+  </node>    
+  <!--<node pkg="tf" type="static_transform_publisher" name="world_to_og_org" args="127 108 0 1.65 0 0 world og_org 100" />-->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_og_org" args="127 108 0 0 0 0.73454 0.67855 world og_org" />
+
 </launch>

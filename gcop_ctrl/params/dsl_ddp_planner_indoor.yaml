@@ -6,7 +6,7 @@
 #   send_gcar_ctrl:     Enable motors so that ctrl cmds can be sent
 #   loop_rate_main:    rate at which ros::spinOnce is called
 
-debug_on: True
+debug_on: False
 send_gcar_ctrl: True
 loop_rate_main: 1000
 
@@ -27,7 +27,7 @@ og_tol_unseen_sqm: 1
 #   dilation_min_m: To be used in close corridors
 #   dilation_max_m: To be used in open spaces
 dilation_type: 2
-dilation_obs_m: 0.05
+dilation_obs_m: 0.38
 dilation_max_m: 2.0  #unimplemented
 dilation_min_m: 0.5  #unimplemented
 
@@ -113,7 +113,7 @@ dsl_disp_rviz: True
 #   ddp_from_curr_posn: if enabled plans(ddp) from current position else from rivz start
 ddp_t_away: 5.0
 ddp_loop_durn: 1.0
-ddp_from_curr_posn: False
+ddp_from_curr_posn: True
 ddp_disp_rviz: True
 
 ###################################
