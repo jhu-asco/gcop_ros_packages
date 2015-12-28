@@ -190,12 +190,6 @@ add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
 target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${LIBS})
 add_dependencies(dsl_ddp_planner ${PROJECT_NAME}_gencfg )
 
-add_executable(cv_remap_test src/cv_remap_test.cpp)
-target_link_libraries(cv_remap_test ${OpenCV_LIBRARIES})
-
-add_executable(blob src/blob.cpp)
-target_link_libraries(blob ${OpenCV_LIBRARIES})
-
 add_executable(gcar_sim src/gcar_sim.cpp)
 target_link_libraries(gcar_sim ${catkin_LIBRARIES} ${LIBS})
 add_dependencies(gcar_sim ${PROJECT_NAME}_gencfg )
