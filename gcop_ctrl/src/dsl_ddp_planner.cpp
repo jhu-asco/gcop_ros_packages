@@ -113,6 +113,13 @@ template <typename T> int sgn(T val) {
 }
 
 
+//to be used in switch case statement involving strings
+constexpr unsigned int str2int(const char* str, int h = 0)
+{
+  return !str[h] ? 5381 : (str2int(str, h+1)*33) ^ str[h];
+}
+
+
 void FindBlobs(const cv::Mat &binary, std::vector < std::vector<cv::Point2i> > &blobs)
 {
     blobs.clear();
@@ -156,6 +163,7 @@ void FindBlobs(const cv::Mat &binary, std::vector < std::vector<cv::Point2i> > &
         }
     }
 }
+
 //------------------------------------------------------------------------
 //-----------------------------CALLBACK CLASS ----------------------------
 //------------------------------------------------------------------------
@@ -186,7 +194,7 @@ private:
   string strfrm_world_, strfrm_robot_, strfrm_og_org_;
 
   ros::Subscriber sub_odom_, sub_pose_start_, sub_pose_goal_, sub_og_;
-  ros::Publisher pub_diag_, pub_vis_, pub_og_dild_, pub_ctrl_;
+  ros::Publisher pub_diag_, pub_vis_, pub_og_final_, pub_ctrl_;
   ros::Timer timer_vis_, timer_ddp_, timer_dsl_;
 
   tf::TransformListener tf_lr_;
@@ -196,14 +204,12 @@ private:
   VectorXd prop_path_pve_ddp_, prop_path_nve_ddp_, prop_wp_pve_ddp_, prop_wp_nve_ddp_ ;
   visualization_msgs::Marker marker_path_ddp_,marker_wp_ddp_;
   visualization_msgs::Marker marker_text_start_, marker_text_goal_;
-  nav_msgs::OccupancyGrid occ_grid_, occ_grid_resized_;
-  cv::Mat img_occ_grid_dilated_;
+  nav_msgs::OccupancyGrid og_original_, og_final_;
+  cv::Mat img_og_final_;
 
   // Frames and transformation
   Affine3d tfm_world2og_org_, tfm_world2og_ll_,tfm_og_org2og_ll_;
   Transform2d tfm_world2og_ll_2d_;
-
-
 
   // DSL vars
   dsl::GridSearch* p_gdsl_;
@@ -271,12 +277,13 @@ private:
   bool ddpInit(void);
   bool ddpPlan(void);
 
-
-  void dilateObs(void);
   void setTfmsWorld2OgLL(void);
-  void imgToOccGrid(const cv::Mat& img,const geometry_msgs::Pose pose_org, const double res_m_per_pix,  nav_msgs::OccupancyGrid& occ_grid);
-  void smallUnseenSetFree(void);
-  void resizeOg(void);
+
+  void occGridProcessAndPub(void);
+  void occGridDilateAndFilterUnseen(const nav_msgs::OccupancyGrid& og_original, nav_msgs::OccupancyGrid& og_dild_fild);
+  void occGridResize(const nav_msgs::OccupancyGrid& og_dild_fild, nav_msgs::OccupancyGrid& og_final);
+  void occGridFromImg(const cv::Mat& img,const geometry_msgs::Pose pose_org,
+                      const double res_m_per_pix,  nav_msgs::OccupancyGrid& occ_grid);
 };
 
 CallBackDslDdp::CallBackDslDdp():
@@ -331,6 +338,7 @@ CallBackDslDdp::~CallBackDslDdp()
 {
   endMarker();
   dslDelete();
+  cv::destroyAllWindows();
 }
 
 void
@@ -339,7 +347,7 @@ CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t leve
   static bool first_time=true;
 
   //check for all change condition
-  bool condn_dilate =     occ_grid_resized_.info.width
+  bool condn_dilate =     og_final_.info.width
       && (   config.dyn_dilation_obs_m != config_.dyn_dilation_obs_m
           || config.dyn_dilation_type != config_.dyn_dilation_type );
 
@@ -349,7 +357,7 @@ CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t leve
     {
       config_.dyn_dilation_obs_m = config.dyn_dilation_obs_m;
       config_.dyn_dilation_type = config.dyn_dilation_type;
-      dilateObs();
+      occGridProcessAndPub();
     }
 
     //loop rate setting
@@ -489,7 +497,7 @@ CallBackDslDdp::initSubsPubsAndTimers(void)
   //Setup Publishers
   pub_diag_    = nh_.advertise<visualization_msgs::Marker>( strtop_diag_, 0 );
   pub_vis_     = nh_.advertise<visualization_msgs::Marker>( strtop_marker_rviz_, 0 );
-  pub_og_dild_ = nh_.advertise<nav_msgs::OccupancyGrid>(strtop_og_dild_,0,true);
+  pub_og_final_ = nh_.advertise<nav_msgs::OccupancyGrid>(strtop_og_dild_,0,true);
   pub_ctrl_    = nh_.advertise<gcop_comm::GcarCtrl>(strtop_ctrl_,0);
 
   //Setup timers
@@ -548,9 +556,9 @@ CallBackDslDdp::cbPoseStart(const geometry_msgs::PoseWithCovarianceStampedConstP
   if(config_.dyn_debug_on)
     cout<<"Initial pose received from rviz"<<endl;
 
-  float m_per_cell = occ_grid_resized_.info.resolution;
-  int w = occ_grid_resized_.info.width;
-  int h = occ_grid_resized_.info.height;
+  float m_per_cell = og_final_.info.resolution;
+  int w = og_final_.info.width;
+  int h = og_final_.info.height;
 
   poseMsg2Eig(pose_dsl_start_,msg_pose_start->pose.pose);
   pt_dsl_start_ = (tfm_world2og_ll_.inverse()*pose_dsl_start_).translation()/m_per_cell;
@@ -583,9 +591,9 @@ CallBackDslDdp::cbPoseGoal(const geometry_msgs::PoseStampedConstPtr& msg_pose_go
   if(config_.dyn_debug_on)
     cout<<"Initial pose received from rviz"<<endl;
 
-  float m_per_cell = occ_grid_resized_.info.resolution;
-  int w = occ_grid_resized_.info.width;
-  int h = occ_grid_resized_.info.height;
+  float m_per_cell = og_final_.info.resolution;
+  int w = og_final_.info.width;
+  int h = og_final_.info.height;
 
   poseMsg2Eig(pose_dsl_goal_,msg_pose_goal->pose);
   pt_dsl_goal_ = (tfm_world2og_ll_.inverse()*pose_dsl_goal_).translation()/m_per_cell;
@@ -618,127 +626,19 @@ CallBackDslDdp::cbOccGrid(const nav_msgs::OccupancyGridConstPtr& msg_occ_grid)
     cout<<"*Occupancy grid is received"<<endl;
 
   //save OG to be used elsewhere
-  occ_grid_ = *msg_occ_grid;
+  og_original_ = *msg_occ_grid;
 
   //Find transformation between origin of og and world
   //  done in og subscriber because when a og arrives then you know that the launch file
   //  with transformations are also running
   setTfmsWorld2OgLL();
 
-  //Find connected unseen cells and set them to free if cluster area < og_tol_unseen_sqm
-  smallUnseenSetFree();
+  // Process Occ Grid and publish
+  occGridProcessAndPub();
 
-  //Resize the size of occ_grid_
-  resizeOg();
-
-  //dilate the resized occupancy grid
-  dilateObs();
+  //Init dsl
+  dslInit();
 }
-
-
-void
-CallBackDslDdp::smallUnseenSetFree(void)
-{
-  //make cv::Mat image from OG
-  cv::Mat img_occ_grid_original = cv::Mat(occ_grid_.info.height,occ_grid_.info.width,CV_8UC1,(uint8_t*)occ_grid_.data.data());
-
-  //Separate out just the unseen cells
-  cv::Mat img_binary_unseen;//binary image of just unseen cells
-  cv::threshold( img_occ_grid_original, img_binary_unseen, 101, 1.0, cv::THRESH_BINARY );
-
-  //Find og_tol_unseen_n which is the maximum number of connected unseen cells which can be set as free
-  double og_cell_m_original = occ_grid_.info.resolution;
-  double cell_area = og_cell_m_original * og_cell_m_original;
-  double og_tol_unseen_sqm = yaml_node_["og_tol_unseen_sqm"].as<double>();
-  int og_tol_unseen_n = og_tol_unseen_sqm/cell_area;
-
-  //Find connected unseen cells
-  std::vector < std::vector<cv::Point2i> > blobs;
-  FindBlobs(img_binary_unseen, blobs);
-
-  //Set all unseen cells as free
-  //  obstacles are 100, free is 0 and unseen are -1
-  for (int i = 0; i < occ_grid_.info.width*occ_grid_.info.height; ++i)
-    occ_grid_.data[i] = (occ_grid_.data[i]<0?0:occ_grid_.data[i]);
-
-  //Only the connected unseen cells with greater than og_tol_unseen_sqm sq meters we set them as obstacles
-  int count_sel_blobs=0;
-  for(int n=0; n<blobs.size(); n++)
-  {
-    if(blobs[n].size()>og_tol_unseen_n)
-    {
-      count_sel_blobs++;
-      for(int m=0; m<blobs[n].size(); m++)
-      {
-        int k = img_binary_unseen.cols*blobs[n][m].y + blobs[n][m].x; //row-major format
-        occ_grid_.data[k] = 100;
-      }
-    }
-  }
-}
-
-void
-CallBackDslDdp::resizeOg(void)
-{
-  //make cv::Mat image from OG
-  cv::Mat img_occ_grid_original = cv::Mat(occ_grid_.info.height,occ_grid_.info.width,CV_8UC1,(uint8_t*)occ_grid_.data.data());
-
-  //get desired resolution(in meter/pix)
-  double og_cell_m_resized = yaml_node_["og_cell_m_resized"].as<double>();
-  double og_cell_m_original = occ_grid_.info.resolution;
-
-  //Row and cols of resized image
-  double width_m = occ_grid_.info.width   * og_cell_m_original;
-  double height_m = occ_grid_.info.height * og_cell_m_original;
-  int cols_resized = floor(width_m/og_cell_m_resized);
-  int rows_resized = floor(height_m/og_cell_m_resized);
-
-  //create resized image
-  cv::Mat img_occ_grid_resized(rows_resized,cols_resized,img_occ_grid_original.type());
-  cv::Mat map_x(rows_resized,cols_resized, CV_32FC1 );
-  cv::Mat map_y(rows_resized,cols_resized, CV_32FC1 );
-
-  //dilate before resizing. The dilation amount will depend of og_cell_m_resized/og_cell_m_original ratio
-
-
-  // remap the resized image
-  for(int r=0;r<rows_resized; r++)
-  {
-    for(int c=0;c<cols_resized; c++)
-    {
-      map_x.at<float>(r,c) = (c +0.5)*og_cell_m_resized/og_cell_m_original;
-      map_y.at<float>(r,c) = (r +0.5)*og_cell_m_resized/og_cell_m_original;
-    }
-  }
-  cv::remap( img_occ_grid_original, img_occ_grid_resized, map_x, map_y, cv::INTER_NEAREST, cv::BORDER_CONSTANT);
-
-  //create occ_grid_resized
-  geometry_msgs::Pose pose_org; eig2PoseMsg(pose_org,tfm_world2og_ll_);
-  nav_msgs::OccupancyGrid occ_grid_dilated;
-  imgToOccGrid(img_occ_grid_resized,pose_org, og_cell_m_resized,occ_grid_resized_);
-}
-
-void
-CallBackDslDdp::imgToOccGrid(const cv::Mat& img,const geometry_msgs::Pose pose_org, const double res_m_per_pix,  nav_msgs::OccupancyGrid& occ_grid)
-{
-  //confirm that the image is grayscale
-  assert(img.channels()==1 && img.type()==0);
-
-  //set occgrid header
-  occ_grid.header.frame_id=strfrm_world_;
-  occ_grid.header.stamp = ros::Time::now();
-
-  //set occgrid info
-  occ_grid.info.height = img.rows;
-  occ_grid.info.width = img.cols;
-  occ_grid.info.resolution =res_m_per_pix;//meter/pixel
-  occ_grid.info.origin = pose_org;
-
-  //set occgrid data
-  occ_grid.data.reserve(img.rows*img.cols);
-  occ_grid.data.assign(img.data, img.data+img.rows*img.cols) ;
-}
-
 
 void
 CallBackDslDdp::setTfmsWorld2OgLL(void)
@@ -752,7 +652,7 @@ CallBackDslDdp::setTfmsWorld2OgLL(void)
   tf_lr_.lookupTransform(strfrm_world_,strfrm_og_org_, ros::Time(0), tfms_world2og_org);
 
   tf::transformTFToEigen(tfms_world2og_org,tfm_world2og_org_);
-  poseMsg2Eig(tfm_og_org2og_ll_,occ_grid_.info.origin);
+  poseMsg2Eig(tfm_og_org2og_ll_,og_original_.info.origin);
   tfm_world2og_ll_ = tfm_world2og_org_*tfm_og_org2og_ll_;
 
   double th = atan2(tfm_world2og_ll_.matrix()(1,0),tfm_world2og_ll_.matrix()(0,0));
@@ -760,10 +660,29 @@ CallBackDslDdp::setTfmsWorld2OgLL(void)
   double y = tfm_world2og_ll_.matrix()(1,3);
   tfm_world2og_ll_2d_ = Translation2d(x,y)* Rotation2Dd(th);
 }
-
 void
-CallBackDslDdp::dilateObs(void)
+CallBackDslDdp::occGridProcessAndPub(void)
 {
+  //Process occupancy grid starting with og_original_
+  nav_msgs::OccupancyGrid og_dild_fild;
+  occGridDilateAndFilterUnseen(og_original_, og_dild_fild);//dilate the resized occupancy grid
+  occGridResize(og_dild_fild,og_final_);
+
+  //publish the occupancy grid
+  pub_og_final_.publish(og_final_);
+
+}
+void
+CallBackDslDdp::occGridDilateAndFilterUnseen(const nav_msgs::OccupancyGrid& og_original, nav_msgs::OccupancyGrid& og_dild_fild)
+{
+
+  double width = og_original.info.width;
+  double height = og_original.info.height;
+
+  cv::Mat img_og_original = cv::Mat(og_original.info.height,og_original.info.width,CV_8UC1,(uint8_t*)og_original.data.data());
+  cv::Size size_img = img_og_original.size();
+
+  //Find obstacle dilation parameters
   int dyn_dilation_type;
   string str_type;
   switch(config_.dyn_dilation_type)
@@ -781,34 +700,106 @@ CallBackDslDdp::dilateObs(void)
       str_type = string("ellipse");
       break;
   }
+  double og_cell_m_resized = yaml_node_["og_cell_m_resized"].as<double>();
+  double og_cell_m_original = og_original_.info.resolution;
+  int dilation_size_obs = config_.dyn_dilation_obs_m/og_original_.info.resolution;
+  int dilation_size_scaling =  ceil((og_cell_m_original/og_cell_m_resized-1)/2) ;
+  int dilation_size = dilation_size_scaling>dilation_size_obs ? dilation_size_scaling:dilation_size_obs;
 
-  //create cv::Mat for the occ_grid
-  cv::Mat img_occ_grid_resized = cv::Mat(occ_grid_resized_.info.height,occ_grid_resized_.info.width,CV_8UC1,(uint8_t*)occ_grid_resized_.data.data());
-
-  //Dilate the obstacles for the occ_grid
-  int dilation_size = config_.dyn_dilation_obs_m/occ_grid_resized_.info.resolution;
   cv::Mat dilation_element = cv::getStructuringElement(dyn_dilation_type,
                                                        cv::Size( 2*dilation_size + 1, 2*dilation_size+1 ) );
-  cv::dilate(img_occ_grid_resized  , img_occ_grid_dilated_, dilation_element );
 
-  //display the dialated occ grid in rviz
-  geometry_msgs::Pose pose_org; eig2PoseMsg(pose_org,tfm_world2og_ll_);
-  nav_msgs::OccupancyGrid occ_grid_dilated;
-  imgToOccGrid(img_occ_grid_dilated_,pose_org, occ_grid_resized_.info.resolution,occ_grid_dilated);
-  pub_og_dild_.publish(occ_grid_dilated);
-
+  //Dilate only the obstacles(not the unseen cells)
+  cv::Mat img_wout_unseen;  cv::threshold(img_og_original,img_wout_unseen,101,100,cv::THRESH_TOZERO_INV);
+  cv::Mat img_og_dild; cv::dilate(img_wout_unseen, img_og_dild, dilation_element );
   if(config_.dyn_debug_on)
-  {
-    cout<<"*Dilating obstacle with "<<str_type<<" type kernel of size "<<dilation_size<<"pixels"<<endl;
-  }
-  dslInit();
+    cout<<"*Dilated obstacles with "<<str_type<<" type kernel of size "<<dilation_size<<"pixels"<<endl;
 
+  //Find parameter that is used to decide if a set of connected unseen cells are to be set free or not
+  double cell_area = og_cell_m_original * og_cell_m_original;
+  double og_tol_unseen_sqm = yaml_node_["og_tol_unseen_sqm"].as<double>();
+  int og_tol_unseen_n = og_tol_unseen_sqm/cell_area;
+
+  //Find connected unseen cells as blobs
+  cv::Mat img_og_unseen;  cv::threshold(img_og_original,img_og_unseen,101,1.0,cv::THRESH_BINARY );
+  std::vector < std::vector<cv::Point2i> > blobs;
+  FindBlobs(img_og_unseen, blobs);
+
+  //Create an image with all zeros(so free) then set the cells in large unseen clusters to 100(i.e. obstacles)
+  cv::Mat img_og_unseen_fild(height,width,CV_8UC1,cv::Scalar(0));
+
+  for(int n=0; n<blobs.size(); n++)
+    if(blobs[n].size()>og_tol_unseen_n)
+      for(int m=0; m<blobs[n].size(); m++)
+          img_og_unseen_fild.at<uchar>(blobs[n][m].y,blobs[n][m].x)=100;
+
+   //Combine the dilated obstacles with the larger unseen cell clusters set as obstacle
+  cv::Mat img_og_dild_fild = cv::max(img_og_unseen_fild,img_og_dild);
+
+  //display the final occ grid in rviz
+  geometry_msgs::Pose pose_org; eig2PoseMsg(pose_org,tfm_world2og_ll_);
+  occGridFromImg(img_og_dild_fild,pose_org, og_original_.info.resolution,og_dild_fild);
 }
 
-//to be used in switch case statement involving strings
-constexpr unsigned int str2int(const char* str, int h = 0)
+void
+CallBackDslDdp::occGridResize(const nav_msgs::OccupancyGrid& og_dild_fild, nav_msgs::OccupancyGrid& og_final)
 {
-  return !str[h] ? 5381 : (str2int(str, h+1)*33) ^ str[h];
+  //make cv::Mat image from OG
+  cv::Mat img_og_dild_fild = cv::Mat(og_dild_fild.info.height,og_dild_fild.info.width,CV_8UC1,(uint8_t*)og_dild_fild.data.data());
+  cv::Size size_img = img_og_dild_fild.size();
+
+  //get desired resolution(in meter/pix)
+  double og_cell_m_resized = yaml_node_["og_cell_m_resized"].as<double>();
+  double og_cell_m_original = og_dild_fild.info.resolution;
+
+  //Row and cols of resized image
+  double width_m = og_original_.info.width   * og_cell_m_original;
+  double height_m = og_original_.info.height * og_cell_m_original;
+  int cols_resized = floor(width_m/og_cell_m_resized);
+  int rows_resized = floor(height_m/og_cell_m_resized);
+
+  //create resized image
+  img_og_final_ = cv::Mat(rows_resized,cols_resized,img_og_dild_fild.type());
+  cv::Mat map_x(rows_resized,cols_resized, CV_32FC1 );
+  cv::Mat map_y(rows_resized,cols_resized, CV_32FC1 );
+
+  // remap the resized image
+  for(int r=0;r<rows_resized; r++)
+  {
+    for(int c=0;c<cols_resized; c++)
+    {
+      map_x.at<float>(r,c) = (c +0.5)*og_cell_m_resized/og_cell_m_original;
+      map_y.at<float>(r,c) = (r +0.5)*og_cell_m_resized/og_cell_m_original;
+    }
+  }
+  cv::remap( img_og_dild_fild, img_og_final_, map_x, map_y, cv::INTER_NEAREST, cv::BORDER_CONSTANT);
+
+  //create occ_grid_final
+  geometry_msgs::Pose pose_org; eig2PoseMsg(pose_org,tfm_world2og_ll_);
+  nav_msgs::OccupancyGrid occ_grid_dilated;
+  occGridFromImg(img_og_final_,pose_org, og_cell_m_resized,og_final);
+}
+
+
+void
+CallBackDslDdp::occGridFromImg(const cv::Mat& img,const geometry_msgs::Pose pose_org, const double res_m_per_pix,  nav_msgs::OccupancyGrid& occ_grid)
+{
+  //confirm that the image is grayscale
+  assert(img.channels()==1 && img.type()==0);
+
+  //set occgrid header
+  occ_grid.header.frame_id=strfrm_world_;
+  occ_grid.header.stamp = ros::Time::now();
+
+  //set occgrid info
+  occ_grid.info.height = img.rows;
+  occ_grid.info.width = img.cols;
+  occ_grid.info.resolution =res_m_per_pix;//meter/pixel
+  occ_grid.info.origin = pose_org;
+
+  //set occgrid data
+  occ_grid.data.reserve(img.rows*img.cols);
+  occ_grid.data.assign(img.data, img.data+img.rows*img.cols) ;
 }
 
 void
@@ -1009,14 +1000,14 @@ CallBackDslDdp::dslInit()
 {
   ros::Time t_start = ros::Time::now();
   dslDelete();
-  map_dsl_ = new double[occ_grid_resized_.info.width*occ_grid_resized_.info.height];
-  for (int i = 0; i < occ_grid_resized_.info.width*occ_grid_resized_.info.height; ++i)
-    map_dsl_[i] = 1000*(double)img_occ_grid_dilated_.data[i];
-  p_gdsl_ = new dsl::GridSearch(occ_grid_resized_.info.width, occ_grid_resized_.info.height, grid_cost_, map_dsl_);
+  map_dsl_ = new double[og_final_.info.width*og_final_.info.height];
+  for (int i = 0; i < og_final_.info.width*og_final_.info.height; ++i)
+    map_dsl_[i] = 1000*(double)img_og_final_.data[i];
+  p_gdsl_ = new dsl::GridSearch(og_final_.info.width, og_final_.info.height, grid_cost_, map_dsl_);
   ros::Time t_end =  ros::Time::now();
   if(config_.dyn_debug_on)
   {
-    cout<<"*Initialized DSL grid search object with map size:"<<occ_grid_resized_.info.width<<" X "<<occ_grid_resized_.info.height<<endl;
+    cout<<"*Initialized DSL grid search object with map size:"<<og_final_.info.width<<" X "<<og_final_.info.height<<endl;
     cout<<"  delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
   }
 }
@@ -1024,8 +1015,8 @@ CallBackDslDdp::dslInit()
 bool
 CallBackDslDdp::dslFeasible(void)
 {
-  float w = occ_grid_resized_.info.width;
-  float h = occ_grid_resized_.info.height;
+  float w = og_final_.info.width;
+  float h = og_final_.info.height;
   return w && h && dsl_cond_feas_s_ && dsl_cond_feas_g_;
 }
 
@@ -1066,7 +1057,7 @@ void
 CallBackDslDdp::dslInterpolate(void)
 {
 
-  float m_per_cell = occ_grid_resized_.info.resolution;
+  float m_per_cell = og_final_.info.resolution;
   int n = path_opt_.cells.size();
   //std::vector<double> x(path_opt_.count), y(path_opt_.count),d(path_opt_.count), t(path_opt_.count);
   VectorXd pt_x_opt(n),pt_y_opt(n);    pt_x_opt.setZero(); pt_y_opt.setZero();
@@ -1211,7 +1202,7 @@ CallBackDslDdp::ddpPlan(void)
 
   if(!ddpFeasible())
     return false;
-  float m_per_cell = occ_grid_resized_.info.resolution;
+  float m_per_cell = og_final_.info.resolution;
 
   //DDP start
   //if dyn_ddp_from_curr_posn=true then start is current position else
@@ -1361,7 +1352,7 @@ CallBackDslDdp::dispPathDdpRviz(void)
   if(config_.dyn_debug_on)
     cout<<"*Displaying ddp path"<<endl;
 
-  float res = occ_grid_resized_.info.resolution;
+  float res = og_final_.info.resolution;
   marker_path_ddp_.action      = visualization_msgs::Marker::ADD;
   marker_wp_ddp_.action        = visualization_msgs::Marker::ADD;
 
@@ -1412,7 +1403,7 @@ CallBackDslDdp::dispPathDslRviz()
     cout<<"*Displaying dsl path"<<endl;
   marker_path_dsl_.action      = visualization_msgs::Marker::ADD;
   marker_wp_dsl_.action        = visualization_msgs::Marker::ADD;
-  float m_per_cell = occ_grid_resized_.info.resolution;
+  float m_per_cell = og_final_.info.resolution;
   marker_path_dsl_.points.resize(path_opt_.cells.size());
   marker_wp_dsl_.points.resize(path_opt_.cells.size());
   for (int i = 0; i < path_opt_.cells.size(); i++)
@@ -1450,7 +1441,7 @@ CallBackDslDdp::dispPathDslInterpdRviz(void)
   marker_path_dsl_intp_.action = visualization_msgs::Marker::ADD;
   marker_wp_dsl_intp_.action   = visualization_msgs::Marker::ADD;
 
-  float m_per_cell = occ_grid_resized_.info.resolution;
+  float m_per_cell = og_final_.info.resolution;
   marker_path_dsl_intp_.points.resize(pt_x_dsl_intp_.size());
   marker_wp_dsl_intp_.points.resize(pt_x_dsl_intp_.size());
   for (int i = 0; i < pt_x_dsl_intp_.size(); i++)

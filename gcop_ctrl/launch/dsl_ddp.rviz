@@ -6,8 +6,8 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /Map(Original)1
         - /Map(Occgrid dilated)1
-        - /Map(Occgrid dilated)1/Status1
         - /Map(Sat)1
         - /Marker(mesh)1/Namespaces1
       Splitter Ratio: 0.512777
@@ -87,7 +87,7 @@ Visualization Manager:
       Draw Behind: false
       Enabled: true
       Name: Map(Original)
-      Topic: /map_original
+      Topic: /map
       Value: true
     - Alpha: 0.5
       Class: rviz/Map
@@ -216,5 +216,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 927
-  X: 645
-  Y: 33
+  X: 606
+  Y: 127

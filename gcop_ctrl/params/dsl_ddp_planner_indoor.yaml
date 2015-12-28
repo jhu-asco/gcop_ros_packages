@@ -38,7 +38,7 @@ dilation_min_m: 0.5  #unimplemented
 #   strfrm_og:      The location of origin of the og(as obtained from gmapping)
 strfrm_world: "/world"          
 strfrm_robot: "/base_link"  
-strfrm_og_org: "/og_org_original"
+strfrm_og_org: "/og_org"
 
 ###################################
 # Topic name(Input)(static)
@@ -51,7 +51,7 @@ strfrm_og_org: "/og_org_original"
 strtop_odom:       "/insekf/odom"
 strtop_pose_start: "/initialpose"
 strtop_pose_goal:  "/move_base_simple/goal"
-strtop_og:         "/map_original"
+strtop_og:         "/map"
 
 ###################################
 # Topic name(Output)(static)

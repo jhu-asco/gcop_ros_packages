@@ -17,8 +17,8 @@ loop_rate_main: 1000
 #   og_tol_unseen_msq: a means if area of connected unseen cells < a sqm then they are set to unoccupied
 #                      which should be little bit less than size of your vehicle
 og_downsample_factor: 3
-og_cell_m_resized: 0.1
-og_tol_unseen_sqm: 8
+og_cell_m_resized: 0.5
+og_tol_unseen_sqm: 9
 
 ###################################
 # Dilation settings(Reconfigurable)   
@@ -38,7 +38,7 @@ dilation_min_m: 0.5  #unimplemented
 #   strfrm_og:      The location of origin of the og(as obtained from gmapping)
 strfrm_world: "/world"          
 strfrm_robot: "/base_link"  
-strfrm_og_org: "/og_org_original"
+strfrm_og_org: "/og_org"
 
 ###################################
 # Topic name(Input)(static)
@@ -51,7 +51,7 @@ strfrm_og_org: "/og_org_original"
 strtop_odom:       "/insekf/odom"
 strtop_pose_start: "/initialpose"
 strtop_pose_goal:  "/move_base_simple/goal"
-strtop_og:         "/map_original"
+strtop_og:         "/map"
 
 ###################################
 # Topic name(Output)(static)
