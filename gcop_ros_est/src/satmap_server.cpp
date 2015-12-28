@@ -60,6 +60,7 @@ visualization_msgs::Marker g_marker;
 void mySigIntHandler(int signal)
 {
   g_shutdown_requested=1;
+  cout<<"\nshutdown requested\n"<<endl;
 }
 
 void initMarker(YAML::Node& node)
@@ -164,7 +165,7 @@ pub_vis.publish( g_marker);
 
 ros::Rate loop_rate(0.5);
 
-while(!g_shutdown_requested)
+while(ros::ok() && !g_shutdown_requested)
 {
   ros::spinOnce();
   loop_rate.sleep();

@@ -13,9 +13,8 @@
   <node name='map_og_original_server' pkg='map_server' type='map_server' args='$(find gcop_ctrl)/map/map_hackerman.yaml' output="screen">
     <param name='frame_id' value='og_org'/>
   </node>	
-  <node pkg="tf" type="static_transform_publisher" name="world_to_og_org" args="127 108 0 1.65 0 0 world og_org 50" />
+  <node pkg="tf" type="static_transform_publisher" name="world_to_og_org" args="127 108 0 1.65 0 0 world og_org 100" />
  
-
  <!-- Dynamic reconfigure -->
  <node pkg="rqt_reconfigure" type="rqt_reconfigure" name="reconfigure" output="screen" />
 

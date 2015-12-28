@@ -10,6 +10,8 @@ Panels:
         - /Map(Occgrid dilated)1
         - /Map(Sat)1
         - /Marker(mesh)1/Namespaces1
+        - /odometry_msg1
+        - /odometry_msg1/Status1
       Splitter Ratio: 0.512777
     Tree Height: 737
   - Class: rviz/Selection
@@ -30,7 +32,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: hokuyo
   - Class: rviz/Help
     Name: Help
 Visualization Manager:
@@ -66,7 +68,17 @@ Visualization Manager:
       Frame Timeout: 2000
       Frames:
         All Enabled: false
-        og_org_original:
+        base_link:
+          Value: true
+        fcu:
+          Value: true
+        laser:
+          Value: true
+        local_origin:
+          Value: true
+        odom:
+          Value: true
+        og_org:
           Value: true
         world:
           Value: true
@@ -77,8 +89,11 @@ Visualization Manager:
       Show Names: true
       Tree:
         world:
-          og_org_original:
-            {}
+          og_org:
+            odom:
+              base_link:
+                laser:
+                  {}
       Update Interval: 0
       Value: true
     - Alpha: 0.7
@@ -136,9 +151,9 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 16825
+      Max Intensity: 16755
       Min Color: 0; 0; 0
-      Min Intensity: 101
+      Min Intensity: 100
       Name: hokuyo
       Position Transformer: XYZ
       Queue Size: 10
@@ -156,6 +171,16 @@ Visualization Manager:
       Enabled: true
       Name: particle cloud
       Topic: particlecloud
+      Value: true
+    - Angle Tolerance: 0.1
+      Class: rviz/Odometry
+      Color: 255; 25; 0
+      Enabled: true
+      Keep: 100
+      Length: 1
+      Name: odometry_msg
+      Position Tolerance: 0.1
+      Topic: /inskef/odom
       Value: true
   Enabled: true
   Global Options:
@@ -181,16 +206,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 629.361
+      Distance: 70.2862
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.06
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 139.273
-        Y: 187.803
-        Z: -30.9565
+        X: 127.718
+        Y: 117.092
+        Z: -39.6342
       Name: Current View
       Near Clip Distance: 0.01
       Pitch: 1.4498
@@ -216,5 +241,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 927
-  X: 606
-  Y: 127
+  X: 449
+  Y: 41
