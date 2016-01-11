@@ -10,6 +10,6 @@
     <param name='frame_id' value='og_org'/>
   </node> 
   
-  <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_og_org" args="127 108 0 0 0 0.73454 0.67855 world og_org" />
+  <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_og_org" args="121 102 0 0 0 0.72428717437 0.68949843295 world og_org" />
 
 </launch>
