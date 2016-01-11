@@ -1004,7 +1004,7 @@ CallBackDslDdp::dslInit()
   }
   ros::Time t_end =  ros::Time::now();
 
-  if(config_.dyn_debug_verbose_on)
+  if(config_.dyn_debug_on)
   {
     cout<<indStr(1)+"DSL grid initialized with map size:"<<og_final_.info.width<<" X "<<og_final_.info.height<<endl;
     cout<<indStr(1)+"delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
