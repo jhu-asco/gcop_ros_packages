@@ -14,12 +14,14 @@ find_package(catkin REQUIRED COMPONENTS
 	sensor_msgs
   roscpp
   rospy
+  roslib
   tf
   tf2_ros
   cv_bridge
   tf_conversions
   gcop_ros_utils
   map_server
+
 )
 
 ## System dependencies are found with CMake's conventions
@@ -181,10 +183,6 @@ target_link_libraries(vs_evaluate ${LIBS} ${catkin_LIBRARIES})
 add_executable(rcctrl src/rccartest.cc)
 target_link_libraries(rcctrl ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(rcctrl ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
-
-add_executable(rccar_ddp_lcl_planner src/rccar_ddp_lcl_planner.cpp)
-target_link_libraries(rccar_ddp_lcl_planner ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(rccar_ddp_lcl_planner ${PROJECT_NAME}_gencfg)
 
 add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
 target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${LIBS})

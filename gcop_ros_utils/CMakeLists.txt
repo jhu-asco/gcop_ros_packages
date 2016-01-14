@@ -10,6 +10,10 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   roscpp
   enu
+  std_msgs
+  sensor_msgs 
+  geometry_msgs
+  nav_msgs
 )
 find_package(GCOP REQUIRED algos systems)
 include_directories(${GCOP_INCLUDE_DIRS})
@@ -172,3 +176,7 @@ include_directories(
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+
+add_executable(map_saver_with_time src/map_saver_with_time.cpp)
+target_link_libraries(map_saver_with_time ${catkin_LIBRARIES} )

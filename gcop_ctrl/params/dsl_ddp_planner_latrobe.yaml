@@ -98,7 +98,9 @@ prop_wp_nve_ddp:        [0.0,0.25,0.25,0.5,0.18,0.18]
 # DSL settings(static)
 #   dsl_expand: deicdes whether to expand the whole dsl grid into its graph at init
 #                 Expanding at startup is to be used if startup time and memory is not an issue
+#   dsl_save_final_map:  If true saves the final process occupancy grid which is the input map to dsl
 dsl_expand_at_start: False 
+dsl_save_final_map:  true
 
 ###################################
 # DSL Geometric car settings(static)
@@ -114,9 +116,11 @@ dsl_expand_at_start: False
 dsl_use_geom_car: True #(unimplemented)
 dsl_car_dim_and_org: [0.7, 0.5,0.22,0.0]
 dsl_onlyfwd: true
-dsl_maxtanphi: 0.577
-dsl_backward_penalty: 2.0
 dsl_prim_w_div: 3
+dsl_maxtanphi: 0.577 
+dsl_prim_vx_div: 3
+dsl_maxvx: 2
+dsl_backward_penalty: 1.0
 
 ###################################
 # DSL settings(reconfigurable)

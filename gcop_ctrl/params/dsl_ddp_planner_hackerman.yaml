@@ -8,7 +8,7 @@
 #   str_ind: indentation string. Indents debug statements nicely, try "| " or "  "
 
 debug_on: True
-debug_verbose_on: false
+debug_verbose_on: true
 send_gcar_ctrl: True
 loop_rate_main: 1000
 str_ind: "| "
@@ -99,7 +99,9 @@ prop_wp_nve_ddp:        [0.0,0.25,0.25,0.5,0.18,0.18]
 # DSL settings(static)
 #   dsl_expand: deicdes whether to expand the whole dsl grid into its graph at init
 #                 Expanding at startup is to be used if startup time and memory is not an issue
+#   dsl_save_final_map:  If true saves the final process occupancy grid which is the input map to dsl
 dsl_expand_at_start: true
+dsl_save_final_map:  false
 
 ###################################
 # DSL Geometric car settings(static)
@@ -115,9 +117,11 @@ dsl_expand_at_start: true
 dsl_use_geom_car: True #(unimplemented)
 dsl_car_dim_and_org: [0.75, 0.43,-0.22,0.0]
 dsl_onlyfwd: True
-dsl_maxtanphi: 1 
+dsl_prim_w_div: 5
+dsl_maxtanphi: 0.577 
+dsl_prim_vx_div: 2
+dsl_maxvx: 2
 dsl_backward_penalty: 1.0
-dsl_prim_w_div: 4
 
 ###################################
 # DSL settings(reconfigurable)
@@ -138,8 +142,8 @@ dsl_disp_rviz: True
 #   ddp_t_away: Choose a wpoint on dsl path which is t_away sec away
 #   ddp_loop_durn: duration after which ddp planning is called again
 #   ddp_from_curr_posn: if enabled plans(ddp) from current position else from rivz start
-ddp_t_away: 1
-ddp_loop_durn: 0.5
+ddp_t_away: 1.0
+ddp_loop_durn: 0.05
 ddp_from_curr_posn: True
 ddp_disp_rviz: True
 
