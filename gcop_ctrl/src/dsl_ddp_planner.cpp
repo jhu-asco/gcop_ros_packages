@@ -43,6 +43,7 @@
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <sensor_msgs/LaserScan.h>
 
 //gcop_comm msgs
 #include <gcop_comm/GcarCtrl.h>
@@ -57,6 +58,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <algorithm>
+#include <iterator>
 
 //D* Lite algorithm
 #include <dsl/gridsearch.h>
@@ -79,7 +81,7 @@
 #include <gcop/multicost.h>
 #include <gcop/diskconstraint.h>
 
-
+#include "miniball.hpp"
 
 //-------------------------------------------------------------------------
 //-----------------------NAME SPACES ---------------------------------
@@ -92,6 +94,13 @@ using namespace Eigen;
 //-----------------------GLOBAL VARIABLES ---------------------------------
 //-------------------------------------------------------------------------
 sig_atomic_t g_shutdown_requested=0;
+
+//-------------------------------------------------------------------------
+//---------------------------_TYPEDEFS ------------------------------------
+//-------------------------------------------------------------------------
+typedef std::vector<std::vector<double> >::const_iterator PointIterator;
+typedef std::vector<double>::const_iterator CoordIterator;
+typedef Miniball::Miniball <Miniball::CoordAccessor<PointIterator, CoordIterator> > MB;
 
 
 //------------------------------------------------------------------------
@@ -173,6 +182,110 @@ void FindBlobs(const cv::Mat &binary, std::vector < std::vector<cv::Point2i> > &
     }
 }
 
+int GcarStateToVector2d(Vector2d &p, const GcarState &x)
+{
+  p[0] = x.g(0,2);   // x.g is the car SE(2) pose matrix
+  p[1] = x.g(1,2);
+  return 1;  // index where position coordinates start (the car model coordinates are (theta,x,y,v)
+}
+
+
+template<class T>
+std::vector<T> selectVecElems(const std::vector<T>& vec, std::vector<std::size_t> indxs){
+    std::vector<T> ret;
+    for (std::size_t ind: indxs)
+        ret.push_back(vec.at(ind));
+    return ret;
+}
+
+/**
+ * It finds a maximum of K clusters which are closest to origin. Each cluster has a maximum radius
+ * @param clusters The returned clusters
+ * @param ptpol pt in polar coordinates of the obstacle locations
+ * @param robs radius of individual obstacle point
+ * @param K K nearest neighbor
+ * @param rcmax maximum radius of the cluster
+ */
+void findKClustersWithSizeConstraint(vector<vector<size_t>>& clusters, const vector<Vector2d>& pts_polar,double robs,int K, double rcmax)
+{
+  if(!pts_polar.size())
+    return;
+
+  //  Make a vector of ranges and convert ptpol to cartesian
+  vector<int> clid(pts_polar.size(),-1);//-1 means cluster numbers have not been assigned
+  vector<double> ranges(pts_polar.size());
+  vector<size_t> idxs_noclid(pts_polar.size());//indexes of all the obstacles that don't have a cluster id
+  vector<Vector2d> pts_cart(pts_polar.size());
+  for(size_t i=0;i<pts_polar.size();i++){
+    pts_cart[i] = Vector2d(pts_polar[i](0)*cos(pts_polar[i](1)), pts_polar[i](0)*sin(pts_polar[i](1)));
+    ranges[i] = pts_polar[i](0);
+    idxs_noclid[i] = i;
+  }
+
+  int k=0; //current cluster id
+  while(k<K && idxs_noclid.size()>0)
+  {
+    //vector of obstacle ranges with no clid(cluster id)
+    vector<double> ranges_noclid = selectVecElems(ranges,idxs_noclid);
+
+    vector<bool> nbrs_noclid(idxs_noclid.size());
+    size_t n_nbrs=0;
+
+    //  find the closest obstacle to center in the list of obstacles that don't belong to any clusters
+    size_t idx_innoclid_closest = std::distance(ranges_noclid.begin(),min_element(ranges_noclid.begin(),ranges_noclid.end()));
+    Vector2d pt_polar_closest = pts_polar[idxs_noclid[idx_innoclid_closest]];
+
+    //find all obstacles with no clid which lie in a circle of radius rcmax and centered at
+    //  pt_polar_closest + pt_polar(rcmax/2,0) and assign them the cluster id k
+    Vector2d pt_polar_cent = pt_polar_closest + Vector2d(rcmax,0);
+    Vector2d pt_cart_cent = Vector2d(pt_polar_cent(0)*cos(pt_polar_cent(1))
+                                     ,pt_polar_cent(0)*sin(pt_polar_cent(1)));
+    vector<size_t> cluster;
+    for( size_t i_in_noclid=0; i_in_noclid < idxs_noclid.size(); i_in_noclid++){
+      Vector2d pt_cart = pts_cart[idxs_noclid[i_in_noclid]];
+      double dist = (pt_cart -pt_cart_cent).norm();
+
+      if(dist<=rcmax+1e-10){
+        clid[idxs_noclid[i_in_noclid]] = k;
+        cluster.push_back(idxs_noclid[i_in_noclid]);
+      }
+    }
+    clusters.push_back(cluster);
+
+    //update idxs_noclid and k for the next loop
+    idxs_noclid.clear();
+    for(size_t i=0;i<pts_polar.size();i++){
+      if(clid[i]==-1)
+        idxs_noclid.push_back(i);
+    }
+    k++;
+  }
+}
+
+
+
+void findCircumCircle(vector<Vector2d>& pts_cart_center_circle, vector<double>& radiuses_circle,
+                                const vector<vector<size_t>>&clusters,const vector<Vector2d>& pts_cart){
+
+  pts_cart_center_circle.resize(clusters.size());
+  radiuses_circle.resize(clusters.size());
+  for(int i=0; i< clusters.size(); i++){
+    vector<Vector2d> pts_cart_cl = selectVecElems(pts_cart,clusters[i]);
+    vector<vector<double>> lp;
+    for(size_t i=0;i<pts_cart_cl.size();i++){
+      vector<double> p; p.push_back(pts_cart_cl[i](0)); p.push_back(pts_cart_cl[i](1));
+      lp.push_back(p);
+    }
+    int d=2; int n = pts_cart_cl.size();
+    MB mb (d, lp.begin(), lp.end());
+
+    const double* center = mb.center();
+    pts_cart_center_circle[i] = Vector2d(center[0],center[1]);
+    radiuses_circle[i] = sqrt(mb.squared_radius());
+  }
+
+}
+
 //------------------------------------------------------------------------
 //-----------------------------CALLBACK CLASS ----------------------------
 //------------------------------------------------------------------------
@@ -185,8 +298,11 @@ public:
   typedef Matrix<double, 5, 1> Vector5d;
   typedef Ddp<GcarState, 4, 2> GcarDdp;
   typedef DiskConstraint<GcarState, 4, 2> GcarDiskConstraint;
+  typedef boost::shared_ptr<GcarDiskConstraint> GcarDiskConstraint_ptr;
   typedef ConstraintCost<GcarState, 4, 2, Dynamic, 1> DiskConstraintCost;
+  typedef boost::shared_ptr<DiskConstraintCost> DiskConstraintCost_ptr;
   typedef Transform<double,2,Affine> Transform2d;
+  typedef sensor_msgs::LaserScan::_ranges_type::const_iterator RangesConstIt;
 
 public:
   CallBackDslDdp();
@@ -203,7 +319,7 @@ private:
   void cbPoseStart(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg_pose_start);
   void cbPoseGoal(const geometry_msgs::PoseStampedConstPtr& msg_pose_goal);
   void cbOccGrid(const nav_msgs::OccupancyGridConstPtr& msg_occ_grid);
-
+  void cbLidar(const sensor_msgs::LaserScanConstPtr& pmsg_lidar);
   void cbTimerVis(const ros::TimerEvent& event);
   void cbTimerDsl(const ros::TimerEvent& event);
   void cbTimerDdp(const ros::TimerEvent& event);
@@ -215,12 +331,13 @@ private:
   void rvizColorMsgEdit(std_msgs::ColorRGBA& rgba_msg, VectorXd& rgba_vec);
   void rvizMarkersEdit(visualization_msgs::Marker& marker, VectorXd& prop);
   void rvizMarkersInit(void);
+  void rvizShowObstacles(void);
   void rvizShowStart(void);
   void rvizShowGoal(void);
   void rvizShowPathDsl(void);
   void rvizShowPathDdp(void);
   void rvizShowPathDslInterpd(void);
-  void rvizRemoveCar(void);
+  void rvizRemoveObstacles(void);
   void rvizRemoveStart(void);
   void rvizRemoveGoal(void);
   void rvizRemovePathDdp(void);
@@ -236,6 +353,7 @@ private:
   bool ddpFeasible(void);
   bool ddpInit(void);
   bool ddpPlan(void);
+  void obsDetect(vector<Vector2d>& centers_encirc, vector<double>& rads_encirc);
 
   void setTfmsWorld2OgLL(void);
 
@@ -253,13 +371,13 @@ private:
   gcop_ctrl::DslDdpPlannerConfig config_;
   dynamic_reconfigure::Server<gcop_ctrl::DslDdpPlannerConfig> dyn_server_;
   int ind_count_;
-  string str_ind_;
+  string ind_str_;
 
-  string strtop_odom_, strtop_pose_start_, strtop_pose_goal_, strtop_og_;
+  string strtop_odom_, strtop_pose_start_, strtop_pose_goal_, strtop_og_, strtop_lidar_;
   string strtop_diag_, strtop_marker_rviz_, strtop_og_dild_, strtop_ctrl_;
   string strfrm_world_, strfrm_robot_, strfrm_og_org_;
 
-  ros::Subscriber sub_odom_, sub_pose_start_, sub_pose_goal_, sub_og_;
+  ros::Subscriber sub_odom_, sub_pose_start_, sub_pose_goal_, sub_og_, sub_lidar_;
   ros::Publisher pub_diag_, pub_vis_, pub_og_final_, pub_ctrl_;
   ros::Timer timer_vis_, timer_ddp_, timer_dsl_;
 
@@ -267,12 +385,14 @@ private:
 
   visualization_msgs::Marker marker_path_dsl_,marker_wp_dsl_;
   visualization_msgs::Marker marker_path_dsl_intp_ ,marker_wp_dsl_intp_;
-  VectorXd prop_path_pve_ddp_, prop_path_nve_ddp_, prop_wp_pve_ddp_, prop_wp_nve_ddp_ ;
+  VectorXd prop_path_pve_ddp_, prop_path_nve_ddp_, prop_wp_pve_ddp_, prop_wp_nve_ddp_, prop_obs_ ;
   visualization_msgs::Marker marker_path_ddp_,marker_wp_ddp_;
   visualization_msgs::Marker marker_text_start_, marker_text_goal_;
-  visualization_msgs::Marker marker_car_;
+  visualization_msgs::Marker marker_obs_;
+  vector<int> marker_obs_ids_;
   nav_msgs::OccupancyGrid og_original_, og_final_;
   cv::Mat img_og_final_;
+  int marker_id_;
 
   // Frames and transformation
   Affine3d tfm_world2og_org_, tfm_world2og_ll_,tfm_og_org2og_ll_;
@@ -292,9 +412,8 @@ private:
   dsl::GridSearch<3, Matrix3d>* p_dsl_searchcar_;
   vector<Vector3d>              pathaxy_ll_opt_;
   bool dsl_cond_feas_s_, dsl_cond_feas_g_, dsl_done_, dsl_use_geom_car_;
-  VectorXd x_ll_intp_, y_ll_intp_,a_ll_intp_, t_dsl_intp_;//x,y,angle,t of the path
-  Affine3d pose_world_dsl_start_, pose_world_dsl_goal_;
-  Vector3d se2_dsl_start_, se2_dsl_goal_;//refers to grid point
+  VectorXd x_binll_intp_, y_binll_intp_,a_binll_intp_, t_dsl_intp_;//x,y,angle,t of the path, binll: body in lower left of og
+  Affine3d pose_binw_dsl_start_, pose_binw_dsl_goal_;//binw: body in world
 
   // DDP vars
   bool ddp_debug_on_;
@@ -302,17 +421,27 @@ private:
   int ddp_nseg_max_,ddp_nseg_min_, ddp_nit_max_;
   double ddp_tseg_ideal_;
   double ddp_tol_rel_, ddp_tol_abs_, ddp_tol_goal_m_;
-  Affine3d pose_world_ddp_start_, pose_ddp_goal_, pose_ddp_curr_;
+  Affine3d pose_binw_ddp_start_, pose_binw_ddp_goal_, pose_binw_ddp_curr_;
   ros::Time time_ddp_start_, time_ddp_curr_;
-  double vel_base_ddp_start_,     vel_ddp_goal_,  vel_ddp_curr_;
+  double vel_binb_ddp_start_,     vel_ddp_goal_,  vel_binb_ddp_curr_;
   Vector3d pt_ddp_start_, pt_ddp_goal_; //refers to grid point
 
   Gcar sys_gcar_;
-  LqCost< GcarState, 4, 2> cost_lq_;
-  MultiCost<GcarState, 4, 2> mcost_;
+  LqCost< GcarState, 4, 2> ddp_cost_lq_;
+  double ddp_cost_disk_penl_,ddp_disk_coln_rad_;
   vector<double> ddp_ts_;
   vector<GcarState> ddp_xs_;
   vector<Vector2d> ddp_us_;
+
+  //obstacle properties
+  double obs_search_radius_max_;
+  double obs_search_radius_min_;
+  double obs_search_angle_fwd_;
+  int obs_cluster_count_max_;
+  double obs_cluster_radius_max_;
+  double obs_map_cell_size_;
+  sensor_msgs::LaserScan msg_lidar_;
+  vector<Disk> disks_;
 
 };
 
@@ -333,8 +462,7 @@ CallBackDslDdp::CallBackDslDdp():
                         p_dsl_conncar_(nullptr),
                         p_dsl_searchcar_(nullptr),
                         sys_gcar_(),
-                        cost_lq_(sys_gcar_, 1, GcarState(Matrix3d::Identity(), 0)),
-                        mcost_(sys_gcar_,1)
+                        ddp_cost_lq_(sys_gcar_, 1, GcarState(Matrix3d::Identity(), 0))
 {
   ind_count_++;
   cout<<"**************************************************************************"<<endl;
@@ -343,9 +471,9 @@ CallBackDslDdp::CallBackDslDdp():
 
   //Setup YAML reading and parsing
   string strfile_params;nh_p_.getParam("strfile_params",strfile_params);
-  cout<<indStr(1)+"loading yaml param file into yaml_node"<<endl;
   yaml_node_ = YAML::LoadFile(strfile_params);
-  str_ind_ = yaml_node_["str_ind"].as<string>();
+  ind_str_ = yaml_node_["str_ind"].as<string>();
+  cout<<indStr(1)+"loaded yaml param file into yaml_node"<<endl;
 
   //setup dynamic reconfigure
   dynamic_reconfigure::Server<gcop_ctrl::DslDdpPlannerConfig>::CallbackType dyn_cb_f;
@@ -380,7 +508,7 @@ CallBackDslDdp::~CallBackDslDdp()
   rvizRemovePathDdp();
   rvizRemovePathDsl();
   rvizRemovePathDslInterpd();
-  rvizRemoveCar();
+  rvizRemoveObstacles();
   rvizRemoveStart();
   rvizRemoveGoal();
   dslDelete();
@@ -391,7 +519,7 @@ CallBackDslDdp::indStr()
 {
   string ind;
   for(int i=0; i<ind_count_; i++)
-    ind = ind+ str_ind_;
+    ind = ind+ ind_str_;
   return ind;
 }
 
@@ -400,7 +528,7 @@ CallBackDslDdp::indStr(int count_extra)
 {
   string ind;
   for(int i=0; i<ind_count_+count_extra; i++)
-    ind = ind+ str_ind_;
+    ind = ind+ ind_str_;
   return ind;
 }
 
@@ -464,10 +592,13 @@ CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t leve
     //ddp settings
     if(config.dyn_ddp_plan_once)
     {
-      if(ddpPlan() && config_.dyn_ddp_disp_rviz)
+      if(ddpPlan() && config_.dyn_ddp_disp_rviz){
         rvizShowPathDdp();
-      else
+        rvizShowObstacles();
+      }else{
         rvizRemovePathDdp();
+        rvizRemoveObstacles();
+      }
 
       config.dyn_ddp_plan_once = false;
     }
@@ -537,6 +668,7 @@ CallBackDslDdp::setupTopicsAndNames(void)
   strtop_pose_start_ = yaml_node_["strtop_pose_start"].as<string>();
   strtop_pose_goal_  = yaml_node_["strtop_pose_goal"].as<string>();
   strtop_og_          = yaml_node_["strtop_og"].as<string>();
+  strtop_lidar_ = yaml_node_["strtop_lidar"].as<string>();
 
   // output topics
   strtop_diag_        = yaml_node_["strtop_diag"].as<string>();
@@ -564,6 +696,7 @@ CallBackDslDdp::initSubsPubsAndTimers(void)
   sub_og_   = nh_.subscribe(strtop_og_,  1, &CallBackDslDdp::cbOccGrid, this);
   sub_pose_start_ = nh_.subscribe(strtop_pose_start_, 1, &CallBackDslDdp::cbPoseStart, this);
   sub_pose_goal_  = nh_.subscribe(strtop_pose_goal_, 1, &CallBackDslDdp::cbPoseGoal, this);
+  sub_lidar_  =     nh_.subscribe(strtop_lidar_, 1, &CallBackDslDdp::cbLidar, this);
 
   //Setup Publishers
   pub_diag_    = nh_.advertise<visualization_msgs::Marker>( strtop_diag_, 0 );
@@ -607,18 +740,22 @@ CallBackDslDdp::cbTimerDsl(const ros::TimerEvent& event)
 void
 CallBackDslDdp::cbTimerDdp(const ros::TimerEvent& event)
 {
-  if(ddpPlan() && config_.dyn_ddp_disp_rviz)
+  if(ddpPlan() && config_.dyn_ddp_disp_rviz){
     rvizShowPathDdp();
-  else
+    rvizShowObstacles();
+  }
+  else{
     rvizRemovePathDdp();
+    rvizRemoveObstacles();
+  }
 }
 
 void
 CallBackDslDdp::cbOdom(const nav_msgs::OdometryConstPtr& msg_odom)
 {
   time_ddp_curr_ = msg_odom->header.stamp;
-  poseMsg2Eig(pose_ddp_curr_,msg_odom->pose.pose);
-  vel_ddp_curr_ = msg_odom->twist.twist.linear.x;
+  poseMsg2Eig(pose_binw_ddp_curr_,msg_odom->pose.pose);
+  vel_binb_ddp_curr_ = msg_odom->twist.twist.linear.x;
 }
 
 void
@@ -633,13 +770,14 @@ CallBackDslDdp::cbPoseStart(const geometry_msgs::PoseWithCovarianceStampedConstP
   int w = og_final_.info.width;
   int h = og_final_.info.height;
 
-  poseMsg2Eig(pose_world_dsl_start_,msg_pose_start->pose.pose);
-  Affine3d pose_ll_dsl_start = tfm_world2og_ll_.inverse()*pose_world_dsl_start_;
+  poseMsg2Eig(pose_binw_dsl_start_,msg_pose_start->pose.pose);
+  Affine3d pose_ll_dsl_start = tfm_world2og_ll_.inverse()*pose_binw_dsl_start_;
   Vector3d rpy_start; SO3::Instance().g2q(rpy_start,pose_ll_dsl_start.rotation().matrix());
   Vector3d axy_ll_dsl_start = Vector3d(rpy_start(2),pose_ll_dsl_start.translation()(0),pose_ll_dsl_start.translation()(1));
 
   rvizShowStart();
   dsl_cond_feas_s_ = (axy_ll_dsl_start(1)>=0) && (axy_ll_dsl_start(2)>=0) && (axy_ll_dsl_start(1)<w*wpix) && (axy_ll_dsl_start(2)<h*hpix);
+  cout<<"dsl_cond_feas_s:"<<dsl_cond_feas_s_<<endl;
   if(dsl_cond_feas_s_){
     if(dsl_use_geom_car_){
       axy_ll_dsl_start(0) = axy_ll_dsl_start(0) > p_dsl_gridcar_->xub(0)? axy_ll_dsl_start(0)-2*M_PI:axy_ll_dsl_start(0);
@@ -651,7 +789,6 @@ CallBackDslDdp::cbPoseStart(const geometry_msgs::PoseWithCovarianceStampedConstP
       rvizRemoveStart();
   }
 
-
   IOFormat iof(StreamPrecision,0,", ",",\n",indStr(3)+"","","","");
 
   if(dsl_cond_feas_s_ && config_.dyn_debug_on)
@@ -660,7 +797,7 @@ CallBackDslDdp::cbPoseStart(const geometry_msgs::PoseWithCovarianceStampedConstP
     if(config_.dyn_debug_verbose_on)
     {
       cout<<indStr(2)+"In world frame:\n"
-          <<pose_world_dsl_start_.affine().format(iof)<<endl;
+          <<pose_binw_dsl_start_.affine().format(iof)<<endl;
       cout<<indStr(2)+"In ll frame axy:\n"
           <<axy_ll_dsl_start.transpose().format(iof)<<endl;
     }
@@ -672,7 +809,7 @@ CallBackDslDdp::cbPoseStart(const geometry_msgs::PoseWithCovarianceStampedConstP
     if(config_.dyn_debug_verbose_on)
     {
       cout<<indStr(2)+"In world frame:\n"
-          <<pose_world_dsl_start_.affine().format(iof)<<endl;
+          <<pose_binw_dsl_start_.affine().format(iof)<<endl;
       cout<<indStr(2)+"In ll frame axy:\n"
           <<axy_ll_dsl_start.transpose().format(iof)<<endl;
     }
@@ -694,8 +831,8 @@ CallBackDslDdp::cbPoseGoal(const geometry_msgs::PoseStampedConstPtr& msg_pose_go
   int w = og_final_.info.width;
   int h = og_final_.info.height;
 
-  poseMsg2Eig(pose_world_dsl_goal_,msg_pose_goal->pose);
-  Affine3d pose_ll_dsl_goal = tfm_world2og_ll_.inverse()*pose_world_dsl_goal_;
+  poseMsg2Eig(pose_binw_dsl_goal_,msg_pose_goal->pose);
+  Affine3d pose_ll_dsl_goal = tfm_world2og_ll_.inverse()*pose_binw_dsl_goal_;
   Vector3d rpy_goal; SO3::Instance().g2q(rpy_goal,pose_ll_dsl_goal.rotation().matrix());
   Vector3d axy_ll_dsl_goal = Vector3d(rpy_goal(2),pose_ll_dsl_goal.translation()(0),pose_ll_dsl_goal.translation()(1));
 
@@ -720,7 +857,7 @@ CallBackDslDdp::cbPoseGoal(const geometry_msgs::PoseStampedConstPtr& msg_pose_go
     if(config_.dyn_debug_verbose_on)
     {
       cout<<indStr(2)+"In world frame:\n"
-          <<pose_world_dsl_goal_.affine().format(iof)<<endl;
+          <<pose_binw_dsl_goal_.affine().format(iof)<<endl;
       cout<<indStr(2)+"In ll frame axy:\n"
           <<axy_ll_dsl_goal.transpose().format(iof)<<endl;
     }
@@ -732,7 +869,7 @@ CallBackDslDdp::cbPoseGoal(const geometry_msgs::PoseStampedConstPtr& msg_pose_go
     if(config_.dyn_debug_verbose_on)
     {
       cout<<indStr(2)+"In world frame:\n"
-          <<pose_world_dsl_goal_.affine().format(iof)<<endl;
+          <<pose_binw_dsl_goal_.affine().format(iof)<<endl;
       cout<<indStr(2)+"In ll frame axy:\n"
           <<axy_ll_dsl_goal.transpose().format(iof)<<endl;
     }
@@ -762,6 +899,12 @@ CallBackDslDdp::cbOccGrid(const nav_msgs::OccupancyGridConstPtr& msg_occ_grid)
   dslInit();
 
   ind_count_--;
+}
+
+
+void
+CallBackDslDdp::cbLidar(const sensor_msgs::LaserScanConstPtr& pmsg_lidar){
+  msg_lidar_ = *pmsg_lidar;
 }
 
 void
@@ -978,7 +1121,7 @@ CallBackDslDdp::dslInit()
   int map_height = og_final_.info.height;
   double max_cost = 0.5; //we just want something lower than 100(obstacle value)
   double dsl_cost_scale=1;
-  bool dsl_use_geom_car_ = yaml_node_["dsl_use_geom_car"].as<bool>();
+  dsl_use_geom_car_ = yaml_node_["dsl_use_geom_car"].as<bool>();
   int  dsl_prim_w_div = yaml_node_["dsl_prim_w_div"].as<int>();
   double dsl_maxtanphi = yaml_node_["dsl_maxtanphi"].as<double>();
   int  dsl_prim_vx_div = yaml_node_["dsl_prim_vx_div"].as<int>();
@@ -1247,29 +1390,29 @@ CallBackDslDdp::dslInterpolate(void){
   int n_nodes = n_segs+1;
   double dt= (double)(t_opt(n-1))/(double)n_segs;
 
-  x_ll_intp_.resize(n_nodes); y_ll_intp_.resize(n_nodes);a_ll_intp_.resize(n_nodes); t_dsl_intp_.resize(n_nodes);
-  x_ll_intp_(0) = x_ll_opt(0);     y_ll_intp_(0) = y_ll_opt(0);     t_dsl_intp_(0) = t_opt(0);
+  x_binll_intp_.resize(n_nodes); y_binll_intp_.resize(n_nodes);a_binll_intp_.resize(n_nodes); t_dsl_intp_.resize(n_nodes);
+  x_binll_intp_(0) = x_ll_opt(0);     y_binll_intp_(0) = y_ll_opt(0);     t_dsl_intp_(0) = t_opt(0);
 
   for(int i=1;i<n_nodes;i++)
   {
     t_dsl_intp_(i) = i*dt;
-    x_ll_intp_(i) = intp_x[i*dt];
-    y_ll_intp_(i) = intp_y[i*dt];
+    x_binll_intp_(i) = intp_x[i*dt];
+    y_binll_intp_(i) = intp_y[i*dt];
 
-    double dx = x_ll_intp_(i) -x_ll_intp_(i-1);
-    double dy = y_ll_intp_(i) -y_ll_intp_(i-1);
-    a_ll_intp_(i-1) = atan2(dy,dx);
+    double dx = x_binll_intp_(i) -x_binll_intp_(i-1);
+    double dy = y_binll_intp_(i) -y_binll_intp_(i-1);
+    a_binll_intp_(i-1) = atan2(dy,dx);
   }
-  a_ll_intp_(n_nodes-1) = a_ll_intp_(n_nodes-2);
+  a_binll_intp_(n_nodes-1) = a_binll_intp_(n_nodes-2);
 
   if(config_.dyn_debug_verbose_on)
   {
-    cout<<"  The number of final interpolation points: "<<x_ll_intp_.size()<<endl;
+    cout<<"  The number of final interpolation points: "<<x_binll_intp_.size()<<endl;
 
     cout<<indStr(1)+"The final interpolated points are: "<<endl;
-    cout<<indStr(2)+"x:"<<x_ll_intp_.transpose()<<endl;
-    cout<<indStr(2)+"y:"<<y_ll_intp_.transpose()<<endl;
-    cout<<indStr(2)+"a:"<<   a_ll_intp_.transpose()<<endl;
+    cout<<indStr(2)+"x:"<<x_binll_intp_.transpose()<<endl;
+    cout<<indStr(2)+"y:"<<y_binll_intp_.transpose()<<endl;
+    cout<<indStr(2)+"a:"<<   a_binll_intp_.transpose()<<endl;
     cout<<indStr(2)+"t:"<<   t_dsl_intp_.transpose()<<endl;
   }
 
@@ -1294,9 +1437,11 @@ CallBackDslDdp::ddpInit(void)
     cout<<indStr(0)+"*Setting DDP params"<<endl;
 
   //Fetch and set all the parameter from yaml file
-  cost_lq_.Q  = yaml_node_["ddp_Q"].as<Matrix4d>();
-  cost_lq_.Qf = yaml_node_["ddp_Qf"].as<Matrix4d>();
-  cost_lq_.R  = yaml_node_["ddp_R"].as<Matrix2d>();
+  ddp_cost_lq_.Q  = yaml_node_["ddp_Q"].as<Matrix4d>();
+  ddp_cost_lq_.Qf = yaml_node_["ddp_Qf"].as<Matrix4d>();
+  ddp_cost_lq_.R  = yaml_node_["ddp_R"].as<Matrix2d>();
+  ddp_cost_disk_penl_= yaml_node_["ddp_cost_disk_penl"].as<double>();
+  ddp_disk_coln_rad_ = yaml_node_["ddp_disk_coln_rad"].as<double>();
   ddp_mu_ =yaml_node_["ddp_mu"].as<double>();
   ddp_debug_on_ =yaml_node_["ddp_debug_on"].as<bool>(); // turn off debug for speed
   ddp_nseg_min_= (yaml_node_["ddp_nseg_minmax"].as<Vector2d>())(0);
@@ -1308,7 +1453,15 @@ CallBackDslDdp::ddpInit(void)
   ddp_tol_goal_m_=yaml_node_["ddp_tol_goal_m"].as<double>();
 
   //Update internal gains of cost_lq
-  cost_lq_.UpdateGains();
+  ddp_cost_lq_.UpdateGains();
+
+  //get obstacle detection parameters
+  obs_search_radius_max_       = yaml_node_["obs_search_radius_max"].as<double>();
+  obs_search_radius_min_       = yaml_node_["obs_search_radius_min"].as<double>();
+  obs_search_angle_fwd_    = yaml_node_["obs_search_angle_fwd"].as<double>();
+  obs_cluster_count_max_   = yaml_node_["obs_cluster_count_max"].as<int>();
+  obs_cluster_radius_max_  = yaml_node_["obs_cluster_radius_max"].as<double>();
+  obs_map_cell_size_       = yaml_node_["obs_map_cell_size"].as<double>();
 
   ind_count_--;
 }
@@ -1332,23 +1485,23 @@ CallBackDslDdp::ddpPlan(void){
   //if dyn_ddp_from_curr_posn=true then start is current position else
   if(config_.dyn_ddp_from_curr_posn){
     time_ddp_start_ = time_ddp_curr_;
-    pose_world_ddp_start_ = pose_ddp_curr_;
-    vel_base_ddp_start_  =  vel_ddp_curr_;
+    pose_binw_ddp_start_ = pose_binw_ddp_curr_;
+    vel_binb_ddp_start_  =  vel_binb_ddp_curr_;
   }else{
     time_ddp_start_ = ros::Time::now();
-    pose_world_ddp_start_ = pose_world_dsl_start_;
-    vel_base_ddp_start_  = 0;
+    pose_binw_ddp_start_ = pose_binw_dsl_start_;
+    vel_binb_ddp_start_  = 0;
   }
 
   if(config_.dyn_debug_on){
     IOFormat iof(StreamPrecision,0,", ",",\n",indStr(2)+"","","","");
     cout<<indStr(1)+"DDP start pose(affine matrix) is"<<endl;
-    cout<< pose_world_ddp_start_.affine().format(iof)<<endl;
-    cout<<indStr(1)+"DDP start forward velocity is:"<<vel_base_ddp_start_<<endl;
+    cout<< pose_binw_ddp_start_.affine().format(iof)<<endl;
+    cout<<indStr(1)+"DDP start forward velocity is:"<<vel_binb_ddp_start_<<endl;
   }
 
   //TODO: put better stopping criteria
-  double dist_start_goal = (pose_world_ddp_start_.translation() - pose_world_dsl_goal_.translation()).head<2>().norm();
+  double dist_start_goal = (pose_binw_ddp_start_.translation() - pose_binw_dsl_goal_.translation()).head<2>().norm();
   if(dist_start_goal < ddp_tol_goal_m_){
     if(config_.dyn_debug_on)
       cout<<indStr(1)+"DDP planning not done because robot is already close to goal. Dist to goal:"
@@ -1361,10 +1514,10 @@ CallBackDslDdp::ddpPlan(void){
   //  that is t_away sec away from current position
 
   //  find nearest row(idx_nearest) on the [x_ll_intp_ ,y_ll_intp_] to posn_ddp_start_
-  int n_nodes = x_ll_intp_.size();
-  Vector3d pos_ll_ddp_start = (tfm_world2og_ll_.inverse()*pose_world_ddp_start_).translation();
-  VectorXd dist_sq =(x_ll_intp_ - VectorXd::Ones(n_nodes)*pos_ll_ddp_start(0)).array().square()
-                               +(y_ll_intp_ - VectorXd::Ones(n_nodes)*pos_ll_ddp_start(1)).array().square();
+  int n_nodes = x_binll_intp_.size();
+  Vector3d pos_ll_ddp_start = (tfm_world2og_ll_.inverse()*pose_binw_ddp_start_).translation();
+  VectorXd dist_sq =(x_binll_intp_ - VectorXd::Ones(n_nodes)*pos_ll_ddp_start(0)).array().square()
+                               +(y_binll_intp_ - VectorXd::Ones(n_nodes)*pos_ll_ddp_start(1)).array().square();
   VectorXd::Index idx_min; dist_sq.minCoeff(&idx_min);
   int idx_nearest = (int)idx_min;
 
@@ -1376,35 +1529,25 @@ CallBackDslDdp::ddpPlan(void){
   int idx_t_away = it_t_away-t_stl.begin()==t_stl.size()? t_stl.size()-1: it_t_away-t_stl.begin();
 
   //  DDP goal
-  pose_ddp_goal_ = tfm_world2og_ll_
-                  *Translation3d(x_ll_intp_(idx_t_away),y_ll_intp_(idx_t_away),0)
-                  *AngleAxisd(a_ll_intp_(idx_t_away), Vector3d::UnitZ());
+  pose_binw_ddp_goal_ = tfm_world2og_ll_
+                  *Translation3d(x_binll_intp_(idx_t_away),y_binll_intp_(idx_t_away),0)
+                  *AngleAxisd(a_binll_intp_(idx_t_away), Vector3d::UnitZ());
 
   //DDP path length in distance and time
   double tf = t_dsl_intp_(idx_t_away) - t_dsl_intp_(idx_nearest);
   double len_ddp_path = tf*config_.dyn_dsl_avg_speed;
 
-  //Stop DDP planning if start position is close to goal position
-  //  The following checks false if you set you t_away to be very less and ddp stops even
-  //    if far away from the goal
-//  if(len_ddp_path<ddp_tol_goal_m_){
-//    if(config_.dyn_debug_on)
-//      cout<<indStr(1)+"DDP planning not done because robot is already close to goal"<<endl;
-//    ind_count_--;
-//    return false;
-//  }
 
   // Start and goal ddp state(GcarState. M3 is se2 elem and V1 is forward vel)
   Matrix3d se2_0; se2_0.setZero();
-  se2_0.block<2,2>(0,0)= (pose_world_ddp_start_.matrix()).block<2,2>(0,0);
-  se2_0.block<2,1>(0,2) = (pose_world_ddp_start_.matrix()).block<2,1>(0,3);
+  se2_0.block<2,2>(0,0)= (pose_binw_ddp_start_.matrix()).block<2,2>(0,0);
+  se2_0.block<2,1>(0,2) = (pose_binw_ddp_start_.matrix()).block<2,1>(0,3);
   se2_0(2,2)=1;
-  GcarState x0(se2_0,vel_base_ddp_start_);
-
+  GcarState x0(se2_0,vel_binb_ddp_start_);
 
   Matrix3d se2_f; se2_f.setZero();
-  se2_f.block<2,2>(0,0)= (pose_ddp_goal_.matrix()).block<2,2>(0,0);
-  se2_f.block<2,1>(0,2) = (pose_ddp_goal_.matrix()).block<2,1>(0,3);
+  se2_f.block<2,2>(0,0)= (pose_binw_ddp_goal_.matrix()).block<2,2>(0,0);
+  se2_f.block<2,1>(0,2) = (pose_binw_ddp_goal_.matrix()).block<2,1>(0,3);
   se2_f(2,2)=1;
   GcarState xf(se2_f, config_.dyn_dsl_avg_speed);
 
@@ -1417,20 +1560,20 @@ CallBackDslDdp::ddpPlan(void){
   ddp_xs_.resize(ddp_nseg+1);
   ddp_us_.resize(ddp_nseg);
 
-  Vector3d rpy_start; SO3::Instance().g2q(rpy_start,pose_world_ddp_start_.linear());
-  Vector3d rpy_goal; SO3::Instance().g2q(rpy_goal,pose_ddp_goal_.linear());
+  Vector3d rpy_start; SO3::Instance().g2q(rpy_start,pose_binw_ddp_start_.linear());
+  Vector3d rpy_goal; SO3::Instance().g2q(rpy_goal,pose_binw_ddp_goal_.linear());
   if(config_.dyn_debug_on){
     cout<<indStr(1)+"The ddp request is as follows"<<endl;
-    cout<<indStr(2)+"Start x:"<<pose_world_ddp_start_.translation()(0)<<"\ty:"<<pose_world_ddp_start_.translation()(1)<<"\ta:"<<rpy_start(2)<<endl;
-    cout<<indStr(2)+"Goal x:"<<pose_ddp_goal_.translation()(0)<<"\ty:"<<pose_ddp_goal_.translation()(1)<<"\ta:"<<rpy_goal(2)<<endl;
+    cout<<indStr(2)+"Start x:"<<pose_binw_ddp_start_.translation()(0)<<"\ty:"<<pose_binw_ddp_start_.translation()(1)<<"\ta:"<<rpy_start(2)<<endl;
+    cout<<indStr(2)+"Goal x:"<<pose_binw_ddp_goal_.translation()(0)<<"\ty:"<<pose_binw_ddp_goal_.translation()(1)<<"\ta:"<<rpy_goal(2)<<endl;
     cout<<indStr(2)+"tf:"<< tf<<" sec";
     cout<<indStr(2)+"path length:"<<len_ddp_path<<endl;
     cout<<indStr(2)+"nseg:"<<ddp_nseg<<endl;
   }
 
-  //Set tf and xf for cost_lq_
-  cost_lq_.tf = tf;
-  cost_lq_.xf = &xf;
+  //Set tf and xf for ddp_cost_lq_
+  ddp_cost_lq_.tf = tf;
+  ddp_cost_lq_.xf = &xf;
 
   //Initialize trajectory(ts, us and xs)
   double h=tf/ddp_nseg;
@@ -1442,11 +1585,36 @@ CallBackDslDdp::ddpPlan(void){
 
   ddp_xs_[0]=x0;
 
-  //DDP update
-  GcarDdp ddp_solver(sys_gcar_, cost_lq_, ddp_ts_, ddp_xs_, ddp_us_);
+  //detect obstacle
+  disks_.clear();
+  vector<Vector2d> centers_encirc;
+  vector<double> rads_encirc;
+  obsDetect(centers_encirc, rads_encirc);
+  int n_obs = rads_encirc.size();
+  for(int i=0; i< n_obs;i++){
+    Vector3d posn3d_oinb(centers_encirc[i](0),centers_encirc[i](1),0);//oinb: obstacle in body
+    Vector3d posn3d_oinw = pose_binw_ddp_curr_* posn3d_oinb;
+    disks_.push_back(Disk(posn3d_oinw.head<2>(), rads_encirc[i]));
+  }
+
+  //Setup multicost for DDP
+  vector<GcarDiskConstraint_ptr> constraints(n_obs);
+  vector<DiskConstraintCost_ptr> ddp_cost_disks(n_obs);
+  MultiCost<GcarState, 4, 2> ddp_mcost(sys_gcar_,tf); ddp_mcost.costs.resize(n_obs+1);
+  for (int i = 0; i < disks_.size(); ++i) {
+    constraints[i].reset(new GcarDiskConstraint(disks_[i], .3));
+    constraints[i]->func = GcarStateToVector2d;
+    DiskConstraintCost_ptr ptr_diskcost(new DiskConstraintCost(sys_gcar_, tf, *constraints[i]));
+    ddp_cost_disks[i] = ptr_diskcost;
+    ddp_cost_disks[i]->b = ddp_cost_disk_penl_;
+    ddp_mcost.costs[i] = ddp_cost_disks[i].get();
+  }
+  ddp_mcost.costs.back() = &ddp_cost_lq_;
+
+  //setup DDP solver
+  GcarDdp ddp_solver(sys_gcar_, ddp_mcost, ddp_ts_, ddp_xs_, ddp_us_);
   ddp_solver.mu =ddp_mu_;
   ddp_solver.debug = ddp_debug_on_;
-  //ddp_solver.Update()
 
   //Run an iteration loop until convergence
   int n_it(0);
@@ -1454,15 +1622,10 @@ CallBackDslDdp::ddpPlan(void){
   double v_prev; v_prev=ddp_solver.V;
 
   while(!ddp_conv && !g_shutdown_requested){
-    if(config_.dyn_debug_on)
-      cout<<indStr(0)+"  Iteration number:"<<n_it<<endl;
 
     ddp_solver.Iterate();
-
     n_it++;
 
-    cout<<"tol_rel"<<abs(ddp_solver.V - v_prev)/abs(v_prev) <<endl;
-    cout<<"tol_abs"<<abs(ddp_solver.V - v_prev) <<endl;
     if(                                     n_it  > ddp_nit_max_
         ||             abs(ddp_solver.V - v_prev) < ddp_tol_abs_
         || abs(ddp_solver.V - v_prev)/abs(v_prev) < ddp_tol_rel_)
@@ -1494,15 +1657,85 @@ CallBackDslDdp::ddpPlan(void){
   return true;
 }
 
+
 void
-CallBackDslDdp::rvizRemoveCar(void){
+CallBackDslDdp::obsDetect(vector<Vector2d>& centers_encirc, vector<double>& rads_encirc){
   ind_count_++;
   if(config_.dyn_debug_on)
-    cout<<indStr(0)+"*Removing car marker from rviz"<<endl;
+    cout<<indStr(0)+"*Detecting obstacles"<<endl;
+  if(!msg_lidar_.ranges.size()){
+    if(config_.dyn_debug_on)
+      cout<<indStr(1)+"Obstacle detection not done as it seems there is no lidar message"<<endl;
+    ind_count_--;
+    return;
+  }
+
+  ros::Time t_start =  ros::Time::now();
+  //range values outof these ranges are not correct
+  double dela = msg_lidar_.angle_increment;
+  double mina = msg_lidar_.angle_min;
+  double maxa = msg_lidar_.angle_max;
+  int n_skip = abs(mina + obs_search_angle_fwd_)/dela;
+//  cout<<"mina:"<<mina<<"\t maxa:"<<maxa<<"\t dela:"<<dela<<"\t n_skip"<<n_skip<<endl;
+//  cout<<"n_rays:"<<msg_lidar_.ranges.size();
+  // Find ranges which lie in the radius
+  vector<float>::iterator it_begin = msg_lidar_.ranges.begin()+n_skip;
+  vector<float>::iterator it_end   = msg_lidar_.ranges.end()-n_skip;
+
+  std::vector<size_t> idxs_inrange;
+  vector<float>::iterator it= find_if(it_begin,it_end , [=](float r){return ((r < obs_search_radius_max_)&& (r > obs_search_radius_min_) );});
+  while (it != it_end) {
+     idxs_inrange.push_back(std::distance(msg_lidar_.ranges.begin(), it));
+
+     it = find_if(++it, it_end, [=](float r){return ((r < obs_search_radius_max_)&& (r > obs_search_radius_min_) );});
+  }
+
+//  for(int i=0;i<idxs_inrange.size();i++)
+//    cout<<","<<idxs_inrange[i];
+//  cout<<endl;
+
+  //Get the obstacle points
+  vector<Vector2d> pts_polar(idxs_inrange.size());
+  vector<Vector2d> pts_cart(idxs_inrange.size());
+  for(int i=0;i<pts_polar.size();i++){
+    double range = msg_lidar_.ranges[idxs_inrange[i]];
+    double angle = msg_lidar_.angle_min + msg_lidar_.angle_increment*idxs_inrange[i];
+    pts_polar[i] = Vector2d(range,angle);
+    pts_cart[i] = Vector2d(pts_polar[i](0)*cos(pts_polar[i](1)), pts_polar[i](0)*sin(pts_polar[i](1)));
+  }
+
+  //find the KNN closes to center
+  vector<vector<size_t>> clusters;
+  double r_obs = obs_map_cell_size_/sqrt(2);
+
+  //find cluster centers
+  findKClustersWithSizeConstraint(clusters,pts_polar,r_obs, obs_cluster_count_max_, obs_cluster_radius_max_);
+
+  //get cluster radius and center
+  findCircumCircle(centers_encirc, rads_encirc, clusters, pts_cart);
+
+  ros::Time t_end =  ros::Time::now();
+  if(config_.dyn_debug_verbose_on){
+      cout<<indStr(1)+"Obstacle detection done:"<<endl;
+      cout<<indStr(1)+"delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
+    }
+
+  ind_count_--;
+}
+
+void
+CallBackDslDdp::rvizRemoveObstacles(void){
+  ind_count_++;
+  if(config_.dyn_debug_on)
+    cout<<indStr(0)+"*Removing obstacle markers from rviz"<<endl;
 
   //remove start test related visualization marker
-  marker_car_.action    = visualization_msgs::Marker::DELETE;
-  pub_vis_.publish( marker_car_ );
+  marker_obs_.action    = visualization_msgs::Marker::DELETE;
+
+  for(int i=0; i<marker_obs_ids_.size();i++){
+    marker_obs_.id = marker_obs_ids_.back();marker_obs_ids_.pop_back();
+    pub_vis_.publish( marker_obs_ );
+  }
   ind_count_--;
 }
 
@@ -1628,7 +1861,7 @@ CallBackDslDdp::rvizMarkersInit(void){
     cout<<indStr(0)+"*Initializing all rviz markers."<<endl;
 
   VectorXd prop_path_n_wp;
-  int id=-1;
+  marker_id_=-1;
 
 
   prop_path_pve_ddp_ = yaml_node_["prop_path_pve_ddp"].as<VectorXd>();
@@ -1637,11 +1870,11 @@ CallBackDslDdp::rvizMarkersInit(void){
   prop_wp_nve_ddp_ = yaml_node_["prop_wp_nve_ddp"].as<VectorXd>();
 
   //Marker for dsl path
-  id++;
+  marker_id_++;
   marker_path_dsl_.header.frame_id = strfrm_world_;
   marker_path_dsl_.header.stamp = ros::Time();
   marker_path_dsl_.ns = "dsl_ddp_planner";
-  marker_path_dsl_.id = id;
+  marker_path_dsl_.id = marker_id_;
   marker_path_dsl_.type = visualization_msgs::Marker::LINE_STRIP;
   marker_path_dsl_.action = visualization_msgs::Marker::ADD;
   marker_path_dsl_.lifetime = ros::Duration(0);
@@ -1649,11 +1882,11 @@ CallBackDslDdp::rvizMarkersInit(void){
   rvizMarkersEdit(marker_path_dsl_,prop_path_n_wp);
 
   //Marker for dsl path way points
-  id++;
+  marker_id_++;
   marker_wp_dsl_.header.frame_id = strfrm_world_;
   marker_wp_dsl_.header.stamp = ros::Time();
   marker_wp_dsl_.ns = "dsl_ddp_planner";
-  marker_wp_dsl_.id = id;
+  marker_wp_dsl_.id = marker_id_;
   marker_wp_dsl_.type = visualization_msgs::Marker::POINTS;
   marker_wp_dsl_.action = visualization_msgs::Marker::ADD;
   marker_wp_dsl_.lifetime = ros::Duration(0);
@@ -1661,11 +1894,11 @@ CallBackDslDdp::rvizMarkersInit(void){
   rvizMarkersEdit(marker_wp_dsl_,prop_path_n_wp);
 
   //Marker for dsl path interpolated
-  id++;
+  marker_id_++;
   marker_path_dsl_intp_.header.frame_id = strfrm_world_;
   marker_path_dsl_intp_.header.stamp = ros::Time();
   marker_path_dsl_intp_.ns = "dsl_ddp_planner";
-  marker_path_dsl_intp_.id = id;
+  marker_path_dsl_intp_.id = marker_id_;
   marker_path_dsl_intp_.type = visualization_msgs::Marker::LINE_STRIP;
   marker_path_dsl_intp_.action = visualization_msgs::Marker::ADD;
   marker_path_dsl_intp_.lifetime = ros::Duration(0);
@@ -1673,11 +1906,11 @@ CallBackDslDdp::rvizMarkersInit(void){
   rvizMarkersEdit(marker_path_dsl_intp_,prop_path_n_wp);
 
   //Marker for dsl path interpolated way points
-  id++;
+  marker_id_++;
   marker_wp_dsl_intp_.header.frame_id = strfrm_world_;
   marker_wp_dsl_intp_.header.stamp = ros::Time();
   marker_wp_dsl_intp_.ns = "dsl_ddp_planner";
-  marker_wp_dsl_intp_.id = id;
+  marker_wp_dsl_intp_.id = marker_id_;
   marker_wp_dsl_intp_.type = visualization_msgs::Marker::POINTS;
   marker_wp_dsl_intp_.action = visualization_msgs::Marker::ADD;
   marker_wp_dsl_intp_.lifetime = ros::Duration(0);
@@ -1685,33 +1918,33 @@ CallBackDslDdp::rvizMarkersInit(void){
   rvizMarkersEdit(marker_wp_dsl_intp_,prop_path_n_wp);
 
   //Marker for pve ddp path
-  id++;
+  marker_id_++;
   marker_path_ddp_.header.frame_id = strfrm_world_;
   marker_path_ddp_.header.stamp = ros::Time();
   marker_path_ddp_.ns = "dsl_ddp_planner";
-  marker_path_ddp_.id = id;
+  marker_path_ddp_.id = marker_id_;
   marker_path_ddp_.type = visualization_msgs::Marker::LINE_STRIP;
   marker_path_ddp_.action = visualization_msgs::Marker::ADD;
   marker_path_ddp_.lifetime = ros::Duration(0);
   rvizMarkersEdit(marker_path_ddp_,prop_path_pve_ddp_);
 
   //Marker for ddp path way points
-  id++;
+  marker_id_++;
   marker_wp_ddp_.header.frame_id = strfrm_world_;
   marker_wp_ddp_.header.stamp = ros::Time();
   marker_wp_ddp_.ns = "dsl_ddp_planner";
-  marker_wp_ddp_.id = id;
+  marker_wp_ddp_.id = marker_id_;
   marker_wp_ddp_.type = visualization_msgs::Marker::POINTS;
   marker_wp_ddp_.action = visualization_msgs::Marker::ADD;
   marker_wp_ddp_.lifetime = ros::Duration(0);
   rvizMarkersEdit(marker_wp_ddp_,prop_wp_pve_ddp_);
 
   //Marker for "start" text
-  id++;
+  marker_id_++;
   marker_text_start_.header.frame_id = strfrm_world_;
   marker_text_start_.header.stamp = ros::Time();
   marker_text_start_.ns = "dsl_ddp_planner";
-  marker_text_start_.id = id;
+  marker_text_start_.id = marker_id_;
   marker_text_start_.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
   marker_text_start_.action = visualization_msgs::Marker::ADD;
   marker_text_start_.text="S";
@@ -1723,11 +1956,11 @@ CallBackDslDdp::rvizMarkersInit(void){
   marker_text_start_.lifetime = ros::Duration(0);
 
   //Marker for "goal" text
-  id++;
+  marker_id_++;
   marker_text_goal_.header.frame_id = strfrm_world_;
   marker_text_goal_.header.stamp = ros::Time();
   marker_text_goal_.ns = "dsl_ddp_planner";
-  marker_text_goal_.id = id;
+  marker_text_goal_.id = marker_id_;
   marker_text_goal_.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
   marker_text_goal_.action = visualization_msgs::Marker::ADD;
   marker_text_goal_.text="G";
@@ -1738,23 +1971,44 @@ CallBackDslDdp::rvizMarkersInit(void){
   marker_text_goal_.color.b = 0.0;
   marker_text_goal_.lifetime = ros::Duration(0);
 
-  //Marker for car
-  id++;
-  marker_car_.header.frame_id = strfrm_world_;
-  marker_car_.header.stamp = ros::Time();
-  marker_car_.ns = "dsl_ddp_planner";
-  marker_car_.id = id;
-  marker_car_.type = visualization_msgs::Marker::CUBE_LIST;
-  marker_car_.action = visualization_msgs::Marker::ADD;
-  marker_car_.scale.x = 0.7;
-  marker_car_.scale.y = 0.43;
-  marker_car_.scale.z = 0.4;
-  marker_car_.color.a = 0.2; // Don't forget to set the alpha!
-  marker_car_.color.r = 1.0;
-  marker_car_.color.g = 0.0;
-  marker_car_.color.b = 0.0;
-  marker_car_.lifetime = ros::Duration(0);
+  //Marker for obstacle
+  marker_id_++;
+  marker_obs_.header.frame_id = strfrm_world_;
+  marker_obs_.header.stamp = ros::Time();
+  marker_obs_.ns = "dsl_ddp_planner";
+  marker_obs_.id = marker_id_;
+  marker_obs_.type = visualization_msgs::Marker::CYLINDER;
+  marker_obs_.action = visualization_msgs::Marker::ADD;
+  marker_obs_.scale.z = 0.5;
+  marker_obs_.lifetime = ros::Duration(0);
+  prop_obs_ = yaml_node_["prop_obs"].as<VectorXd>();
+  rvizMarkersEdit(marker_obs_,prop_path_n_wp);
 
+  ind_count_--;
+}
+
+void
+CallBackDslDdp::rvizShowObstacles(void){
+  ind_count_++;
+  if(config_.dyn_debug_on)
+    cout<<indStr(0)+"*Sending obstacle markers to rviz"<<endl;
+
+  //remove old obstacles first
+
+  rvizRemoveObstacles();
+  //remove start test related visualization marker
+  marker_obs_.action    = visualization_msgs::Marker::ADD;
+
+  for(int i=0; i<disks_.size();i++){
+    marker_obs_ids_.push_back(marker_id_+i);
+    marker_obs_.id = marker_id_+i;
+    marker_obs_.scale.x = 2*disks_[i].r;
+    marker_obs_.scale.y = 2*disks_[i].r;
+    marker_obs_.pose.position.x = disks_[i].o(0);
+    marker_obs_.pose.position.y = disks_[i].o(1);
+    marker_obs_.pose.position.z = marker_obs_.scale.z/2;
+    pub_vis_.publish( marker_obs_ );
+  }
   ind_count_--;
 }
 
@@ -1765,11 +2019,13 @@ CallBackDslDdp::rvizShowStart()
   if(config_.dyn_debug_on)
     cout<<indStr(0)+"*Sending start marker to rviz"<<endl;
 
-  marker_text_start_.pose.position.x =pose_world_dsl_start_.translation()(0);
-  marker_text_start_.pose.position.y =pose_world_dsl_start_.translation()(1);
+  marker_text_start_.action = visualization_msgs::Marker::ADD;
+  marker_text_start_.pose.position.x =pose_binw_dsl_start_.translation()(0);
+  marker_text_start_.pose.position.y =pose_binw_dsl_start_.translation()(1);
   marker_text_start_.pose.position.z =0.2;
 
   pub_vis_.publish( marker_text_start_ );
+
   ind_count_--;
 }
 
@@ -1780,8 +2036,9 @@ CallBackDslDdp::rvizShowGoal()
   if(config_.dyn_debug_on)
     cout<<indStr(0)+"*Sending goal marker to rviz"<<endl;
 
-  marker_text_goal_.pose.position.x =pose_world_dsl_goal_.translation()(0);
-  marker_text_goal_.pose.position.y =pose_world_dsl_goal_.translation()(1);
+  marker_text_goal_.action = visualization_msgs::Marker::ADD;
+  marker_text_goal_.pose.position.x =pose_binw_dsl_goal_.translation()(0);
+  marker_text_goal_.pose.position.y =pose_binw_dsl_goal_.translation()(1);
   marker_text_goal_.pose.position.z =0.2;
 
   pub_vis_.publish( marker_text_goal_ );
@@ -1822,12 +2079,12 @@ CallBackDslDdp::rvizShowPathDslInterpd(void)
 
   marker_path_dsl_intp_.action = visualization_msgs::Marker::ADD;
   marker_wp_dsl_intp_.action   = visualization_msgs::Marker::ADD;
-  marker_car_.action   = visualization_msgs::Marker::ADD;
+  marker_obs_.action   = visualization_msgs::Marker::ADD;
 
-  marker_path_dsl_intp_.points.resize(x_ll_intp_.size());
-  for (int i = 0; i < x_ll_intp_.size(); i++)
+  marker_path_dsl_intp_.points.resize(x_binll_intp_.size());
+  for (int i = 0; i < x_binll_intp_.size(); i++)
   {
-    Vector3d posn_waypt_in_ll(x_ll_intp_(i),y_ll_intp_(i),0);
+    Vector3d posn_waypt_in_ll(x_binll_intp_(i),y_binll_intp_(i),0);
     Vector3d posn_waypt_in_world = tfm_world2og_ll_*posn_waypt_in_ll;
     geometry_msgs::Point node;
     node.x = posn_waypt_in_world(0);

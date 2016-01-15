@@ -54,6 +54,10 @@ endif()
 link_directories(${YAML_CPP_LIBRARY_DIRS})
 include_directories(${YAML_CPP_INCLUDE_DIRS})
 
+find_package(OpenCV REQUIRED COMPONENTS highgui imgproc )
+include(${OpenCV_INCLUDE_DIRS})
+set(LIBS ${LIBS} ${OpenCV_LIBRARIES})
+
 add_message_files(
     FILES
     InsekfDiag.msg
@@ -145,7 +149,7 @@ CATKIN_DEPENDS message_runtime
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 # include_directories(include)
-#message(" Hello ---- ${EIGEN3_INCLUDE_DIR}___")
+
 include_directories(
 include 
 ${catkin_INCLUDE_DIRS} 
@@ -223,6 +227,9 @@ target_link_libraries(cam_est ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${catkin_LIBRARIE
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+add_executable(obstacle_detection_lidar src/obstacle_detection_lidar.cpp)
+target_link_libraries(obstacle_detection_lidar ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 add_executable(satmap_server src/satmap_server.cpp)
 target_link_libraries(satmap_server ${catkin_LIBRARIES} ${Boost_LIBRARIES})

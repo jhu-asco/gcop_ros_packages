@@ -39,7 +39,7 @@ set(LIBS ${LIBS} ${TINYXML_LIBRARIES})
 find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
   
-find_package(OpenCV REQUIRED )
+find_package(OpenCV REQUIRED COMPONENTS highgui imgproc)
 include(${OpenCV_INCLUDE_DIRS})
 set(LIBS ${LIBS} ${OpenCV_LIBRARIES})
 

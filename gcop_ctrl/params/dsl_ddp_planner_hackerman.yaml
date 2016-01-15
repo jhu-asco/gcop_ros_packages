@@ -55,6 +55,7 @@ strtop_odom:       "/insekf/odom"
 strtop_pose_start: "/initialpose"
 strtop_pose_goal:  "/move_base_simple/goal"
 strtop_og:         "/map"
+strtop_lidar:      "/first"
 
 ###################################
 # Topic name(Output)(static)
@@ -77,11 +78,15 @@ hz_diag: -1.0  # Freq at which diagnostic data is published
 
 ###################################
 # path colors and scale(static)
+#   you set one of  [r,g,b] or [r,g,b,a] or [r,g,b,a,s] or [r,g,b,a,sx,sy] based on type of marker
+#   obs = [r,g,b,a]
 #   path_dsl = [red(max),green(max),blue(max),alpha,scale(width m)]
 #   wp_dsl   = [red(max),green(max),blue(max),alpha,scalex(width m), scaley(height m)]
 #   size: width of the path line in meters
 #   prop_wp is waypoint properties
 #   prop_path_pve_ddp: for positive velocity
+prop_obs: [1.0,0.0,0.0,0.6]
+
 prop_path_dsl:      [0.0,1.0,0.0,0.5,0.4]
 prop_wp_dsl:        [0.0,0.5,0.0,0.5,0.18,0.18]
 
@@ -100,7 +105,7 @@ prop_wp_nve_ddp:        [0.0,0.25,0.25,0.5,0.18,0.18]
 #   dsl_expand: deicdes whether to expand the whole dsl grid into its graph at init
 #                 Expanding at startup is to be used if startup time and memory is not an issue
 #   dsl_save_final_map:  If true saves the final process occupancy grid which is the input map to dsl
-dsl_expand_at_start: true
+dsl_expand_at_start: false
 dsl_save_final_map:  false
 
 ###################################
@@ -152,6 +157,8 @@ ddp_disp_rviz: True
 #   ddp_Q: 0.5*x'Qx give the state cost per unit time. Q00:a, Q11:x, Q22:y, Q33:v
 #   ddp_Qf:0.5*x'Qx give the terminal state cost
 #   ddp_R: 0.5*u'Ru control cost per unit time
+#   ddp_cost_disk_penl: penalty for obstacle avoidance
+#   ddp_disk_coln_rad: collison radius of disks
 #   ddp_mu:
 #   ddp_N: number of segments of trajectory(number of nodes=n+1)
 #   ddp_niter: max number of iteration until convergence
@@ -168,6 +175,8 @@ ddp_Qf:  [1.0, 0.0, 0.0, 0.0,
           0.0, 0.0, 0.0, 1.0]
 ddp_R:   [0.005, 0.000, 
           0.000, 0.001]
+ddp_cost_disk_penl: 1000    
+ddp_disk_coln_rad: 0.3      
 ddp_mu:       1
 ddp_debug_on: False
 ddp_nseg_minmax: [7,32]
@@ -176,6 +185,23 @@ ddp_nit_max: 30
 ddp_tol_abs: 1e-6
 ddp_tol_rel: 1e-3
 ddp_tol_goal_m: 0.5
+
+########################################
+# Obstacle finding parameters
+#   (un-modifiable in reconfigure)
+#   search_radius_max: max radius is meters where to look for obstacles
+#   search_radius_min: min radius is meters where to look for obstacles
+#   obs_search_angle_fwd: only the rays which lies from -a to +a is considered. a is angle wrt to fwd direction
+#   obs_cluster_count_max: maximum number of clusters
+#   obs_cluster_radius_max: The maximum radius of a cluster. If it lies outside it belongs to another cluster
+#   obs_map_cell_size: The size of pixel when creating an image for clustering
+#   TODO: instead of using search radiuses and angles use velocity of car and ddp plan time to find a search area
+obs_search_radius_max: 10
+obs_search_radius_min: 1.5
+obs_search_angle_fwd: 0.87
+obs_cluster_count_max: 4
+obs_cluster_radius_max: 0.5
+obs_map_cell_size: 0.1
      
 ###################################
 # Gcar settings(static)

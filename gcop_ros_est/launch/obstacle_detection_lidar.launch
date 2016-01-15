@@ -1,0 +1,6 @@
+<?xml version='1.0'?>
+<launch>
+  <node name="obstacle_detection_lidar" pkg="gcop_ros_est" type="obstacle_detection_lidar" output="screen" launch-prefix="">
+<param name="strfile_params" type="str" value="$(find gcop_ros_est)/params/obstacle_detection_lidar.yaml"/> 
+</node>
+</launch> 
