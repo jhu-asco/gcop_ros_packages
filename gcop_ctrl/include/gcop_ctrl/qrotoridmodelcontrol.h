@@ -30,11 +30,11 @@ public:
     QRotorIDModel sys;
     QRotorIDModelCost cost;
     vector<double> ts;
-    double tf;
  public:
     vector<QRotorIDState> xs;
     vector<Vector4d> us;
     QRotorIDState xf;
+    double tf;
 };
 
 #endif // QROTORIDMODELCONTROL_H
