@@ -118,7 +118,7 @@ int main(int argc,char **argv)
 {
 	ros::init(argc, argv,"plotter");
 	ros::NodeHandle n;
-	traj_sub = n.subscribe("/mbsddp/ctrltraj",1, trajectory_Callback);
+	traj_sub = n.subscribe("ctrltraj",1, trajectory_Callback);
 	int argc_dummy = 3;
 	const char* argv_dummy[3];
 	argv_dummy[0] = "./exec";
