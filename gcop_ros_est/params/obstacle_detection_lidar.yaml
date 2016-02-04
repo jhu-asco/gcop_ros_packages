@@ -1,0 +1,33 @@
+#parameters to be used with obstacle_detection_lidar.cpp
+
+########################################
+#  General settings(non reconfigurable)
+debug_on: true
+loop_rate_main: 1000
+str_ind: "|  "
+
+########################################
+# Topic name(Input)
+#   (un-modifiable in reconfigure)
+#   strtop_input1: 
+#   strtop_input2: 
+strtop_lidar: "/first"
+
+########################################
+# Topic name(Output)
+#   (un-modifiable in reconfigure)
+#   strtop_output1:
+#   strtop_output2:
+strtop_output: "output_topic"
+
+########################################
+# Obstacle finding parameters
+#   (un-modifiable in reconfigure)
+#   search_radius: radius is meters where to look for obstacles
+#   obs_cluster_count_max: maximum number of clusters
+#   obs_cluster_radius_max: The maximum radius of a cluster. If it lies outside it belongs to another cluster
+#   obs_map_cell_size: The size of pixel when creating an image for clustering
+obs_search_radius: 6
+obs_cluster_count_max: 5
+obs_cluster_radius_max: 0.3
+obs_map_cell_size: 0.1

@@ -1,3 +1,28 @@
 #parameters to be used with gcar_sim.cpp
 
-     
+########################################
+#  General settings(non reconfigurable)
+debug_on: true
+loop_rate_main: 1000
+########################################
+# Topic name(Input)
+#   (un-modifiable in reconfigure)
+#   strtop_ctrl: 
+strtop_ctrl: "/ctrl_si"
+
+########################################
+# Topic name(Output)
+#   (un-modifiable in reconfigure)
+#   strtop_odom: topic for nav_msgs::Odometry messages
+strtop_odom: "/insekf/odom"
+
+########################################
+#  pose2d: [x(m) , y(m) , a(rad)]
+pose2d: [113.0 , 176.0, 0.2]
+
+###################################
+# Gcar settings(static)
+#   gcar_l: Axle length in meters
+#   gcar_r: Gain relating wheel torque to forward acceleration
+gcar_l: 0.5 (unimplemented)
+gcar_r: 1.0 (unimplemented)

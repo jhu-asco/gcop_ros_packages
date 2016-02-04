@@ -26,6 +26,7 @@ visualization_msgs
 message_generation
 enu
 gcop_ros_utils
+resource_retriever
 )
 
 
@@ -36,6 +37,7 @@ generate_dynamic_reconfigure_options(
   )
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
+find_package(Boost REQUIRED COMPONENTS filesystem)
 find_package(GCOP REQUIRED)
 find_package(TinyXML REQUIRED)
 set(GCOP_LIBRARIES ${GCOP_LIBRARIES} ${TINYXML_LIBRARIES})
@@ -51,6 +53,10 @@ if(${YAML_CPP_VERSION} VERSION_GREATER 0.5)
 endif()
 link_directories(${YAML_CPP_LIBRARY_DIRS})
 include_directories(${YAML_CPP_INCLUDE_DIRS})
+
+find_package(OpenCV REQUIRED COMPONENTS highgui imgproc )
+include(${OpenCV_INCLUDE_DIRS})
+set(LIBS ${LIBS} ${OpenCV_LIBRARIES})
 
 add_message_files(
     FILES
@@ -143,9 +149,16 @@ CATKIN_DEPENDS message_runtime
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 # include_directories(include)
-#message(" Hello ---- ${EIGEN3_INCLUDE_DIR}___")
+
 include_directories(
-include ${catkin_INCLUDE_DIRS} ${TINYXML_INCLUDE_DIR} ${GCOP_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${CV_BRIDGE_INCLUDE_DIRS}
+include 
+${catkin_INCLUDE_DIRS} 
+${TINYXML_INCLUDE_DIR} 
+${GCOP_INCLUDE_DIRS} 
+${OpenCV_INCLUDE_DIRS} 
+${EIGEN3_INCLUDE_DIR} 
+${CV_BRIDGE_INCLUDE_DIRS}
+${Boost_INCLUDE_DIRS}
 )
 
 ## Declare a cpp library
@@ -215,8 +228,11 @@ target_link_libraries(cam_est ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${catkin_LIBRARIE
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
 
+add_executable(obstacle_detection_lidar src/obstacle_detection_lidar.cpp)
+target_link_libraries(obstacle_detection_lidar ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+
 add_executable(satmap_server src/satmap_server.cpp)
-target_link_libraries(satmap_server ${catkin_LIBRARIES})
+target_link_libraries(satmap_server ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 add_executable(simsens src/simsens.cpp)
 target_link_libraries(simsens 
@@ -258,4 +274,3 @@ target_link_libraries(mbsforceest
                       ${TINYXML_LIBRARIES}
                       ${catkin_LIBRARIES})
 add_dependencies(mbsforceest gcop_comm_generate_messages_cpp)
-

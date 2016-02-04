@@ -10,6 +10,10 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   roscpp
   enu
+  std_msgs
+  sensor_msgs 
+  geometry_msgs
+  nav_msgs
 )
 find_package(GCOP REQUIRED algos systems)
 include_directories(${GCOP_INCLUDE_DIRS})
@@ -76,10 +80,10 @@ include_directories(${YAML_CPP_INCLUDE_DIRS})
 # )
 
 ## Generate added messages and services with any dependencies listed here
- generate_messages(
-   DEPENDENCIES
-   geometry_msgs
- )
+ #generate_messages(
+   #DEPENDENCIES
+   #geometry_msgs
+ #)
 
 ###################################
 ## catkin specific configuration ##
@@ -94,7 +98,7 @@ catkin_package(
   INCLUDE_DIRS include
 #  LIBRARIES gcop_comm
   CATKIN_DEPENDS geometry_msgs roscpp 
-#  DEPENDS system_lib
+  DEPENDS YAML_CPP
 )
 
 ###########
@@ -172,3 +176,7 @@ include_directories(
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+
+#add_executable(map_saver_with_time src/map_saver_with_time.cpp)
+#target_link_libraries(map_saver_with_time ${catkin_LIBRARIES} )

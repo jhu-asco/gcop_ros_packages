@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Displays the hopkins satellite image -->
+  <include file="$(find rampage_logger)/launch/rampage_rosserial_ctrl.launch"/>
+  <include file="$(find rampage_logger)/launch/rampage_hokuyo.launch"/>
+  <include file="$(find rampage_estimator_and_controller)/launch/rampage_send_gcop_ctrl.launch"/>
+  <node name="set_angle" pkg="lidar_2dto3d" type="set_angle" args=" _cmd:=2120" />
+  <include file="$(find gcop_ros_est)/launch/sensors_px4.launch"/>
+
+</launch>
+

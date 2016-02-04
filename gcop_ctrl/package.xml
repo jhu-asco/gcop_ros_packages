@@ -48,10 +48,12 @@
   <build_depend>visualization_msgs</build_depend>
   <build_depend>roscpp</build_depend>
   <build_depend>rospy</build_depend>
+  <build_depend>roslib</build_depend>  
   <build_depend>tf</build_depend>
   <build_depend>tf_conversions</build_depend>
   <build_depend>tf2_ros</build_depend>
   <build_depend>gcop_ros_utils</build_depend>
+
     
   
   <run_depend>dynamic_reconfigure</run_depend>
@@ -61,10 +63,13 @@
   <run_depend>visualization_msgs</run_depend>
   <run_depend>roscpp</run_depend>
   <run_depend>rospy</run_depend>
+  <run_depend>ros_lib</run_depend>    
   <run_depend>tf</run_depend>
   <run_depend>tf_conversions</run_depend>
   <run_depend>tf2_ros</run_depend>
   <run_depend>gcop_ros_utils</run_depend>
+  <run_depend>map_server</run_depend>
+
 
 
   <!-- The export tag contains other, unspecified, tags -->
