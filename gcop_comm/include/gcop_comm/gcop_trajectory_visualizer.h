@@ -12,6 +12,7 @@ class GcopTrajectoryVisualizer{
   visualization_msgs::MarkerArray arrow_strip_;
   visualization_msgs::MarkerArray axis_strip_;
   visualization_msgs::Marker default_arrow_marker_;
+  visualization_msgs::Marker default_axis_marker_;
 
   ros::NodeHandle &nh;
   ros::Publisher visualization_marker_pub_;
@@ -37,33 +38,33 @@ class GcopTrajectoryVisualizer{
 
   inline void publishAxis(gcop_comm::CtrlTraj &gcop_trajectory)
   {
-    for(int j = 0; j < 3; j++)
-    {
-      //Resize line list strip:
-      axis_strip_.markers[j].points.resize(2*(gcop_trajectory.N+1));
-      axis_strip_.markers[j].header.stamp  = ros::Time::now();
-    }
-    //Fill line strip points:
+    axis_strip_.markers.resize(3*(gcop_trajectory.N+1), default_axis_marker_);
     tf::Transform basepose;
 
-    for(int i = 0; i < gcop_trajectory.N +1; i++)
+    for(int j = 0; j < 3; j++)
     {
-      //Get Base Pose
-      tf::transformMsgToTF(gcop_trajectory.statemsg[i].basepose, basepose);
-      const tf::Matrix3x3 &basis = basepose.getBasis();
-      for(int j = 0; j < 3; j++)
+      int jcount = (gcop_trajectory.N+1)*j;
+      for(int i = 0; i < gcop_trajectory.N+1; i++)
       {
         //Set Base Point
-        geometry_msgs::Point &point = axis_strip_.markers[j].points[2*i];//Temporary variable
-        geometry_msgs::Point &point1 = axis_strip_.markers[j].points[2*i+1];//Temporary variable
+        geometry_msgs::Point &point = axis_strip_.markers[jcount+i].points[0];
+        geometry_msgs::Point &point1 = axis_strip_.markers[jcount+i].points[1];
         point.x = gcop_trajectory.statemsg[i].basepose.translation.x;
         point.y = gcop_trajectory.statemsg[i].basepose.translation.y;
         point.z = gcop_trajectory.statemsg[i].basepose.translation.z;
 
+        //Get Base Pose
+        tf::transformMsgToTF(gcop_trajectory.statemsg[i].basepose, basepose);
+        const tf::Matrix3x3 &basis = basepose.getBasis();
         tf::Vector3 column = basis.getColumn(j);
         point1.x = point.x + axis_length_*column.x();
         point1.y = point.y + axis_length_*column.y();
         point1.z = point.z + axis_length_*column.z();
+
+        axis_strip_.markers[jcount+i].id = jcount+i+1;
+        axis_strip_.markers[jcount+i].color.r = (j == 0)?1:0;
+        axis_strip_.markers[jcount+i].color.g = (j == 1)?1:0;
+        axis_strip_.markers[jcount+i].color.b = (j == 2)?1:0;
       }
     }
     visualization_markerarray_pub_.publish(axis_strip_);
@@ -108,23 +109,6 @@ class GcopTrajectoryVisualizer{
     line_strip_.color.b = 1.0;
     line_strip_.color.a = 1.0;
 
-    //Axis Strip:
-    axis_strip_.markers.resize(3);
-    for(int i = 0; i < 3; i++)
-    {
-      axis_strip_.markers[i].header.frame_id = "/optitrak";
-      axis_strip_.markers[i].action = visualization_msgs::Marker::ADD;
-      axis_strip_.markers[i].pose.orientation.w = 1.0;
-      axis_strip_.markers[i].ns = "axis";
-      axis_strip_.markers[i].id = i+1;
-      axis_strip_.markers[i].type = visualization_msgs::Marker::LINE_LIST;
-      axis_strip_.markers[i].scale.x = 0.02;
-      axis_strip_.markers[i].color.r = (i==0?1:0);
-      axis_strip_.markers[i].color.g = (i==1?1:0);
-      axis_strip_.markers[i].color.b = (i==2?1:0);
-      axis_strip_.markers[i].color.a = 1.0;
-    }
-
     //Arrow Strip:
     default_arrow_marker_.header.frame_id = "/optitrak";
     default_arrow_marker_.action = visualization_msgs::Marker::ADD;
@@ -139,6 +123,13 @@ class GcopTrajectoryVisualizer{
     default_arrow_marker_.color.a = 1.0;
     default_arrow_marker_.points.resize(2);
 
+    //Axis Strip:
+    default_axis_marker_ = default_arrow_marker_;
+    default_axis_marker_.ns = "axis";
+    default_axis_marker_.color.r = 0.0;
+    default_axis_marker_.color.b = 0.0;
+    default_axis_marker_.color.g = 0.0;
+    default_axis_marker_.color.a = 1.0;
   }
 
   ~GcopTrajectoryVisualizer()

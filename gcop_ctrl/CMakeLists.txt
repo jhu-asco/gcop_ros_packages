@@ -112,6 +112,7 @@ generate_dynamic_reconfigure_options(
 	cfg/MbsDMocInterface.cfg
 	cfg/MbsSimInterface.cfg
 	cfg/DMocInterface.cfg
+	cfg/QRotorIDModelInterface.cfg
 	cfg/MbsNodeInterface.cfg
 	cfg/DslDdpPlanner.cfg
 )
@@ -125,8 +126,8 @@ generate_dynamic_reconfigure_options(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES gcop_ctrl
+  INCLUDE_DIRS include
+  LIBRARIES qrotoridmodel_control
 #  CATKIN_DEPENDS dynamic_reconfigure gcop_comm geometry_msgs roscpp rospy tf
 #  DEPENDS system_lib
 )
@@ -144,9 +145,9 @@ include_directories(
 )
 
 ## Declare a cpp library
-# add_library(gcop_ctrl
-#   src/${PROJECT_NAME}/gcop_ctrl.cpp
-# )
+ add_library(qrotoridmodel_control
+   src/qrotoridmodelcontrol.cpp
+ )
 
 ## Declare a cpp executable
 # add_executable(gcop_ctrl_node src/gcop_ctrl_node.cpp)
@@ -181,13 +182,17 @@ add_executable(rcctrl src/rccartest.cc)
 target_link_libraries(rcctrl ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(rcctrl ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
+add_executable(qrotoridmodel src/qrotoridmodeltest.cc)
+target_link_libraries(qrotoridmodel qrotoridmodel_control ${LIBS} ${catkin_LIBRARIES})
+add_dependencies(qrotoridmodel ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+
 add_executable(rccar_ddp_lcl_planner src/rccar_ddp_lcl_planner.cpp)
 target_link_libraries(rccar_ddp_lcl_planner ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(rccar_ddp_lcl_planner ${PROJECT_NAME}_gencfg)
 
-add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
-target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} ${LIBS})
-add_dependencies(dsl_ddp_planner ${PROJECT_NAME}_gencfg )
+#add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
+#target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} ${LIBS})
+#add_dependencies(dsl_ddp_planner ${PROJECT_NAME}_gencfg )
 
 add_executable(gcar_sim src/gcar_sim.cpp)
 target_link_libraries(gcar_sim ${catkin_LIBRARIES} ${YAML_CPP_LIBRARIES} ${LIBS})
