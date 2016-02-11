@@ -20,6 +20,8 @@ class GcopTrajectoryVisualizer{
 
   double axis_length_;
 
+  bool visualize_velocities_;
+
   private:
   inline void publishLineStrip(gcop_comm::CtrlTraj &gcop_trajectory)
   {
@@ -93,13 +95,13 @@ class GcopTrajectoryVisualizer{
   }
 
   public:
-  GcopTrajectoryVisualizer(ros::NodeHandle &nh_):nh(nh_), axis_length_(0.1)
+  GcopTrajectoryVisualizer(ros::NodeHandle &nh_, std::string parent_frame_id="/optitrak", bool visualize_velocities = true):nh(nh_), axis_length_(0.1), visualize_velocities_(visualize_velocities)
   {
     visualization_marker_pub_ = nh.advertise<visualization_msgs::Marker>("/desired_traj",5);
     visualization_markerarray_pub_ = nh.advertise<visualization_msgs::MarkerArray>("/desired_traj_array",5);
 
     //Set necessary default initializations:
-    line_strip_.header.frame_id = "/optitrak";
+    line_strip_.header.frame_id = parent_frame_id;
     line_strip_.action = visualization_msgs::Marker::ADD;
     line_strip_.pose.orientation.w = 1.0;
     line_strip_.ns = "trajectory";
@@ -110,7 +112,7 @@ class GcopTrajectoryVisualizer{
     line_strip_.color.a = 1.0;
 
     //Arrow Strip:
-    default_arrow_marker_.header.frame_id = "/optitrak";
+    default_arrow_marker_.header.frame_id = parent_frame_id;
     default_arrow_marker_.action = visualization_msgs::Marker::ADD;
     default_arrow_marker_.pose.orientation.w = 1.0;
     default_arrow_marker_.ns = "velocities";
@@ -143,7 +145,8 @@ class GcopTrajectoryVisualizer{
     ROS_ASSERT(gcop_trajectory.N == gcop_trajectory.statemsg.size()-1);
     publishLineStrip(gcop_trajectory);
     publishAxis(gcop_trajectory);
-    publishVelocities(gcop_trajectory);
+    if(visualize_velocities_)
+      publishVelocities(gcop_trajectory);
   }
 };
 
