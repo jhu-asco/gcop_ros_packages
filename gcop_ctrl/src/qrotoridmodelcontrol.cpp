@@ -74,8 +74,8 @@ void QRotorIDModelControl::setInitialState(const geometry_msgs::Vector3 &localpo
   so3.q2g(x0.R, rpy_);
   x0.w<<omega.x, omega.y, omega.z;
   x0.u<<rpytcommand.x, rpytcommand.y, rpytcommand.z;
-  Vector3d acc_(acc.x, acc.y, acc.z+9.81);//Acc in Global Frame + gravity
-  sys.a0 = (acc_ - sys.kt*rpytcommand.w*x0.R.col(2));
+  //Vector3d acc_(acc.x, acc.y, acc.z+9.81);//Acc in Global Frame + gravity
+  //sys.a0 = (acc_ - sys.kt*rpytcommand.w*x0.R.col(2));
 }
 
 void QRotorIDModelControl::iterate(int N)
@@ -97,6 +97,7 @@ void QRotorIDModelControl::getControl(Vector4d &ures)
 void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory)
 {
   int N = us.size();
+ // printf("US size: %d",N);
   trajectory.N = N;
 
   trajectory.statemsg.resize(N+1);
