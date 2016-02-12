@@ -38,20 +38,25 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
   final_time(4),
   hrotor_iterations(200),
   imageQ(.01),
+  use_velocities(true),
   gtv(nh)
 {
   std::string im_goal_filename;
   if (!nh_private.getParam ("im_goal_filename", im_goal_filename))
     im_goal_filename = "/home/matt/catkin_ws/src/gcop_ros_packages/gcop_ctrl/data/frame0006.jpg";
+  if (!nh_private.getParam ("world_frame", world_frame))
+    world_frame = "world";
+  if (!nh_private.getParam ("body_frame", body_frame))
+    body_frame = "body";
 
   Mat im_goal_color = imread(im_goal_filename);
   cvtColor( im_goal_color, im_goal, CV_BGR2GRAY );
   imshow("Goal Image", im_goal);
   waitKey(10);
 
-  cam_transform << 0,  0,  1, 0.088,
-                   1,  0,  0, 0,
-                   0,  1,  0, -0.032,
+  cam_transform << 0,  0,  1, 0.125,
+                   -1,  0,  0, 0,
+                   0,  -1,  0, 0.09,
                    0,  0,  0, 1;
 
   
@@ -79,15 +84,13 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
   start_tf.setOrigin(tf::Vector3(0,0,0));
   start_tf.setRotation(tf::Quaternion(0,0,0,1));  
 
-  //TODO: add param for ce or gn
-
   dynamic_reconfigure::Server<gcop_ctrl::HrotorOVSConfig>::CallbackType dyn_cb_f;
   dyn_cb_f = boost::bind(&HrotorOVS::cbReconfig, this, _1, _2);
   dyn_server.setCallback(dyn_cb_f);
-  depth_sub = nh.subscribe<sensor_msgs::Image>("/mesh_localize/depth", 1,
+  depth_sub = nh.subscribe<sensor_msgs::Image>("/camera/depth", 1,
     &HrotorOVS::handleDepth,
     this, ros::TransportHints().tcpNoDelay());
-  image_sub = nh.subscribe<sensor_msgs::Image>("/mesh_localize/image", 1,
+  image_sub = nh.subscribe<sensor_msgs::Image>("/camera/image", 1,
     &HrotorOVS::handleImage,
     this, ros::TransportHints().tcpNoDelay());
   camera_info_sub = nh.subscribe<sensor_msgs::CameraInfo>("/camera/camera_info", 1000,
@@ -105,6 +108,7 @@ void HrotorOVS::cbReconfig(gcop_ctrl::HrotorOVSConfig &config, uint32_t level)
   imageQ = config.imageQ;
   final_time = config.final_time;
   hrotor_iterations = config.hrotor_iterations;
+  use_velocities = config.use_velocities;
   if(config.iterate && !config.send_trajectory)
   {
     generateTrajectory(current_image, current_depth, im_goal); 
@@ -140,11 +144,11 @@ void HrotorOVS::handleImage(const sensor_msgs::ImageConstPtr& msg)
     start_tf.setRotation(tf::Quaternion(0,0,0,1));
     try
     {
-      bool result = tflistener.waitForTransform("optitrak", "pixhawk",
+      bool result = tflistener.waitForTransform(world_frame, body_frame,
                                          //img_time_stamp, ros::Duration(1.0));
                                          ros::Time(0), ros::Duration(1.0));
   
-      tflistener.lookupTransform("optitrak", "pixhawk",
+      tflistener.lookupTransform(world_frame, body_frame,
                                //img_time_stamp, start_tf);
                                ros::Time(0), start_tf);
     }
@@ -453,9 +457,18 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
     state.basepose.rotation.z = qx.z();
 
     Eigen::Vector3d v = vs_in_opti_eig.toRotationMatrix()*xs1[i].v;
-    state.basetwist.linear.x = 0;//v(0);
-    state.basetwist.linear.y = 0;//v(1);
-    state.basetwist.linear.z = 0;//v(2);
+    if(use_velocities)
+    {
+      state.basetwist.linear.x = v(0);
+      state.basetwist.linear.y = v(1);
+      state.basetwist.linear.z = v(2);
+    } 
+    else
+    {
+      state.basetwist.linear.x = 0;
+      state.basetwist.linear.y = 0;
+      state.basetwist.linear.z = 0;
+    }
     std::cout << "xs["<<i<<"].v=" << v.transpose() << std::endl;
     traj_msg.statemsg[i] = state;
   }

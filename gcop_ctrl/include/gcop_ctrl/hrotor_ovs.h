@@ -81,6 +81,8 @@ private:
   int b3d_iterations;
   int hrotor_iterations;
   double imageQ;
+  bool use_velocities;
+  std::string world_frame, body_frame;
 
   tf::StampedTransform start_tf;
   tf::TransformListener tflistener;
