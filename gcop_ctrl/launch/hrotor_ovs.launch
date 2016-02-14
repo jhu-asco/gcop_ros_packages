@@ -4,5 +4,7 @@
     <remap from="/hrotor_ovs/traj" to="/mbsddp/traj_resp" />
     <remap from="/hrotor_ovs/traj_marker" to="/desired_traj" />
     <param name="im_goal_filename" type="string" value="$(find gcop_ctrl)/data/frame0006.jpg" />
+    <param name="world_frame" type="string" value="world" />
+    <param name="body_frame" type="string" value="dji" />
   </node>
 </launch>
