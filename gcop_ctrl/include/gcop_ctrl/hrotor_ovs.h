@@ -82,6 +82,7 @@ private:
   int hrotor_iterations;
   double imageQ;
   bool use_velocities;
+  bool use_depth_mm;
   std::string world_frame, body_frame;
 
   tf::StampedTransform start_tf;

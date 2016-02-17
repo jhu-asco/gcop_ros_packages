@@ -97,7 +97,7 @@ void find_stable_final_pose(const std::vector<Eigen::Vector3d>& pts3d,
   Eigen::Matrix<double, 4, 4> cam_vel_transform;
   cam_vel_transform.setZero();
   cam_vel_transform.bottomRightCorner<3,3>() = cam_transform.topLeftCorner<3,3>();
-  cam_vel_transform(0,0) = 1;
+  cam_vel_transform(0,0) = cam_transform(2,1);
 
   double fx = K(0,0);
   double fy = K(1,1);

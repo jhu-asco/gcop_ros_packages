@@ -39,7 +39,7 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
   hrotor_iterations(200),
   imageQ(.01),
   use_velocities(true),
-  gtv(nh)
+  gtv(nh, "world")
 {
   std::string im_goal_filename;
   if (!nh_private.getParam ("im_goal_filename", im_goal_filename))
@@ -48,12 +48,15 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
     world_frame = "world";
   if (!nh_private.getParam ("body_frame", body_frame))
     body_frame = "body";
+  if(!nh_private.getParam ("use_depth_mm", use_depth_mm))
+    use_depth_mm = false;
 
   Mat im_goal_color = imread(im_goal_filename);
   cvtColor( im_goal_color, im_goal, CV_BGR2GRAY );
   imshow("Goal Image", im_goal);
   waitKey(10);
 
+  // TODO: RIGHT NOW YOU HAVE TO EDIT cam_vel_transform in find_stable_final_pose FOR THIS TO WORK
   cam_transform << 0,  0,  1, 0.125,
                    -1,  0,  0, 0,
                    0,  -1,  0, 0.09,
@@ -87,18 +90,18 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
   dynamic_reconfigure::Server<gcop_ctrl::HrotorOVSConfig>::CallbackType dyn_cb_f;
   dyn_cb_f = boost::bind(&HrotorOVS::cbReconfig, this, _1, _2);
   dyn_server.setCallback(dyn_cb_f);
-  depth_sub = nh.subscribe<sensor_msgs::Image>("/camera/depth", 1,
+  depth_sub = nh.subscribe<sensor_msgs::Image>("depth", 1,
     &HrotorOVS::handleDepth,
     this, ros::TransportHints().tcpNoDelay());
-  image_sub = nh.subscribe<sensor_msgs::Image>("/camera/image", 1,
+  image_sub = nh.subscribe<sensor_msgs::Image>("image", 1,
     &HrotorOVS::handleImage,
     this, ros::TransportHints().tcpNoDelay());
-  camera_info_sub = nh.subscribe<sensor_msgs::CameraInfo>("/camera/camera_info", 1000,
+  camera_info_sub = nh.subscribe<sensor_msgs::CameraInfo>("camera_info", 1000,
     &HrotorOVS::handleCameraInfo,
     this, ros::TransportHints().tcpNoDelay());
 
   traj_pub = nh.advertise<gcop_comm::CtrlTraj>("/hrotor_ovs/traj", 1);
-  traj_marker_pub = nh.advertise<visualization_msgs::Marker>("/hrotor_ovs/traj_marker", 1);
+  //traj_marker_pub = nh.advertise<visualization_msgs::Marker>("/hrotor_ovs/traj_marker", 1);
 
   ROS_INFO("Initialized");
 }
@@ -128,6 +131,11 @@ void HrotorOVS::handleDepth(const sensor_msgs::ImageConstPtr& msg)
   {
     cv_bridge::CvImageConstPtr cvImg = cv_bridge::toCvCopy(msg);
     current_depth = cvImg->image;
+    Mat depth8;
+    current_depth.convertTo(depth8, CV_8UC1);
+    namedWindow("Input Depth");
+    imshow("Input Depth", depth8);
+    waitKey(1);
   }
 }
 
@@ -156,6 +164,9 @@ void HrotorOVS::handleImage(const sensor_msgs::ImageConstPtr& msg)
       ROS_ERROR("%s",ex.what());
       ros::Duration(1.0).sleep();
     }
+    namedWindow("Input Image");
+    imshow("Input Image", current_image);
+    waitKey(1);
   }
   
 }
@@ -171,6 +182,7 @@ void HrotorOVS::handleCameraInfo(const sensor_msgs::CameraInfoConstPtr& msg)
                             K_eig(1,0), K_eig(1,1), K_eig(1,2),
                             K_eig(2,0), K_eig(2,1), K_eig(2,2));
   distcoeff = (Mat_<double>(5,1) << msg->D[0], msg->D[1], msg->D[2], msg->D[3], msg->D[4]);
+  std::cout << "K=" << K << std::endl;
   has_intrinsics = true;
   camera_info_sub.shutdown();
 }
@@ -214,7 +226,7 @@ void HrotorOVS::ovsHrotor(std::vector<Eigen::Vector3d> pts3d, std::vector<Eigen:
 
   int ny = 4;
   int nder = 4;
-  int Nk = 18;
+  int Nk = 14;
 
   // initial controls (e.g. hover at one place)
   us.resize(N);
@@ -239,10 +251,16 @@ void HrotorOVS::ovsHrotor(std::vector<Eigen::Vector3d> pts3d, std::vector<Eigen:
   HrotorGn gn(sys, cost, ctp, ts, xs, us, NULL, false);
   gn.numdiff_stepsize = 1e-5;
 
+  double cur_cost = 999999;
+  double last_cost = cur_cost;
   for (int i = 0; i < hrotor_iterations; ++i) 
   {    
     std::clock_t start = std::clock();
     gn.Iterate();
+    cur_cost = min(cur_cost, gn.J);
+    if(last_cost-cur_cost < 1e-3)
+      break;
+    last_cost = cur_cost;
     cout << "Cost " << i << " = " << gn.J << "\t Time = " << 1000.*(std::clock()-start)/CLOCKS_PER_SEC
       << endl;
     //getchar();
@@ -356,8 +374,9 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
     matches[i].push_back(cv::DMatch(i,i, 1));
   }
   drawMatches(im, kps, im_goal, kps_goal, matches, match_img); 
-  //imshow("OVS Matches", match_img);
-  //waitKey(0);
+  namedWindow("OVS Matches");
+  imshow("OVS Matches", match_img);
+  waitKey(1);
 
   // Put points in flat frame
   tf::Matrix3x3 rotmat = start_tf.getBasis();
@@ -387,7 +406,16 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
     int xidx = round(ps[i].x);
     if(yidx < 0 || yidx >= depths.rows || xidx < 0 || xidx >= depths.cols)
       continue;
-    double depth = depths.at<float>(yidx, xidx);
+    double depth;
+    if(use_depth_mm)
+    {
+      depth = depths.at<int16_t>(yidx, xidx)/100.;
+    }
+    else
+    {
+      depth = depths.at<float>(yidx, xidx);
+    }
+    std::cout << depth << std::endl;
     if(depth <= 0 || std::isnan(depth))
       continue; 
     Eigen::Vector4d pt3d(depth*(ps[i].x-cx)/fx, depth*(ps[i].y-cy)/fy, depth, 1);
@@ -417,8 +445,8 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
     inlier_matches[i].push_back(cv::DMatch(i,i, 1));
   }
   drawMatches(im, inlier_kps, im_goal, inlier_kps_goal, inlier_matches, inlier_match_img); 
-  //imshow("OVS Inlier Matches", inlier_match_img);
-  //waitKey(0);
+  imshow("OVS Inlier Matches", inlier_match_img);
+  waitKey(1);
 
   Vector3d logRf;
   gcop::SO3::Instance().log(logRf, xs1.back().R);
