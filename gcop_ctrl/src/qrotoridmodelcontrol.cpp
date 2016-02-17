@@ -146,8 +146,7 @@ void QRotorIDModelControl::setGoal(const geometry_msgs::Pose &xf_)
 }
 
 void QRotorIDModelControl::setInitialState(const geometry_msgs::Vector3 &localpos, const geometry_msgs::Vector3 &vel,
-    const geometry_msgs::Vector3 &acc, const geometry_msgs::Vector3 &rpy, 
-    const geometry_msgs::Vector3 &omega, const geometry_msgs::Quaternion &rpytcommand)
+    const geometry_msgs::Vector3 &rpy, const geometry_msgs::Vector3 &omega, const geometry_msgs::Quaternion &rpytcommand, QRotorIDState *x0_out)
 {
   Vector3d rpy_(rpy.x, rpy.y, rpy.z);
   SO3 &so3 = SO3::Instance();
@@ -157,6 +156,8 @@ void QRotorIDModelControl::setInitialState(const geometry_msgs::Vector3 &localpo
   so3.q2g(x0.R, rpy_);
   x0.w<<omega.x, omega.y, omega.z;
   x0.u<<rpytcommand.x, rpytcommand.y, rpytcommand.z;
+  if(x0_out != 0)
+    *x0_out = x0;//Copy over
   //Vector3d acc_(acc.x, acc.y, acc.z+9.81);//Acc in Global Frame + gravity
   //sys.a0 = (acc_ - sys.kt*rpytcommand.w*x0.R.col(2));
 }

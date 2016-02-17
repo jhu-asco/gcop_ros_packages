@@ -33,8 +33,7 @@ public:
     QRotorIDModelControl(ros::NodeHandle &nh);
     void setGoal(const geometry_msgs::Pose &xf_);
     void setInitialState(const geometry_msgs::Vector3 &localpos, const geometry_msgs::Vector3 &vel,
-                         const geometry_msgs::Vector3 &acc, const geometry_msgs::Vector3 &rpy, 
-                         const geometry_msgs::Vector3 &omega, const geometry_msgs::Quaternion &rpytcommand);
+                         const geometry_msgs::Vector3 &rpy, const geometry_msgs::Vector3 &omega, const geometry_msgs::Quaternion &rpytcommand, QRotorIDState *x0_out = 0);
     void iterate(int N = 30);
     void getControl(Vector4d &ures);
     void getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory);
