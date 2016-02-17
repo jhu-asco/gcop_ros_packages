@@ -44,14 +44,16 @@ public:
             Vectorcd *Lu = 0, Matrixcd *Luu = 0,
             Matrix12xcd *Lxu = 0, Vectormd *Lp = 0, Matrixmd *Lpp = 0,
             Matrixmnd *Lpx = 0);
+  static Eigen::VectorXd GetReprojectionErrors(std::vector<Eigen::Vector3d> pts3d, 
+    std::vector<Eigen::Vector2d>& pts2d, const Eigen::Matrix4d& tf, const Eigen::Matrix3d& K);
+  static double GetAvgReprojectionError(std::vector<Eigen::Vector3d> pts3d, 
+    std::vector<Eigen::Vector2d>& pts2d, 
+    const Eigen::Matrix4d& tf, const Eigen::Matrix3d& K);
 
   double imageQ;
   double imageQf;
 
 private:
-  double GetAvgReprojectionError(std::vector<Eigen::Vector3d> pts3d, 
-    std::vector<Eigen::Vector2d>& pts2d, 
-    const Eigen::Matrix4d& tf, const Eigen::Matrix3d& K);
 
   Eigen::Matrix4d cam_transform;
   Eigen::Matrix3d K;
@@ -70,7 +72,7 @@ ImageCost<c>::ImageCost(std::vector<Eigen::Vector3d> pts3d, std::vector<Eigen::V
   K(K)
 {
   this->Q.setZero();
-  this->imageQ = 0; 
+  this->imageQ = 0.02; 
   this->imageQf = 1; 
   this->Qf(0,0) = 0;
   this->Qf(1,1) = 0;
@@ -87,6 +89,26 @@ ImageCost<c>::ImageCost(std::vector<Eigen::Vector3d> pts3d, std::vector<Eigen::V
   this->Qf(11,11) = 1;
     
   this->R.diagonal() = Matrix<double, c, 1>::Constant(1.);
+  this->ng = 12+c+2*pts3d.size();
+  this->g.resize(this->ng);
+}
+
+template <int c>
+Eigen::VectorXd ImageCost<c>::GetReprojectionErrors(std::vector<Eigen::Vector3d> pts3d, 
+  std::vector<Eigen::Vector2d>& pts2d, const Eigen::Matrix4d& tf, const Eigen::Matrix3d& K)
+{
+  Eigen::VectorXd errors(2*pts3d.size());
+
+  assert(pts3d.size() == pts2d.size());
+  Eigen::Matrix<double, 3, 4> P = K*tf.block<3,4>(0,0);
+  for(int i = 0; i < pts3d.size(); i++)
+  {
+    Eigen::Vector3d pt2d_reproj = P*Eigen::Vector4d(pts3d[i](0), pts3d[i](1), pts3d[i](2), 1);
+    pt2d_reproj /= pt2d_reproj(2);
+
+    errors.segment<2>(2*i) = pts2d[i] - pt2d_reproj.head<2>();
+  }
+  return errors;
 }
   
 template <int c>
@@ -94,14 +116,12 @@ double ImageCost<c>::GetAvgReprojectionError(std::vector<Eigen::Vector3d> pts3d,
 {
   assert(pts3d.size() == pts2d.size());
 
+  Eigen::VectorXd errors = GetReprojectionErrors(pts3d, pts2d, tf, K);
+
   double error = 0;
-  Eigen::Matrix<double, 3, 4> P = K*tf.block<3,4>(0,0);
   for(int i = 0; i < pts3d.size(); i++)
   {
-    Eigen::Vector3d pt2d_reproj = P*Eigen::Vector4d(pts3d[i](0), pts3d[i](1), pts3d[i](2), 1);
-    pt2d_reproj /= pt2d_reproj(2);
-
-    error += (pt2d_reproj.head<2>()-pts2d[i]).norm();
+    error += errors.segment<2>(2*i).norm();
   }
   error /= pts3d.size();
   return error;
@@ -114,7 +134,7 @@ bool ImageCost<c>::Res(Vectorgd &g,
              Matrixgxd *dgdx, Matrixgud *dgdu,
              Matrixgpd *dgdp)
 {
-  g = Vectorgd::Zero(g.size());
+  g = Vectorgd::Zero(this->g.size());
 
   Eigen::Vector3d cay = Eigen::VectorXd::Zero(3);
   SO3::Instance().cayinv(cay, x.R);
@@ -126,19 +146,21 @@ bool ImageCost<c>::Res(Vectorgd &g,
     sys_world_transform.block<3,1>(0,3) = x.p;
     Eigen::Matrix4d cam_world_transform = sys_world_transform*cam_transform;
 
-    double error = this->GetAvgReprojectionError(pts3d, pts2d, cam_world_transform.inverse(), K);
+    VectorXd errors = this->GetReprojectionErrors(pts3d, pts2d, cam_world_transform.inverse(), K);
   
-    g(3) = sqrt(imageQf)*error;//sqrt(error);
     g.segment<3>(0) = this->Qfsqrt.block(0,0,3,3)*cay;
-    g.segment<3>(6) = this->Qfsqrt.block(6,6, 3, 3)*x.w;
-    g.segment<3>(9) = this->Qfsqrt.block(9,9, 3, 3)*x.v;
+    g.segment<3>(3) = this->Qfsqrt.block(3,3,3,3)*(x.p-this->xf->p);
+    g.segment<3>(6) = this->Qfsqrt.block(6,6, 3, 3)*(x.w-this->xf->w);
+    g.segment<3>(9) = this->Qfsqrt.block(9,9, 3, 3)*(x.v-this->xf->v);
+    g.segment(12+c, 2*pts3d.size()) = sqrt(this->imageQf)*errors/errors.size();
 
     //std::cout << "Res: " << g.transpose() << std::endl;
     //std::cout << "State: " << x.second.transpose() << std::endl;
   }
   else 
   {
-    double error = 0;
+    Eigen::VectorXd errors(pts3d.size());
+    errors.setZero();
     if(imageQ > 0)
     {
       Eigen::Matrix4d sys_world_transform;
@@ -147,20 +169,21 @@ bool ImageCost<c>::Res(Vectorgd &g,
       sys_world_transform.block<3,1>(0,3) = x.p;
       Eigen::Matrix4d cam_world_transform = sys_world_transform*cam_transform;
 
-      error = this->GetAvgReprojectionError(pts3d, pts2d, cam_world_transform.inverse(), K);
+      errors = this->GetReprojectionErrors(pts3d, pts2d, cam_world_transform.inverse(), K);
     }
 
-    g(3) = h*sqrt(imageQ)*error;//sqrt(error);
     g.segment<3>(0) = h*this->Qsqrt.block(0,0,3,3)*cay;
-    g.segment<3>(6) = h*this->Qsqrt.block(6,6, 3, 3)*x.w;
-    g.segment<3>(9) = h*this->Qsqrt.block(9,9, 3, 3)*x.v;
+    g.segment<3>(3) = h*this->Qsqrt.block(3,3,3,3)*(x.p-this->xf->p);
+    g.segment<3>(6) = h*this->Qsqrt.block(6,6, 3, 3)*(x.w-this->xf->w);
+    g.segment<3>(9) = h*this->Qsqrt.block(9,9, 3, 3)*(x.v-this->xf->v);
+    g.segment(12+c, 2*pts3d.size()) = h*sqrt(imageQ)*errors/errors.size();
   }
   
   this->du = h*u;
   if (this->diag)
-    g.tail(c) = this->Rsqrt.diagonal().cwiseProduct(this->du);
+    g.segment<c>(12) = this->Rsqrt.diagonal().cwiseProduct(this->du);
   else
-    g.tail(c) = this->Rsqrt*(this->du);
+    g.segment<c>(12) = this->Rsqrt*(this->du);
   
   //std::cout << "Controls: " << u.transpose()  << std::endl;
   //getchar();
