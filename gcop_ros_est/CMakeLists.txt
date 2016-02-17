@@ -228,8 +228,8 @@ target_link_libraries(cam_est ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${catkin_LIBRARIE
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
 
-add_executable(obstacle_detection_lidar src/obstacle_detection_lidar.cpp)
-target_link_libraries(obstacle_detection_lidar ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+#add_executable(obstacle_detection_lidar src/obstacle_detection_lidar.cpp)
+#target_link_libraries(obstacle_detection_lidar ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 add_executable(satmap_server src/satmap_server.cpp)
 target_link_libraries(satmap_server ${catkin_LIBRARIES} ${Boost_LIBRARIES})
