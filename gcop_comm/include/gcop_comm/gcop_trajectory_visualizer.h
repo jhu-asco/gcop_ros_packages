@@ -166,7 +166,7 @@ class GcopTrajectoryVisualizer{
     default_sphere_marker_.color.r = 0.0;
     default_sphere_marker_.color.b = 1.0;
     default_sphere_marker_.color.g = 0.0;
-    default_sphere_marker_.color.a = 0.1;
+    default_sphere_marker_.color.a = 0.2;
     default_sphere_marker_.pose.orientation.w = 1.0;
 
     //Cylinder

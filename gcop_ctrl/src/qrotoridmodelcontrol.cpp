@@ -4,21 +4,24 @@ using namespace gcop;
 using namespace Eigen;
 using namespace std;
 
-QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh): nh_(nh)
-                                                               , visualizer_(nh)
+QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id): nh_(nh)
+                                                                                  , visualizer_(nh,frame_id)
+                                                                                  , so3(SO3::Instance())
+                                                                                  , skip_publish_segments(2), logged_trajectory_(false)
 {
     //Temp Variables
     int N = 100;
     int spline_order = 2;
     int Nk = 5;
     bool debug = false;
-    VectorXd meanp(13), Q(15), R(4), Qf(15), stdev_initial_state(15), obs_info(8), px0(15);
+    VectorXd meanp(13), Q(15), R(4), Qf(15), stdev_initial_state(15), obs_info(8), px0(15), pxf(15);
     Matrix6d stdev_offsets;
     Matrix7d stdev_gains;
     string param_file_string;
 
     nh.getParam("/qrotoridmodeltest/control_params",param_file_string);
     ROS_INFO("Param File: %s",param_file_string.c_str());
+    nh.getParam("/display/skip_pub_segments",skip_publish_segments);
 
     params_loader_.Load(param_file_string.c_str());
 
@@ -33,6 +36,7 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh): nh_(nh)
     params_loader_.GetVectorXd("Qf",Qf);
     params_loader_.GetVectorXd("R",R);
     params_loader_.GetVectorXd("x0",px0);
+    params_loader_.GetVectorXd("xf",pxf);
     params_loader_.GetVectorXd("stdev_initial_state",stdev_initial_state);
     params_loader_.GetMatrix6d("stdev_offsets",stdev_offsets);
     params_loader_.GetMatrix7d("stdev_gains",stdev_gains);
@@ -43,12 +47,22 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh): nh_(nh)
     x0.v = px0.segment<3>(9);
     x0.w = px0.segment<3>(6);
     {
-      SO3 &so3 = SO3::Instance();
       const Vector3d &rpy = px0.head<3>();
-      so3.q2g(x0.R, px0);
+      so3.q2g(x0.R, rpy);
     }
     x0.u<<0,0,0;
     xs.resize(N+1,x0);
+
+    //XF:
+    xf.p = pxf.segment<3>(3);
+    xf.v = pxf.segment<3>(9);
+    xf.w = pxf.segment<3>(6);
+    {
+      const Vector3d &rpy = pxf.head<3>();
+      so3.q2g(xf.R, rpy);
+    }
+    xf.u<<0,0,0;
+
 
     //Fill us
     Vector4d u0;
@@ -57,15 +71,13 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh): nh_(nh)
 
     //Fill ts
     double h = tf/N;
+    step_size_ = h;
     ts.resize(N+1);
     for (int k = 0; k <= N; ++k)
       ts[k] = k*h;
     tks.resize(Nk+1);
     for(int k = 0; k <=Nk; ++k)
         tks[k] = k*(tf/Nk);
-
-    //Clear xf:
-    xf.Clear();
 
     //Fill Cost:
     cost = new QRotorIDModelCost(sys,tf,xf);
@@ -115,16 +127,15 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh): nh_(nh)
     traj_publisher_ = nh.advertise<gcop_comm::CtrlTraj>("ctrltraj",1);
 }
 
-static inline void eigenVectorTogeometrymsgsVector(geometry_msgs::Vector3 &out, const Vector3d &in)
+void QRotorIDModelControl::eigenVectorToGeometryMsgsVector(geometry_msgs::Vector3 &out, const Vector3d &in)
 {
     out.x = in[0];
     out.y = in[1];
     out.z = in[2];
 }
 
-static inline void so3TogeometrymsgsQuaternion(geometry_msgs::Quaternion &out, const Matrix3d &in)
+void QRotorIDModelControl::so3ToGeometryMsgsQuaternion(geometry_msgs::Quaternion &out, const Matrix3d &in)
 {
-  SO3 &so3 = SO3::Instance();
   Vector4d wxyz;
   so3.g2quat(wxyz,in);
   out.w = wxyz[0];
@@ -133,10 +144,9 @@ static inline void so3TogeometrymsgsQuaternion(geometry_msgs::Quaternion &out, c
   out.z = wxyz[3];
 }
 
-void QRotorIDModelControl::setGoal(const geometry_msgs::Pose &xf_)
+/*void QRotorIDModelControl::setGoal(const geometry_msgs::Pose &xf_)
 {
     Vector4d wxyz(xf_.orientation.w, xf_.orientation.x, xf_.orientation.y, xf_.orientation.z);
-    SO3 &so3 = SO3::Instance();
     so3.quat2g(xf.R, wxyz);
     xf.p<<xf_.position.x, xf_.position.y, xf_.position.z;
     xf.v.setZero();
@@ -144,28 +154,24 @@ void QRotorIDModelControl::setGoal(const geometry_msgs::Pose &xf_)
     xf.u.setZero();
     //xf = xf_;
 }
+*/
 
 void QRotorIDModelControl::setInitialState(const geometry_msgs::Vector3 &localpos, const geometry_msgs::Vector3 &vel,
-    const geometry_msgs::Vector3 &rpy, const geometry_msgs::Vector3 &omega, const geometry_msgs::Quaternion &rpytcommand, QRotorIDState *x0_out)
+    const geometry_msgs::Vector3 &rpy, const geometry_msgs::Vector3 &omega, const geometry_msgs::Quaternion &rpytcommand, QRotorIDState &x0_out)
 {
   Vector3d rpy_(rpy.x, rpy.y, rpy.z);
-  SO3 &so3 = SO3::Instance();
-  QRotorIDState &x0 = xs[0];
-  x0.p<<localpos.x, localpos.y, localpos.z;
-  x0.v<<vel.x, vel.y, vel.z;
-  so3.q2g(x0.R, rpy_);
-  x0.w<<omega.x, omega.y, omega.z;
-  x0.u<<rpytcommand.x, rpytcommand.y, rpytcommand.z;
-  if(x0_out != 0)
-    *x0_out = x0;//Copy over
+  //QRotorIDState &x0 = xs[0];
+  x0_out.p<<localpos.x, localpos.y, localpos.z;
+  x0_out.v<<vel.x, vel.y, vel.z;
+  so3.q2g(x0_out.R, rpy_);
+  x0_out.w<<omega.x, omega.y, omega.z;
+  x0_out.u<<rpytcommand.x, rpytcommand.y, rpytcommand.z;
   //Vector3d acc_(acc.x, acc.y, acc.z+9.81);//Acc in Global Frame + gravity
   //sys.a0 = (acc_ - sys.kt*rpytcommand.w*x0.R.col(2));
 }
 
-void QRotorIDModelControl::iterate(int N)
+void QRotorIDModelControl::iterate()
 {
-    for(int i = 0; i < obstacles.size(); i++)
-      visualizer_.publishObstacle(obstacles[i].data(),i, obstacles[i][7]);
     gn->ko = 0.01;
     while(gn->ko < 100)
     {
@@ -175,14 +181,34 @@ void QRotorIDModelControl::iterate(int N)
       cout<<"gn.J: "<<(gn->J)<<endl;
       gn->Reset();
       ROS_INFO("Time taken for 1 iter: %f",(ros::Time::now() - curr_time).toSec());
-      this->getCtrlTrajectory(trajectory);
-      visualizer_.publishTrajectory(trajectory);
-      if(traj_publisher_.getNumSubscribers() > 0)
-        traj_publisher_.publish(trajectory);
       //ROS_INFO("Press Key to continue...");//DEBUG
       //cout<<"Stdev Final: "<<(gn->xs_std.rightCols<1>()).transpose()<<endl;
       //getchar();
     }
+}
+void QRotorIDModelControl::logTrajectory(std::string logdir)
+{
+  if(!logged_trajectory_)
+  {
+    ofstream trajfile;///< Log trajectory
+    trajfile.open((logdir+"/mpctrajectory.dat").c_str());
+
+    trajfile.precision(10);
+
+    trajfile<<"#Time\t X\t Y\t Z\t Vx\t Vy\t Vz\t r\t p\t y\t Wx\t Wy\t Wz\t Ut\t Ur\t Up\t Uy\t xs_stdx\t xs_stdy\t xs_stdz"<<endl;
+
+    logged_trajectory_ = true;
+    int N = us.size();
+    //Log Trajectory:
+    Vector3d rpy;
+    so3.g2q(rpy,xs[0].R);
+    trajfile<<ts[0]<<" "<<xs[0].p.transpose()<<" "<<xs[0].v.transpose()<<" "<<rpy.transpose()<<" "<<xs[0].w.transpose()<<" 0 "<<xs[0].u.transpose()<<" "<<(gn->xs_std.col(0).transpose())<<endl;
+    for(int i = 1; i < N+1;i++)
+    {
+      so3.g2q(rpy,xs[i].R);
+      trajfile<<ts[i]<<" "<<xs[i].p.transpose()<<" "<<xs[i].v.transpose()<<" "<<rpy.transpose()<<" "<<xs[i].w.transpose()<<" "<<us[i-1][0]<<" "<<xs[i].u.transpose()<<" "<<(gn->xs_std.col(i).transpose())<<endl;
+    }
+  }
 }
 
 void QRotorIDModelControl::getControl(Vector4d &ures)
@@ -192,27 +218,58 @@ void QRotorIDModelControl::getControl(Vector4d &ures)
     ures(2) = xs[1].u(1);
     ures(3) = xs[1].u(2);
 }
+void QRotorIDModelControl::publishTrajectory(geometry_msgs::Vector3 &pos, geometry_msgs::Vector3 &rpy)
+{
+    Vector3d yaw(0,0,rpy.z);
+    Vector3d pos_(pos.x, pos.y, pos.z);
+    Matrix3d yawM;
+    so3.q2g(yawM,yaw);
+    for(int i = 0; i < obstacles.size(); i++)
+    {
+      VectorXd obs_data = obstacles[i];
+      obs_data.segment<3>(1) = pos_ + yawM*obs_data.segment<3>(1);//Rotate
+      obs_data.segment<3>(4) = yawM*obs_data.segment<3>(4);
+      visualizer_.publishObstacle(obs_data.data(),i, obs_data[7]);
+    }
+    this->getCtrlTrajectory(trajectory, yawM, pos_);
+    visualizer_.publishTrajectory(trajectory);
+    if(traj_publisher_.getNumSubscribers() > 0)
+        traj_publisher_.publish(trajectory);
+}
 
-void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory)
+void QRotorIDModelControl::setParametersAndStdev(Vector7d &gains, Matrix7d &stdev_gains, Vector6d *mean_offsets, Matrix6d *stdev_offsets)
+{
+    p_mean.head<7>() = gains;
+    gn->stdev_params.topLeftCorner<7,7>() = stdev_gains;
+    if(mean_offsets)
+        p_mean.tail<6>() = *mean_offsets;
+    if(stdev_offsets)
+      gn->stdev_params.bottomRightCorner<6,6>() = *stdev_offsets;
+}
+
+void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Matrix3d &yawM, Vector3d &pos_)
 {
   int N = us.size();
  // printf("US size: %d",N);
-  trajectory.N = N;
+  int number_states = std::floor(double(N+1)/skip_publish_segments)+1;
+  trajectory.N = number_states-1;
 
-  trajectory.statemsg.resize(N+1);
-  trajectory.pos_std.resize(N+1);
-  trajectory.ctrl.resize(N);
+  trajectory.statemsg.resize(number_states);
+  trajectory.pos_std.resize(number_states);
+  //trajectory.ctrl.resize(N);
+  int ind = 0;
 
-  for (int count = 0;count<N+1;count++)
+  for (int count = 0;count<N+1;count+=skip_publish_segments)
   {
-    eigenVectorTogeometrymsgsVector(trajectory.statemsg[count].basepose.translation, xs[count].p);
-    so3TogeometrymsgsQuaternion(trajectory.statemsg[count].basepose.rotation, xs[count].R);
-    eigenVectorTogeometrymsgsVector(trajectory.statemsg[count].basetwist.linear,xs[count].v);
-    eigenVectorTogeometrymsgsVector(trajectory.statemsg[count].basetwist.angular,xs[count].w);
+    eigenVectorToGeometryMsgsVector(trajectory.statemsg.at(ind).basepose.translation, yawM*xs[count].p + pos_);
+    so3ToGeometryMsgsQuaternion(trajectory.statemsg.at(ind).basepose.rotation, yawM*xs[count].R);
+    //eigenVectorToGeometryMsgsVector(trajectory.statemsg[count].basetwist.linear,xs[count].v);
+    //eigenVectorToGeometryMsgsVector(trajectory.statemsg[count].basetwist.angular,xs[count].w);
     Vector3d x_std = gn->xs_std.col(count);
-    eigenVectorTogeometrymsgsVector(trajectory.pos_std[count],4*x_std);//Diameter instead of radius
+    eigenVectorToGeometryMsgsVector(trajectory.pos_std.at(ind),4*x_std);//Diameter instead of radius
+    ind++;
   }
-  for (int count = 0;count<N;count++)
+  /*for (int count = 0;count<N;count++)
   {
     trajectory.ctrl[count].ctrlvec.resize(4);
     trajectory.ctrl[count].ctrlvec[0] = us[count][0];
@@ -221,14 +278,14 @@ void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory)
       trajectory.ctrl[count].ctrlvec[count1+1] = xs[count+1].u(count1);
     }
   }
+  */
   trajectory.time = ts;
   //final goal:
-  eigenVectorTogeometrymsgsVector(trajectory.finalgoal.basepose.translation, xf.p);
-  so3TogeometrymsgsQuaternion(trajectory.finalgoal.basepose.rotation, xf.R);
-  eigenVectorTogeometrymsgsVector(trajectory.finalgoal.basetwist.linear,xf.v);
-  eigenVectorTogeometrymsgsVector(trajectory.finalgoal.basetwist.angular,xf.w);
+  eigenVectorToGeometryMsgsVector(trajectory.finalgoal.basepose.translation, yawM*xf.p+pos_);
+  so3ToGeometryMsgsQuaternion(trajectory.finalgoal.basepose.rotation, xf.R);
+  eigenVectorToGeometryMsgsVector(trajectory.finalgoal.basetwist.linear,xf.v);
+  eigenVectorToGeometryMsgsVector(trajectory.finalgoal.basetwist.angular,xf.w);
   //DEBUG:
-  SO3 &so3 = SO3::Instance();
   Vector3d rpy;
   so3.g2q(rpy, xs[N].R);
   cout<<" "<<xs[N].p.transpose()<<" "<<xs[N].v.transpose()<<" "<<rpy.transpose()<<" "<<xs[N].w.transpose()<<" "<<xs[N].u.transpose()<<endl;

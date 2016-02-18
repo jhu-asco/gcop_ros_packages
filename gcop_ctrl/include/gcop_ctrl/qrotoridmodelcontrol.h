@@ -12,6 +12,7 @@
 #include <ros/ros.h>
 #include <gcop_comm/gcop_trajectory_visualizer.h>
 #include <gcop/params.h>
+#include <fstream>
 
 using namespace gcop;
 using namespace Eigen;
@@ -28,15 +29,23 @@ class QRotorIDModelControl
     gcop_comm::CtrlTraj trajectory; ///< Trajectory message for publishing the optimized trajectory
     ros::Publisher traj_publisher_;///< ros Publisher for ctrltraj:
     vector<VectorXd> obstacles;///< Obstacles
+    SO3 &so3;
+    bool logged_trajectory_;///< Only Log the GCOP Trajectory once for NOW
+protected:
+    inline void so3ToGeometryMsgsQuaternion(geometry_msgs::Quaternion &out, const Matrix3d &in);
+    inline void eigenVectorToGeometryMsgsVector(geometry_msgs::Vector3 &out, const Vector3d &in);
 
 public:
-    QRotorIDModelControl(ros::NodeHandle &nh);
-    void setGoal(const geometry_msgs::Pose &xf_);
+    QRotorIDModelControl(ros::NodeHandle &nh, string frame_id="optitrak");
+    //void setGoal(const geometry_msgs::Pose &xf_);
     void setInitialState(const geometry_msgs::Vector3 &localpos, const geometry_msgs::Vector3 &vel,
-                         const geometry_msgs::Vector3 &rpy, const geometry_msgs::Vector3 &omega, const geometry_msgs::Quaternion &rpytcommand, QRotorIDState *x0_out = 0);
-    void iterate(int N = 30);
+                         const geometry_msgs::Vector3 &rpy, const geometry_msgs::Vector3 &omega, const geometry_msgs::Quaternion &rpytcommand, QRotorIDState &x0_out);
+    void iterate();
     void getControl(Vector4d &ures);
-    void getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory);
+    void getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Matrix3d &yawM, Vector3d &pos_);
+    void publishTrajectory(geometry_msgs::Vector3 &pos, geometry_msgs::Vector3 &rpy);
+    void setParametersAndStdev(Vector7d &gains, Matrix7d &stdev_gains, Vector6d *mean_offset = 0, Matrix6d *stdev_offsets = 0);
+    void logTrajectory(std::string logdir);
  protected:
     QRotorIdGnDocp *gn;
     SplineTparam *ctp;
@@ -45,11 +54,13 @@ public:
     vector<double> ts;
     VectorXd tks;
     Matrix<double,13,1> p_mean;
+    int skip_publish_segments;///< Skip these segments for publishing gcop trajectory
  public:
     vector<QRotorIDState> xs;
     vector<Vector4d> us;
     QRotorIDState xf;
     double tf;
+    double step_size_;///< h
 };
 
 #endif // QROTORIDMODELCONTROL_H
