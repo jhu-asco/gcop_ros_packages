@@ -45,7 +45,8 @@ public:
     void getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Matrix3d &yawM, Vector3d &pos_);
     void publishTrajectory(geometry_msgs::Vector3 &pos, geometry_msgs::Vector3 &rpy);
     void setParametersAndStdev(Vector7d &gains, Matrix7d &stdev_gains, Vector6d *mean_offset = 0, Matrix6d *stdev_offsets = 0);
-    void logTrajectory(std::string logdir);
+    void logTrajectory(std::string filename);
+    void resetControls();
  protected:
     QRotorIdGnDocp *gn;
     SplineTparam *ctp;

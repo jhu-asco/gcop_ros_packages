@@ -191,16 +191,15 @@ void QRotorIDModelControl::iterate()
       //getchar();
     }
 }
-void QRotorIDModelControl::logTrajectory(std::string logdir)
+void QRotorIDModelControl::logTrajectory(std::string filename)
 {
-  if(!logged_trajectory_)
   {
     ofstream trajfile;///< Log trajectory
-    trajfile.open((logdir+"/mpctrajectory.dat").c_str());
+    trajfile.open(filename.c_str());
 
     trajfile.precision(10);
 
-    trajfile<<"#Time\t X\t Y\t Z\t Vx\t Vy\t Vz\t r\t p\t y\t Wx\t Wy\t Wz\t Ut\t Ur\t Up\t Uy\t xs_stdx\t xs_stdy\t xs_stdz"<<endl;
+    trajfile<<"#Time X Y Z Vx Vy Vz r p y Wx Wy Wz Ut Ur Up Uy xs_stdx xs_stdy xs_stdz"<<endl;
 
     logged_trajectory_ = true;
     int N = us.size();
@@ -214,6 +213,14 @@ void QRotorIDModelControl::logTrajectory(std::string logdir)
       trajfile<<ts[i]<<" "<<xs[i].p.transpose()<<" "<<xs[i].v.transpose()<<" "<<rpy.transpose()<<" "<<xs[i].w.transpose()<<" "<<us[i-1][0]<<" "<<xs[i].u.transpose()<<" "<<(gn->xs_std.col(i).transpose())<<endl;
     }
   }
+}
+
+void QRotorIDModelControl::resetControls()
+{
+    for(int i = 0; i < us.size(); i++)
+    {
+        us[i]<<(9.81/p_mean[0]),0,0,0;//Set to default values
+    }
 }
 
 void QRotorIDModelControl::getControl(Vector4d &ures)
