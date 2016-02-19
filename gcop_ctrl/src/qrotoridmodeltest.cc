@@ -40,8 +40,6 @@ void Iterate()
   geometry_msgs::Vector3 rpy;
   rpy.x = 0; rpy.y = 0; rpy.z = 1;
   model_control->publishTrajectory(localpos,rpy);
-
-  //Publish the optimized trajectory
 }
 
 /*void paramreqCallback(gcop_ctrl::QRotorIDModelInterfaceConfig &config, uint32_t level)
@@ -68,8 +66,8 @@ void Iterate()
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "rccarctrl");
-  ros::NodeHandle rosddp("/ddp");
-  model_control = new QRotorIDModelControl(rosddp);
+  ros::NodeHandle rosgn("/gn");
+  model_control = new QRotorIDModelControl(rosgn);
   Iterate();
 
   //Initialize subscriber

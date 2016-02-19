@@ -100,19 +100,23 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
     //gn->stdev_params.diagonal()<<0.001, 0.2,0.2,0.2, 0.2,0.2,0.2, 0.05,0.05,0.05, 0.05,0.05,0.05;
 
     //Obstacles:
-    obstacles.resize(2);
     params_loader_.GetVectorXd("obs1",obs_info);
-    obstacles[0] = obs_info;
-    params_loader_.GetVectorXd("obs2",obs_info);
-    obstacles[1] = obs_info;
+    obstacles.push_back(obs_info);
+    if(params_loader_.Exists("obs2"))
+    {
+      params_loader_.GetVectorXd("obs2",obs_info);
+      obstacles.push_back(obs_info);
+    }
 
     {
-      vector<Obstacle> obs(2);
-      obs[0].set(obstacles[0], (int)obstacles[0][7]);
-      obs[1].set(obstacles[1], (int)obstacles[1][7]);
+      vector<Obstacle> obs(obstacles.size());
+      for(int i = 0; i < obstacles.size(); i++)
+        obs[i].set(obstacles[i], (int)obstacles[i][7]);
       gn->AddObstacles(obs);
     }
     cout<<"Problem Settings: "<<endl;
+    cout<<"X0: "<<px0.transpose()<<endl;
+    cout<<"Xf: "<<pxf.transpose()<<endl;
     cout<<"Cost Settings: "<<endl;
     cout<<"Q: "<<Q.transpose()<<endl;
     cout<<"Qf: "<<Qf.transpose()<<endl;
@@ -122,9 +126,10 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
     cout<<"Mean Params: "<<meanp.transpose()<<endl;
     cout<<"stdev_init_state: "<<endl<<stdev_initial_state.transpose()<<endl;
     cout<<"stdev_params: "<<endl<<(gn->stdev_params)<<endl;
+    cout<<"Number Of Obstacles: "<<obstacles.size()<<endl;
 
     //Publisher for gcop trajectory:
-    traj_publisher_ = nh.advertise<gcop_comm::CtrlTraj>("ctrltraj",1);
+    traj_publisher_ = nh.advertise<gcop_comm::CtrlTraj>("ctrltraj",2,true);//Latched
 }
 
 void QRotorIDModelControl::eigenVectorToGeometryMsgsVector(geometry_msgs::Vector3 &out, const Vector3d &in)
@@ -233,8 +238,8 @@ void QRotorIDModelControl::publishTrajectory(geometry_msgs::Vector3 &pos, geomet
     }
     this->getCtrlTrajectory(trajectory, yawM, pos_);
     visualizer_.publishTrajectory(trajectory);
-    if(traj_publisher_.getNumSubscribers() > 0)
-        traj_publisher_.publish(trajectory);
+    //if(traj_publisher_.getNumSubscribers() > 0)
+    traj_publisher_.publish(trajectory);
 }
 
 void QRotorIDModelControl::setParametersAndStdev(Vector7d &gains, Matrix7d &stdev_gains, Vector6d *mean_offsets, Matrix6d *stdev_offsets)
@@ -256,7 +261,7 @@ void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Ma
 
   trajectory.statemsg.resize(number_states);
   trajectory.pos_std.resize(number_states);
-  //trajectory.ctrl.resize(N);
+  trajectory.ctrl.resize(N);
   int ind = 0;
 
   for (int count = 0;count<N+1;count+=skip_publish_segments)
@@ -269,7 +274,7 @@ void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Ma
     eigenVectorToGeometryMsgsVector(trajectory.pos_std.at(ind),4*x_std);//Diameter instead of radius
     ind++;
   }
-  /*for (int count = 0;count<N;count++)
+  for (int count = 0;count<N;count++)
   {
     trajectory.ctrl[count].ctrlvec.resize(4);
     trajectory.ctrl[count].ctrlvec[0] = us[count][0];
@@ -278,7 +283,6 @@ void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Ma
       trajectory.ctrl[count].ctrlvec[count1+1] = xs[count+1].u(count1);
     }
   }
-  */
   trajectory.time = ts;
   //final goal:
   eigenVectorToGeometryMsgsVector(trajectory.finalgoal.basepose.translation, yawM*xf.p+pos_);
@@ -288,5 +292,5 @@ void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Ma
   //DEBUG:
   Vector3d rpy;
   so3.g2q(rpy, xs[N].R);
-  cout<<" "<<xs[N].p.transpose()<<" "<<xs[N].v.transpose()<<" "<<rpy.transpose()<<" "<<xs[N].w.transpose()<<" "<<xs[N].u.transpose()<<endl;
+//  cout<<" "<<xs[N].p.transpose()<<" "<<xs[N].v.transpose()<<" "<<rpy.transpose()<<" "<<xs[N].w.transpose()<<" "<<xs[N].u.transpose()<<endl;
 }

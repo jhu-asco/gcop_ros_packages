@@ -214,13 +214,14 @@ class GcopTrajectoryVisualizer{
     basis = basis.inverse();
     tf::Quaternion tq;
     basis.getRotation(tq);
-    std::cout<<"Basis: "<<std::endl;
+    /*std::cout<<"Basis: "<<std::endl;
     for(int i = 0 ; i < 3; i++)
     {
       for(int j = 0; j < 3; j++)
         std::cout<<basis[i][j]<<" ";
       std::cout<<std::endl;
     }
+    */
     tf::quaternionTFToMsg(tq,q);
     return;
   }
@@ -233,12 +234,13 @@ class GcopTrajectoryVisualizer{
     default_obs_marker_.id = id;
     //Set Orientation:
     tf::Vector3 axis(data[4],data[5],data[6]);
-    std::cout<<"Axis: "<<axis.x()<<" "<<axis.y()<<" "<<axis.z()<<std::endl;
+    //std::cout<<"Axis: "<<axis.x()<<" "<<axis.y()<<" "<<axis.z()<<std::endl;
     getQuatFromAxis(default_obs_marker_.pose.orientation,axis);
-    std::cout<<"Quat: "<<default_obs_marker_.pose.orientation.x<<std::endl;
+    /*std::cout<<"Quat: "<<default_obs_marker_.pose.orientation.x<<std::endl;
     std::cout<<"Quat: "<<default_obs_marker_.pose.orientation.y<<std::endl;
     std::cout<<"Quat: "<<default_obs_marker_.pose.orientation.z<<std::endl;
     std::cout<<"Quat: "<<default_obs_marker_.pose.orientation.w<<std::endl;
+    */
     switch(obstacle_type)
     {
       case 0:
