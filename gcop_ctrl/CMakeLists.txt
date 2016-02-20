@@ -174,9 +174,9 @@ add_dependencies(mbsnode ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 add_library(utils src/utils.cc)
 target_link_libraries(utils ${LIBS} ${catkin_LIBRARIES})
 
-#add_executable(hrotor_ovs src/hrotor_ovs.cc)
-#target_link_libraries(hrotor_ovs utils ${LIBS} ${catkin_LIBRARIES})
-#add_dependencies(hrotor_ovs ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp gcop_ctrl_generate_messages_cpp)
+add_executable(hrotor_ovs src/hrotor_ovs.cc)
+target_link_libraries(hrotor_ovs utils ${LIBS} ${catkin_LIBRARIES})
+add_dependencies(hrotor_ovs ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp gcop_ctrl_generate_messages_cpp)
 
 #add_executable(vs_evaluate src/vs_evaluate.cc)
 #target_link_libraries(vs_evaluate ${LIBS} ${catkin_LIBRARIES})

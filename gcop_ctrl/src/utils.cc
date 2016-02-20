@@ -1,5 +1,6 @@
 #include "gcop_ctrl/utils.h"
 #include <ctime>
+#include <limits>
 #include <gcop/se3.h>
 
 using namespace gcop;
@@ -111,7 +112,8 @@ void find_stable_final_pose(const std::vector<Eigen::Vector3d>& pts3d,
 
   Eigen::MatrixXd image_jac(2*pts3d.size(), 4);
   Eigen::VectorXd feature_errors(2*pts3d.size());
-  //double feature_error = 0;
+  double feature_error = std::numeric_limits<double>::max();
+  double last_feature_error = feature_error;
   for(int i = 0; i < iterations; i++)
   {
     std::clock_t start = std::clock();
@@ -124,8 +126,10 @@ void find_stable_final_pose(const std::vector<Eigen::Vector3d>& pts3d,
       feature_errors.segment<2>(2*j) = pt2d - pts2d.at(j);
       image_jac.block<2,4>(2*j, 0) = image_jacobian_flat(pt2d, fx, fy, cx, cy, depth);
     }
-    //feature_error = sqrt(feature_errors.squaredNorm()/pts3d.size());
-    
+    feature_error = sqrt(feature_errors.squaredNorm()/pts3d.size());
+    if((last_feature_error-feature_error)/last_feature_error < 1e-4)
+      break;
+    last_feature_error = feature_error;
     image_jac = image_jac*cam_vel_transform.transpose();
 
     //Calc GN step

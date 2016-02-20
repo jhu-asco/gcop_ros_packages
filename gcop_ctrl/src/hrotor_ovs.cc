@@ -131,10 +131,27 @@ void HrotorOVS::handleDepth(const sensor_msgs::ImageConstPtr& msg)
   {
     cv_bridge::CvImageConstPtr cvImg = cv_bridge::toCvCopy(msg);
     current_depth = cvImg->image;
-    Mat depth8;
-    current_depth.convertTo(depth8, CV_8UC1);
     namedWindow("Input Depth");
+    Mat depth8;
+    if(use_depth_mm)
+    {
+      current_depth.convertTo(depth8, CV_8UC1);
+    }
+    else
+    {
+      cv::convertScaleAbs(current_depth, depth8, 255/20.);
+    }
     imshow("Input Depth", depth8);
+    /*
+    if(use_depth_mm)
+    {
+      std::cout << "middle depth=" << current_depth.at<int16_t>(120, 160)/100. << std::endl;
+    }
+    else
+    {
+      std::cout << "middle depth=" << current_depth.at<float>(120, 160) << std::endl;
+    }
+    */
     waitKey(1);
   }
 }
@@ -208,12 +225,12 @@ void HrotorOVS::ovsHrotor(std::vector<Eigen::Vector3d> pts3d, std::vector<Eigen:
   cost.Q.setZero();
   cost.Qf.setZero();
   cost.Q(6,6) = 4; cost.Q(7,7) = 4; cost.Q(8,8) = 10;
-  cost.Q(9,9) = .1; cost.Q(10,10) = .1; cost.Q(11,11) = .1;
-  double vcost = 100;
-  cost.Qf(0,0) = 0; cost.Qf(1,1) = 0; cost.Qf(2,2) = 0;
-  cost.Qf(3,3) = 0; cost.Qf(4,4) = 0; cost.Qf(5,5) = 0;
-  cost.Qf(6,6) = 0; cost.Qf(7,7) = 0; cost.Qf(8,8) = 0;
-  cost.Qf(9,9) = vcost; cost.Qf(10,10) = vcost; cost.Qf(11,11) = vcost;
+  cost.Q(9,9) = 1; cost.Q(10,10) = 1; cost.Q(11,11) = 1;
+  //double vcost = 100;
+  //cost.Qf(0,0) = 0; cost.Qf(1,1) = 0; cost.Qf(2,2) = 0;
+  //cost.Qf(3,3) = 0; cost.Qf(4,4) = 0; cost.Qf(5,5) = 0;
+  //cost.Qf(6,6) = 0; cost.Qf(7,7) = 0; cost.Qf(8,8) = 0;
+  //cost.Qf(9,9) = vcost; cost.Qf(10,10) = vcost; cost.Qf(11,11) = vcost;
 
   cost.R(0,0) = 3e4; cost.R(1,1) = 3e4; cost.R(2,2) = 3e4; 
   cost.R(3,3) = 0.8; 
@@ -427,9 +444,11 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
   // Do Optimization
   std::cout << "Finding final pose..." << std::endl;
   std::vector<int> inliers;
+  std::clock_t start = std::clock();
   find_stable_final_pose_ransac(pts3d, pts2d, K_eig, cam_transform, Eigen::MatrixXd::Identity(3,3), 
     xs1.back(), 200, inliers);
-  std::cout << "RANSAC inliers " << inliers.size() << "/" << pts3d.size() << std::endl;
+  std::cout << "RANSAC inliers " << inliers.size() << "/" << pts3d.size() 
+    << ", time=" << 1000.*(std::clock()-start)/CLOCKS_PER_SEC << std::endl;
   std::cout << "Relative final position: " << xs1.back().p.transpose() << std::endl;
 
   Mat inlier_match_img;
@@ -465,6 +484,7 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
                                     start_tf.getOrigin().y(), start_tf.getOrigin().z());
   traj_msg.N = xs1.size()-1;
   traj_msg.statemsg.resize(xs1.size());
+  double max_sp = 0;
   for(int i = 0; i < xs1.size(); i++)
   {
     traj_msg.time.push_back(i*tf/N);
@@ -475,7 +495,7 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
     state.basepose.translation.x = tjpt(0);
     state.basepose.translation.y = tjpt(1);
     state.basepose.translation.z = tjpt(2);
-    std::cout << "xs["<<i<<"].p=" << tjpt.transpose() << std::endl;
+    //std::cout << "xs["<<i<<"].p=" << tjpt.transpose() << std::endl;
 
     Eigen::Quaterniond qx(xs1[i].R);
     qx = vs_in_opti_eig*qx;
@@ -485,6 +505,7 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
     state.basepose.rotation.z = qx.z();
 
     Eigen::Vector3d v = vs_in_opti_eig.toRotationMatrix()*xs1[i].v;
+    max_sp = max(v.norm(), max_sp);
     if(use_velocities)
     {
       state.basetwist.linear.x = v(0);
@@ -500,6 +521,7 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
     std::cout << "xs["<<i<<"].v=" << v.transpose() << std::endl;
     traj_msg.statemsg[i] = state;
   }
+  std::cout << "max v=" << max_sp << std::endl;
 
   // Publish trajectory visualization
   /*
