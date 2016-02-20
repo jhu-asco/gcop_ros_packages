@@ -199,7 +199,7 @@ void QRotorIDModelControl::logTrajectory(std::string filename)
 
     trajfile.precision(10);
 
-    trajfile<<"#Time X Y Z Vx Vy Vz r p y Wx Wy Wz Ut Ur Up Uy xs_stdx xs_stdy xs_stdz"<<endl;
+    //trajfile<<"#Time X Y Z Vx Vy Vz r p y Wx Wy Wz Ut Ur Up Uy xs_stdx xs_stdy xs_stdz"<<endl;
 
     logged_trajectory_ = true;
     int N = us.size();
