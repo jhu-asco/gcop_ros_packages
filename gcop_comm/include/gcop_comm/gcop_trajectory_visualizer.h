@@ -110,10 +110,8 @@ class GcopTrajectoryVisualizer{
       point.y = gcop_trajectory.statemsg[i].basepose.translation.y;
       point.z = gcop_trajectory.statemsg[i].basepose.translation.z;
       sphere_strip_.markers[i].scale = gcop_trajectory.pos_std[i];
-      /*sphere_strip_.markers[i].scale.x =  2*gcop_trajectory.pos_std[i].x;
-      sphere_strip_.markers[i].scale.y =  2*gcop_trajectory.pos_std[i].y;
-      sphere_strip_.markers[i].scale.z =  2*gcop_trajectory.pos_std[i].z;
-      */
+      double yaw = tf::getYaw(gcop_trajectory.statemsg[i].basepose.rotation);
+      sphere_strip_.markers[i].pose.orientation = tf::createQuaternionMsgFromYaw(yaw);
       sphere_strip_.markers[i].id = i+1;
     }
 

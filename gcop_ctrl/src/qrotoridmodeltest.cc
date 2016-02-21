@@ -38,7 +38,7 @@ void Iterate()
   geometry_msgs::Vector3 localpos;
   localpos.x = 0; localpos.y = 0; localpos.z = 1;
   geometry_msgs::Vector3 rpy;
-  rpy.x = 0; rpy.y = 0; rpy.z = 1;
+  rpy.x = 0; rpy.y = 0; rpy.z = 0;
   model_control->publishTrajectory(localpos,rpy);
 }
 
