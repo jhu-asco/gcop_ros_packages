@@ -52,6 +52,7 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
     use_depth_mm = false;
 
   Mat im_goal_color = imread(im_goal_filename);
+  im_goal = im_goal_color;
   cvtColor( im_goal_color, im_goal, CV_BGR2GRAY );
   imshow("Goal Image", im_goal);
   waitKey(10);
