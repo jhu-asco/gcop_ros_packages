@@ -189,6 +189,9 @@ add_executable(qrotoridmodel src/qrotoridmodeltest.cc)
 target_link_libraries(qrotoridmodel qrotoridmodel_control ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(qrotoridmodel ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
+add_executable(plotgcoptraj src/plot_gcop_trajectories.cpp)
+target_link_libraries(plotgcoptraj ${catkin_LIBRARIES})
+
 #add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
 #target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} ${LIBS})
 #add_dependencies(dsl_ddp_planner ${PROJECT_NAME}_gencfg )
