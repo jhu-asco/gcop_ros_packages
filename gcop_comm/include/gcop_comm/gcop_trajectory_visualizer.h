@@ -25,8 +25,8 @@ class GcopTrajectoryVisualizer{
 
   bool visualize_velocities_;
 
-  private:
-  inline void publishLineStrip(gcop_comm::CtrlTraj &gcop_trajectory)
+  public:
+  void publishLineStrip(gcop_comm::CtrlTraj &gcop_trajectory)
   {
     //Resize line strip
     line_strip_.points.resize(gcop_trajectory.N+1);
@@ -37,11 +37,12 @@ class GcopTrajectoryVisualizer{
       line_strip_.points[i].x = gcop_trajectory.statemsg[i].basepose.translation.x;
       line_strip_.points[i].y = gcop_trajectory.statemsg[i].basepose.translation.y;
       line_strip_.points[i].z = gcop_trajectory.statemsg[i].basepose.translation.z;
+      //std::cout<<"i: "<<i<<" "<<line_strip_.points[i].x<<" "<<line_strip_.points[i].y<<" "<<line_strip_.points[i].z<<std::endl;
     }
     visualization_marker_pub_.publish(line_strip_);
   }
 
-  inline void publishAxis(gcop_comm::CtrlTraj &gcop_trajectory)
+  void publishAxis(gcop_comm::CtrlTraj &gcop_trajectory)
   {
     axis_strip_.markers.resize(3*(gcop_trajectory.N+1), default_axis_marker_);
     tf::Transform basepose;
@@ -75,7 +76,7 @@ class GcopTrajectoryVisualizer{
     visualization_markerarray_pub_.publish(axis_strip_);
   }
 
-  inline void publishVelocities(gcop_comm::CtrlTraj &gcop_trajectory)
+  void publishVelocities(gcop_comm::CtrlTraj &gcop_trajectory)
   {
     arrow_strip_.markers.resize(gcop_trajectory.N+1, default_arrow_marker_);
 
@@ -97,7 +98,7 @@ class GcopTrajectoryVisualizer{
     visualization_markerarray_pub_.publish(arrow_strip_);
   }
 
-  inline void publishStdev(gcop_comm::CtrlTraj &gcop_trajectory)
+  void publishStdev(gcop_comm::CtrlTraj &gcop_trajectory)
   {
     if(gcop_trajectory.pos_std.size() <= 0)
       return;//No Stdeviations given
@@ -175,6 +176,18 @@ class GcopTrajectoryVisualizer{
     default_obs_marker_.color.g = 0.0;
     default_obs_marker_.color.a = 1.0;
     default_obs_marker_.pose.orientation.w = 1.0;
+  }
+
+  void setColorLineStrip(double r, double g, double b, double a = 1.0)
+  {
+    line_strip_.color.r = r;
+    line_strip_.color.g = g;
+    line_strip_.color.b = b;
+    line_strip_.color.a = a;
+  }
+  void setID(int id)
+  {
+    line_strip_.id = id;
   }
 
   ~GcopTrajectoryVisualizer()
