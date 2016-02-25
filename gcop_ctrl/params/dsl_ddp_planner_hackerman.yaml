@@ -7,8 +7,8 @@
 #   loop_rate_main:    rate at which ros::spinOnce is called
 #   str_ind: indentation string. Indents debug statements nicely, try "| " or "  "
 
-debug_on: True
-debug_verbose_on: true
+debug_on: False
+debug_verbose_on: False
 send_gcar_ctrl: True
 loop_rate_main: 1000
 str_ind: "| "
@@ -85,10 +85,13 @@ hz_diag: -1.0  # Freq at which diagnostic data is published
 #   size: width of the path line in meters
 #   prop_wp is waypoint properties
 #   prop_path_pve_ddp: for positive velocity
+#   setting alpha to 0 will disable sending commands to rviz
 prop_obs: [1.0,0.0,0.0,0.6]
 
-prop_path_dsl:      [0.0,1.0,0.0,0.5,0.4]
-prop_wp_dsl:        [0.0,0.5,0.0,0.5,0.18,0.18]
+#prop_path_dsl:      [0.0,1.0,0.0,0.5,0.4]
+#prop_wp_dsl:        [0.0,0.5,0.0,0.5,0.18,0.18]
+prop_path_dsl:      [0.0,1.0,0.0,0.0,0.4]         #alpha=0 so it won't be displayed
+prop_wp_dsl:        [0.0,0.5,0.0,0.0,0.18,0.18]   #alpha=0 so it won't be displayed
 
 prop_path_dsl_intp: [1.0,0.0,0.0,0.5,0.4]
 prop_wp_dsl_intp:   [0.5,0.0,0.0,0.5,0.18,0.18]
@@ -105,12 +108,12 @@ prop_wp_nve_ddp:        [0.0,0.25,0.25,0.5,0.18,0.18]
 #   dsl_expand: deicdes whether to expand the whole dsl grid into its graph at init
 #                 Expanding at startup is to be used if startup time and memory is not an issue
 #   dsl_save_final_map:  If true saves the final process occupancy grid which is the input map to dsl
-dsl_expand_at_start: false
-dsl_save_final_map:  false
+dsl_expand_at_start: True
+dsl_save_final_map:  False
 
 ###################################
 # DSL Geometric car settings(static)
-#   dsl_geom_car: Plan the trajectories on se2(x,y,theta) and not just on a x-y grid. All the following properties
+#   dsl_use_geom_car: Plan the trajectories on se2(x,y,theta) and not just on a x-y grid. All the following properties
 #                   are related to it. They are not used otherwise.
 #   dsl_car_dim_and_org: [length_m, breadth_m, org_x_m, org_y_m] org is with respect to center of rectangle
 #   dsl_onlyfwd: true will produce trajectory which only moves forward
@@ -119,13 +122,14 @@ dsl_save_final_map:  false
 #                         It is important if you want the car to be able to drive in reverse if necessary
 #   dsl_prim_w_div: decides the discretization level of wmax in connectivity primitives
 #   TODO: have the option to be able to give custom car geometry
-dsl_use_geom_car: True #(unimplemented)
-dsl_car_dim_and_org: [0.75, 0.43,-0.22,0.0]
-dsl_onlyfwd: True
+dsl_use_geom_car: True
+#dsl_car_dim_and_org: [0.75, 0.43,-0.22,0.0]
+dsl_car_dim_and_org: [0.8, 0.6,-0.22,0.0]
+dsl_onlyfwd: true
 dsl_prim_w_div: 5
-dsl_maxtanphi: 0.577 
+dsl_maxtanphi: 0.4
 dsl_prim_vx_div: 2
-dsl_maxvx: 2
+dsl_maxvx: 0.5
 dsl_backward_penalty: 1.0
 
 ###################################
@@ -134,12 +138,12 @@ dsl_backward_penalty: 1.0
 #   dsl_interp_deg: degree of interpolation. Intp obtains piecewise polynomial curve in x and y wrt to t
 #   dsl_interp_delt: interp divides the global path to way points which are delt apart at avg_speed
 #   dsl_preint_delt: delt for pre-interpolation(deg1) as input to interpolation(deg 1/2/3)
-dsl_avg_speed: 0.9
+dsl_avg_speed: 3.0
 dsl_interp_deg: 3
-dsl_interp_delt: 0.5
-dsl_preint_delt: 4
+dsl_interp_delt: 0.25
+dsl_preint_delt: 1000
 dsl_loop_durn: 5.0       
-dsl_from_curr_posn: False
+dsl_from_curr_posn: True
 dsl_disp_rviz: True
 
 ###################################
@@ -147,10 +151,11 @@ dsl_disp_rviz: True
 #   ddp_t_away: Choose a wpoint on dsl path which is t_away sec away
 #   ddp_loop_durn: duration after which ddp planning is called again
 #   ddp_from_curr_posn: if enabled plans(ddp) from current position else from rivz start
-ddp_t_away: 1.0
+ddp_t_away: 1.5
 ddp_loop_durn: 0.05
 ddp_from_curr_posn: True
 ddp_disp_rviz: True
+ddp_hot_start: false
 
 ###################################
 # DDP settings(static)
@@ -164,27 +169,33 @@ ddp_disp_rviz: True
 #   ddp_niter: max number of iteration until convergence
 #   ddp_tol: convergence tolerance. iter stops when ||f(x_{k+1}-f(x_{k}||<tol
 #   ddp_tol_goal_m: if the dist from goal to start < tol_goal_m then no planning is done
+#   ddp_init_type: init controls in a specific way
+#                  0: with a set of zeros
+#                  1: with constant forward vel and constant angular velocity based on  
+#   ddp_hot_start: if set to true it will initialize the controls with previous controls when ddp is called in loop
 #   TODO: have better convergence criteria and warn user if convergence is not achieved
-ddp_Q:   [0.00,  0.00,  0.00,  0.00,
-          0.00,  0.00,  0.00,  0.00,
-          0.00,  0.00,  0.00,  0.00,
-          0.00,  0.00,  0.00,  0.00]
+ddp_Q:   [1.00,  0.00,  0.00,  0.00,
+          0.00,  5.00,  0.00,  0.00,
+          0.00,  0.00,  5.00,  0.00,
+          0.00,  0.00,  0.00,  1.00]
 ddp_Qf:  [1.0, 0.0, 0.0, 0.0,
           0.0, 1.0, 0.0, 0.0,
           0.0, 0.0, 1.0, 0.0,
           0.0, 0.0, 0.0, 1.0]
 ddp_R:   [0.005, 0.000, 
           0.000, 0.001]
-ddp_cost_disk_penl: 1000    
-ddp_disk_coln_rad: 0.3      
+ddp_cost_disk_penl: 10
+ddp_disk_coln_rad: 0.2
 ddp_mu:       1
 ddp_debug_on: False
-ddp_nseg_minmax: [7,32]
-ddp_tseg_ideal:  0.1
+ddp_nseg_minmax: [7,50]
+ddp_tseg_ideal:  0.04
 ddp_nit_max: 30
 ddp_tol_abs: 1e-6
 ddp_tol_rel: 1e-3
 ddp_tol_goal_m: 0.5
+ddp_init_type: 0 #(unimplemented) mode 0 on
+ddp_brake_at_goal: true
 
 ########################################
 # Obstacle finding parameters
@@ -192,14 +203,14 @@ ddp_tol_goal_m: 0.5
 #   search_radius_max: max radius is meters where to look for obstacles
 #   search_radius_min: min radius is meters where to look for obstacles
 #   obs_search_angle_fwd: only the rays which lies from -a to +a is considered. a is angle wrt to fwd direction
-#   obs_cluster_count_max: maximum number of clusters
+#   obs_cluster_count_max: maximum number of clusters. You can disable dynamic obstacles by setting this to 0
 #   obs_cluster_radius_max: The maximum radius of a cluster. If it lies outside it belongs to another cluster
 #   obs_map_cell_size: The size of pixel when creating an image for clustering
 #   TODO: instead of using search radiuses and angles use velocity of car and ddp plan time to find a search area
-obs_search_radius_max: 10
-obs_search_radius_min: 1.5
-obs_search_angle_fwd: 0.87
-obs_cluster_count_max: 4
+obs_search_radius_max: 10.0
+obs_search_radius_min: 0.2
+obs_search_angle_fwd: 1.57
+obs_cluster_count_max: 6
 obs_cluster_radius_max: 0.5
 obs_map_cell_size: 0.1
      
@@ -207,5 +218,9 @@ obs_map_cell_size: 0.1
 # Gcar settings(static)
 #   gcar_l: Axle length in meters
 #   gcar_r: Gain relating wheel torque to forward acceleration
-gcar_l: 0.5
+#   gcar_minphi: min steering angle. straight is 0 radians
+#   gcar_maxphi: max steering angle. straight is 0 radians
+gcar_l: 0.51
 gcar_r: 1.0
+gcar_minphi: -0.3
+gcar_maxphi: 0.3
