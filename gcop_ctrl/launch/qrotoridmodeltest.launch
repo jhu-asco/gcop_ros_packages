@@ -1,7 +1,8 @@
 <?xml version="1.0"?>
 <launch>	
 	<!--<node name="qrotoridmodeltest" pkg="gcop_ctrl" type="qrotoridmodel" output="screen" launch-prefix="valgrind">-->
+  <param name="display/skip_pub_segments" value="5"/>
 	<node name="qrotoridmodeltest" pkg="gcop_ctrl" type="qrotoridmodel" output="screen">
-    <param name="control_params" type="str" value="$(find gcop_ctrl)/params/qrotoridmodel.cfg"/>
+    <param name="control_params" type="str" value="$(find gcop_ctrl)/params/qrotoridmodelv2.cfg"/>
   </node>
 </launch>

@@ -31,6 +31,7 @@ class QRotorIDModelControl
     vector<VectorXd> obstacles;///< Obstacles
     SO3 &so3;
     bool logged_trajectory_;///< Only Log the GCOP Trajectory once for NOW
+    double max_ko, gain_ko;
 protected:
     inline void so3ToGeometryMsgsQuaternion(geometry_msgs::Quaternion &out, const Matrix3d &in);
     inline void eigenVectorToGeometryMsgsVector(geometry_msgs::Vector3 &out, const Vector3d &in);

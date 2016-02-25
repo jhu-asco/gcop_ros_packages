@@ -8,6 +8,7 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
                                                                                   , visualizer_(nh,frame_id)
                                                                                   , so3(SO3::Instance())
                                                                                   , skip_publish_segments(2), logged_trajectory_(false)
+                                                                                  , max_ko(100), gain_ko(2)
 {
     //Temp Variables
     int N = 100;
@@ -99,6 +100,10 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
     //gn->stdev_initial_state.diagonal()<< 0.017,0.017,0.017, 0.05,0.05,0.05, 0.017,0.017,0.017, 0.05,0.05,0.05, 0.017,0.017,0.017;
     //gn->stdev_params.diagonal()<<0.001, 0.2,0.2,0.2, 0.2,0.2,0.2, 0.05,0.05,0.05, 0.05,0.05,0.05;
 
+    //Rate of avoidance:
+    params_loader_.GetDouble("max_ko",max_ko);
+    params_loader_.GetDouble("gain_ko",gain_ko);
+
     //Obstacles:
     params_loader_.GetVectorXd("obs1",obs_info);
     obstacles.push_back(obs_info);
@@ -178,15 +183,17 @@ void QRotorIDModelControl::setInitialState(const geometry_msgs::Vector3 &localpo
 void QRotorIDModelControl::iterate()
 {
     gn->ko = 0.01;
-    while(gn->ko < 100)
+    while(gn->ko < max_ko)
     {
       ros::Time curr_time = ros::Time::now();
       gn->Iterate();
-      gn->ko = 2*gn->ko;//Increase ko;
+      gn->ko = gain_ko*gn->ko;//Increase ko;
       cout<<"gn.J: "<<(gn->J)<<endl;
       gn->Reset();
-      ROS_INFO("Time taken for 1 iter: %f",(ros::Time::now() - curr_time).toSec());
+      ROS_INFO("Time taken for 1 iter: %f, %f",(ros::Time::now() - curr_time).toSec(), gn->ko);
+      cout<<"Final Pos: "<<xs.back().p.transpose()<<endl;
       //ROS_INFO("Press Key to continue...");//DEBUG
+      //cout<<"Stdev: "<<(gn->xs_std.transpose())<<endl;
       //cout<<"Stdev Final: "<<(gn->xs_std.rightCols<1>()).transpose()<<endl;
       //getchar();
     }
