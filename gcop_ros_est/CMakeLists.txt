@@ -165,8 +165,8 @@ ${Boost_INCLUDE_DIRS}
 # add_library(gcop_est
 #   src/${PROJECT_NAME}/gcop_est.cpp
 # )
-add_library(cam_est src/nodelets/estimator1.cpp)
-target_link_libraries(cam_est ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${catkin_LIBRARIES})
+#add_library(cam_est src/nodelets/estimator1.cpp)
+#target_link_libraries(cam_est ${GCOP_LIBRARIES} ${OpenCV_LIBS} ${catkin_LIBRARIES})
 
 ## Declare a cpp executable
 # add_executable(gcop_est_node src/gcop_est_node.cpp)

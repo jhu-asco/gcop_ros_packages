@@ -140,46 +140,46 @@ constexpr unsigned int str2int(const char* str, int h = 0)
 
 void FindBlobs(const cv::Mat &binary, std::vector < std::vector<cv::Point2i> > &blobs)
 {
-    blobs.clear();
+  blobs.clear();
 
-    // Fill the label_image with the blobs
-    // 0  - background
-    // 1  - unlabelled foreground
-    // 2+ - labelled foreground
+  // Fill the label_image with the blobs
+  // 0  - background
+  // 1  - unlabelled foreground
+  // 2+ - labelled foreground
 
-    cv::Mat label_image;
-    binary.convertTo(label_image, CV_32SC1);
+  cv::Mat label_image;
+  binary.convertTo(label_image, CV_32SC1);
 
-    int label_count = 2; // starts at 2 because 0,1 are used already
+  int label_count = 2; // starts at 2 because 0,1 are used already
 
-    for(int y=0; y < label_image.rows; y++) {
-        int *row = (int*)label_image.ptr(y);
-        for(int x=0; x < label_image.cols; x++) {
-            if(row[x] != 1) {
-                continue;
-            }
+  for(int y=0; y < label_image.rows; y++) {
+    int *row = (int*)label_image.ptr(y);
+    for(int x=0; x < label_image.cols; x++) {
+      if(row[x] != 1) {
+        continue;
+      }
 
-            cv::Rect rect;
-            cv::floodFill(label_image, cv::Point(x,y), label_count, &rect, 0, 0, 4);
+      cv::Rect rect;
+      cv::floodFill(label_image, cv::Point(x,y), label_count, &rect, 0, 0, 4);
 
-            std::vector <cv::Point2i> blob;
+      std::vector <cv::Point2i> blob;
 
-            for(int i=rect.y; i < (rect.y+rect.height); i++) {
-                int *row2 = (int*)label_image.ptr(i);
-                for(int j=rect.x; j < (rect.x+rect.width); j++) {
-                    if(row2[j] != label_count) {
-                        continue;
-                    }
+      for(int i=rect.y; i < (rect.y+rect.height); i++) {
+        int *row2 = (int*)label_image.ptr(i);
+        for(int j=rect.x; j < (rect.x+rect.width); j++) {
+          if(row2[j] != label_count) {
+            continue;
+          }
 
-                    blob.push_back(cv::Point2i(j,i));
-                }
-            }
-
-            blobs.push_back(blob);
-
-            label_count++;
+          blob.push_back(cv::Point2i(j,i));
         }
+      }
+
+      blobs.push_back(blob);
+
+      label_count++;
     }
+  }
 }
 
 int GcarStateToVector2d(Vector2d &p, const GcarState &x)
@@ -192,10 +192,10 @@ int GcarStateToVector2d(Vector2d &p, const GcarState &x)
 
 template<class T>
 std::vector<T> selectVecElems(const std::vector<T>& vec, std::vector<std::size_t> indxs){
-    std::vector<T> ret;
-    for (std::size_t ind: indxs)
-        ret.push_back(vec.at(ind));
-    return ret;
+  std::vector<T> ret;
+  for (std::size_t ind: indxs)
+    ret.push_back(vec.at(ind));
+  return ret;
 }
 
 /**
@@ -265,7 +265,7 @@ void findKClustersWithSizeConstraint(vector<vector<size_t>>& clusters, const vec
 
 
 void findCircumCircle(vector<Vector2d>& pts_cart_center_circle, vector<double>& radiuses_circle,
-                                const vector<vector<size_t>>&clusters,const vector<Vector2d>& pts_cart){
+                      const vector<vector<size_t>>&clusters,const vector<Vector2d>& pts_cart){
 
   pts_cart_center_circle.resize(clusters.size());
   radiuses_circle.resize(clusters.size());
@@ -446,23 +446,23 @@ private:
 };
 
 CallBackDslDdp::CallBackDslDdp():
-                        nh_p_("~"),
-                        loop_rate_main_(1000),
-                        ind_count_(-1),
-                        dsl_cond_feas_s_(false),
-                        dsl_cond_feas_g_(false),
-                        dsl_done_(false),
-                        p_dsl_map_(nullptr),
-                        p_dsl_cost2d_(nullptr),
-                        p_dsl_grid2d_(nullptr),
-                        p_dsl_conn2d_(nullptr),
-                        p_dsl_search2d_(nullptr),
-                        p_dsl_costcar_(nullptr),
-                        p_dsl_gridcar_(nullptr),
-                        p_dsl_conncar_(nullptr),
-                        p_dsl_searchcar_(nullptr),
-                        sys_gcar_(),
-                        ddp_cost_lq_(sys_gcar_, 1, GcarState(Matrix3d::Identity(), 0))
+                            nh_p_("~"),
+                            loop_rate_main_(1000),
+                            ind_count_(-1),
+                            dsl_cond_feas_s_(false),
+                            dsl_cond_feas_g_(false),
+                            dsl_done_(false),
+                            p_dsl_map_(nullptr),
+                            p_dsl_cost2d_(nullptr),
+                            p_dsl_grid2d_(nullptr),
+                            p_dsl_conn2d_(nullptr),
+                            p_dsl_search2d_(nullptr),
+                            p_dsl_costcar_(nullptr),
+                            p_dsl_gridcar_(nullptr),
+                            p_dsl_conncar_(nullptr),
+                            p_dsl_searchcar_(nullptr),
+                            sys_gcar_(),
+                            ddp_cost_lq_(sys_gcar_, 1, GcarState(Matrix3d::Identity(), 0))
 {
   ind_count_++;
   cout<<"**************************************************************************"<<endl;
@@ -1006,9 +1006,9 @@ CallBackDslDdp::occGridDilateAndFilterUnseen(const nav_msgs::OccupancyGrid& og_o
   for(int n=0; n<blobs.size(); n++)
     if(blobs[n].size()>og_tol_unseen_n)
       for(int m=0; m<blobs[n].size(); m++)
-          img_og_unseen_fild.at<uchar>(blobs[n][m].y,blobs[n][m].x)=100;
+        img_og_unseen_fild.at<uchar>(blobs[n][m].y,blobs[n][m].x)=100;
 
-   //Combine the dilated obstacles with the larger unseen cell clusters set as obstacle
+  //Combine the dilated obstacles with the larger unseen cell clusters set as obstacle
   cv::Mat img_og_dild_fild = cv::max(img_og_unseen_fild,img_og_dild);
 
   //display the final occ grid in rviz
@@ -1127,10 +1127,10 @@ CallBackDslDdp::dslInit()
   int  dsl_prim_vx_div = yaml_node_["dsl_prim_vx_div"].as<int>();
   double dsl_maxvx = yaml_node_["dsl_maxvx"].as<double>();
   bool dsl_save_final_map = yaml_node_["dsl_save_final_map"].as<bool>();
-  double l,b,ox,oy;
+  dsl::CarGeom car_geom;
   if(dsl_use_geom_car_){
     Vector4d geom = yaml_node_["dsl_car_dim_and_org"].as<Vector4d>();
-    l = geom(0); b = geom(1); ox = geom(2); oy = geom(3);
+    car_geom.l = geom(0); car_geom.b = geom(1); car_geom.ox = geom(2); car_geom.oy = geom(3);
   }
   double bp = yaml_node_["dsl_backward_penalty"].as<double>();
   double onlyfwd = yaml_node_["dsl_onlyfwd"].as<bool>();
@@ -1143,7 +1143,7 @@ CallBackDslDdp::dslInit()
   p_dsl_map_ = new double[og_final_.info.width*og_final_.info.height];
   for (int i = 0; i < og_final_.info.width*og_final_.info.height; ++i)
     p_dsl_map_[i] = 1000*(double)img_og_final_.data[i];
-
+  dsl::Map2d dsl_map2d(map_width, map_height, p_dsl_map_);
   if(dsl_save_final_map){
     if(config_.dyn_debug_on)
       cout<<indStr(1)+"Saving the final processed occ grid in gcop_ctrl/map/map_final.ppm"<<endl;
@@ -1152,7 +1152,7 @@ CallBackDslDdp::dslInit()
   }
 
   if(dsl_use_geom_car_){
-    p_dsl_gridcar_   =  new dsl::CarGrid(l,b,ox,oy,map_width, map_height,  p_dsl_map_, cell_width, cell_height, M_PI/16, dsl_cost_scale, 0.5);
+    p_dsl_gridcar_   =  new dsl::CarGrid(car_geom,dsl_map2d, cell_width, cell_height, M_PI/16, dsl_cost_scale, 0.5);
     p_dsl_conncar_   =  new dsl::CarConnectivity(*p_dsl_gridcar_,bp, onlyfwd, dsl_prim_w_div,dsl_maxtanphi, dsl_prim_vx_div,dsl_maxvx);
     p_dsl_costcar_   =  new dsl::CarCost();
     p_dsl_searchcar_ =  new dsl::GridSearch<3, Matrix3d>(*p_dsl_gridcar_, *p_dsl_conncar_, *p_dsl_costcar_, expand_at_start);
@@ -1203,7 +1203,7 @@ CallBackDslDdp::dslPlan()
       //convert the se2 path in to a simpler axy path
       pathaxy_ll_opt_.clear();
       for (vector<dsl::SE2Cell>::iterator it = pathcar_ll_opt.cells.begin(); it !=  pathcar_ll_opt.cells.end(); ++it)
-          pathaxy_ll_opt_.push_back(it->c);
+        pathaxy_ll_opt_.push_back(it->c);
       pathaxy_ll_init = pathaxy_ll_opt_;
     }else{
       dsl::GridPath<2> path2d_ll_init,path2d_ll_opt;
@@ -1217,9 +1217,9 @@ CallBackDslDdp::dslPlan()
       p_dsl_search2d_->OptPath(path2d_ll_init, path2d_ll_opt);
       pathaxy_ll_opt_.clear();
       for (vector<dsl::Cell<2>>::iterator it = path2d_ll_opt.cells.begin(); it !=  path2d_ll_opt.cells.end(); ++it)
-          pathaxy_ll_opt_.push_back(Vector3d(0,it->c(0),it->c(1)));
+        pathaxy_ll_opt_.push_back(Vector3d(0,it->c(0),it->c(1)));
       for (vector<dsl::Cell<2>>::iterator it = path2d_ll_init.cells.begin(); it !=  path2d_ll_init.cells.end(); ++it)
-          pathaxy_ll_init.push_back(Vector3d(0,it->c(0),it->c(1)));
+        pathaxy_ll_init.push_back(Vector3d(0,it->c(0),it->c(1)));
     }
     ros::Time t_end =  ros::Time::now();
 
@@ -1505,7 +1505,7 @@ CallBackDslDdp::ddpPlan(void){
   if(dist_start_goal < ddp_tol_goal_m_){
     if(config_.dyn_debug_on)
       cout<<indStr(1)+"DDP planning not done because robot is already close to goal. Dist to goal:"
-          <<dist_start_goal<<endl;
+      <<dist_start_goal<<endl;
     ind_count_--;
     return false;
   }
@@ -1517,7 +1517,7 @@ CallBackDslDdp::ddpPlan(void){
   int n_nodes = x_binll_intp_.size();
   Vector3d pos_ll_ddp_start = (tfm_world2og_ll_.inverse()*pose_binw_ddp_start_).translation();
   VectorXd dist_sq =(x_binll_intp_ - VectorXd::Ones(n_nodes)*pos_ll_ddp_start(0)).array().square()
-                               +(y_binll_intp_ - VectorXd::Ones(n_nodes)*pos_ll_ddp_start(1)).array().square();
+                                   +(y_binll_intp_ - VectorXd::Ones(n_nodes)*pos_ll_ddp_start(1)).array().square();
   VectorXd::Index idx_min; dist_sq.minCoeff(&idx_min);
   int idx_nearest = (int)idx_min;
 
@@ -1530,8 +1530,8 @@ CallBackDslDdp::ddpPlan(void){
 
   //  DDP goal
   pose_binw_ddp_goal_ = tfm_world2og_ll_
-                  *Translation3d(x_binll_intp_(idx_t_away),y_binll_intp_(idx_t_away),0)
-                  *AngleAxisd(a_binll_intp_(idx_t_away), Vector3d::UnitZ());
+      *Translation3d(x_binll_intp_(idx_t_away),y_binll_intp_(idx_t_away),0)
+  *AngleAxisd(a_binll_intp_(idx_t_away), Vector3d::UnitZ());
 
   //DDP path length in distance and time
   double tf = t_dsl_intp_(idx_t_away) - t_dsl_intp_(idx_nearest);
@@ -1676,8 +1676,8 @@ CallBackDslDdp::obsDetect(vector<Vector2d>& centers_encirc, vector<double>& rads
   double mina = msg_lidar_.angle_min;
   double maxa = msg_lidar_.angle_max;
   int n_skip = abs(mina + obs_search_angle_fwd_)/dela;
-//  cout<<"mina:"<<mina<<"\t maxa:"<<maxa<<"\t dela:"<<dela<<"\t n_skip"<<n_skip<<endl;
-//  cout<<"n_rays:"<<msg_lidar_.ranges.size();
+  //  cout<<"mina:"<<mina<<"\t maxa:"<<maxa<<"\t dela:"<<dela<<"\t n_skip"<<n_skip<<endl;
+  //  cout<<"n_rays:"<<msg_lidar_.ranges.size();
   // Find ranges which lie in the radius
   vector<float>::iterator it_begin = msg_lidar_.ranges.begin()+n_skip;
   vector<float>::iterator it_end   = msg_lidar_.ranges.end()-n_skip;
@@ -1685,14 +1685,14 @@ CallBackDslDdp::obsDetect(vector<Vector2d>& centers_encirc, vector<double>& rads
   std::vector<size_t> idxs_inrange;
   vector<float>::iterator it= find_if(it_begin,it_end , [=](float r){return ((r < obs_search_radius_max_)&& (r > obs_search_radius_min_) );});
   while (it != it_end) {
-     idxs_inrange.push_back(std::distance(msg_lidar_.ranges.begin(), it));
+    idxs_inrange.push_back(std::distance(msg_lidar_.ranges.begin(), it));
 
-     it = find_if(++it, it_end, [=](float r){return ((r < obs_search_radius_max_)&& (r > obs_search_radius_min_) );});
+    it = find_if(++it, it_end, [=](float r){return ((r < obs_search_radius_max_)&& (r > obs_search_radius_min_) );});
   }
 
-//  for(int i=0;i<idxs_inrange.size();i++)
-//    cout<<","<<idxs_inrange[i];
-//  cout<<endl;
+  //  for(int i=0;i<idxs_inrange.size();i++)
+  //    cout<<","<<idxs_inrange[i];
+  //  cout<<endl;
 
   //Get the obstacle points
   vector<Vector2d> pts_polar(idxs_inrange.size());
@@ -1716,9 +1716,9 @@ CallBackDslDdp::obsDetect(vector<Vector2d>& centers_encirc, vector<double>& rads
 
   ros::Time t_end =  ros::Time::now();
   if(config_.dyn_debug_verbose_on){
-      cout<<indStr(1)+"Obstacle detection done:"<<endl;
-      cout<<indStr(1)+"delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
-    }
+    cout<<indStr(1)+"Obstacle detection done:"<<endl;
+    cout<<indStr(1)+"delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
+  }
 
   ind_count_--;
 }
