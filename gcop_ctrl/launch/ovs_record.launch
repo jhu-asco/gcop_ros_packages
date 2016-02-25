@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="rosbag" type="record" name="rosbag" args="-o dji_data /guidance/depth_image /guidance/left/image_raw /guidance/right/image_raw /guidance/left/depth_image /guidance/left/camera_info /guidance/right/camera_info /tf" />
+</launch>

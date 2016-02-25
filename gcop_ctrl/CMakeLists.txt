@@ -43,6 +43,13 @@ find_package(OpenCV REQUIRED COMPONENTS highgui imgproc)
 include(${OpenCV_INCLUDE_DIRS})
 set(LIBS ${LIBS} ${OpenCV_LIBRARIES})
 
+find_package(OpenMP)
+
+if (OPENMP_FOUND)
+  set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+  set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+endif()
+
 #pkg_check_modules(YAML_CPP yaml-cpp)
 #if(${YAML_CPP_VERSION} VERSION_GREATER 0.5)
 #    add_definitions(-DHAVE_NEW_YAMLCPP)
@@ -189,8 +196,8 @@ add_executable(qrotoridmodel src/qrotoridmodeltest.cc)
 target_link_libraries(qrotoridmodel qrotoridmodel_control ${LIBS} ${catkin_LIBRARIES})
 add_dependencies(qrotoridmodel ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
-add_executable(plotgcoptraj src/plot_gcop_trajectories.cpp)
-target_link_libraries(plotgcoptraj ${catkin_LIBRARIES})
+#add_executable(plotgcoptraj src/plot_gcop_trajectories.cpp)
+#target_link_libraries(plotgcoptraj ${catkin_LIBRARIES})
 
 add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
 target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} ${LIBS})
