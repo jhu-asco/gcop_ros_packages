@@ -104,6 +104,11 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
   camera_info_sub = nh.subscribe<sensor_msgs::CameraInfo>("camera_info", 1000,
     &HrotorOVS::handleCameraInfo,
     this, ros::TransportHints().tcpNoDelay());
+  velocity_sub = nh.subscribe<geometry_msgs::Vector3>("global_vel", 10, 
+    &HrotorOVS::handleVelocity,
+    this, ros::TransportHints().tcpNoDelay());
+  
+  current_velocity.setZero();
 
   traj_pub = nh.advertise<gcop_comm::CtrlTraj>("/hrotor_ovs/traj", 1);
   //traj_marker_pub = nh.advertise<visualization_msgs::Marker>("/hrotor_ovs/traj_marker", 1);
@@ -211,6 +216,13 @@ void HrotorOVS::handleDepth(const sensor_msgs::ImageConstPtr& msg)
     */
     waitKey(1);
   }
+}
+
+void HrotorOVS::handleVelocity(const geometry_msgs::Vector3ConstPtr& msg)
+{
+  current_velocity[0] = msg->x;
+  current_velocity[1] = msg->y;
+  current_velocity[2] = msg->z;
 }
 
 void HrotorOVS::handleImage(const sensor_msgs::ImageConstPtr& msg)
@@ -525,9 +537,10 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
   imshow("OVS Inlier Matches", inlier_match_img);
   waitKey(1);
 
+  // Set initial conditions
   xs1[0].R = attitude_transform.topLeftCorner<3,3>(); 
-  // TODO: Set velocity in VS frame here
-  //xs1[0].v =  
+  // Set velocity in VS frame 
+  xs1[0].v = vs_in_opti_eig.toRotationMatrix().transpose()*current_velocity; 
   Vector3d logRi;
   Matrix3d Ri;
   //gcop::SO3::Instance().log(logRf, xs1.back().R);
