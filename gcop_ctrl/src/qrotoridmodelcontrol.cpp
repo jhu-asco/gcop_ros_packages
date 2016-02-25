@@ -53,6 +53,8 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
     }
     x0.u<<0,0,0;
     xs.resize(N+1,x0);
+    eigen_values_stdev.resize(N+1);
+    eigen_vectors_stdev.resize(N+1);
 
     //XF:
     xf.p = pxf.segment<3>(3);
@@ -197,6 +199,22 @@ void QRotorIDModelControl::iterate()
       //cout<<"Stdev Final: "<<(gn->xs_std.rightCols<1>()).transpose()<<endl;
       //getchar();
     }
+
+    SelfAdjointEigenSolver<Matrix3d> es;
+    for(int i = 0; i < xs.size(); i++)
+    {
+      es.computeDirect(gn->xs_invcov[i]);
+      eigen_vectors_stdev[i] = es.eigenvectors();
+      eigen_values_stdev[i] = es.eigenvalues().cwiseInverse().cwiseSqrt();
+
+      if(eigen_vectors_stdev[i].col(0).transpose()*(eigen_vectors_stdev[i].col(1).cross(eigen_vectors_stdev[i].col(2)))<0)
+      {
+        eigen_vectors_stdev[i].col(0).swap(eigen_vectors_stdev[i].col(1));//Swap the values
+        double temp = eigen_values_stdev[i](1);
+        eigen_values_stdev[i](1) = eigen_values_stdev[i](0);
+        eigen_values_stdev[i](0) = temp;
+      }
+    }
 }
 void QRotorIDModelControl::logTrajectory(std::string filename)
 {
@@ -213,11 +231,15 @@ void QRotorIDModelControl::logTrajectory(std::string filename)
     //Log Trajectory:
     Vector3d rpy;
     so3.g2q(rpy,xs[0].R);
-    trajfile<<ts[0]<<" "<<xs[0].p.transpose()<<" "<<xs[0].v.transpose()<<" "<<rpy.transpose()<<" "<<xs[0].w.transpose()<<" 0 "<<xs[0].u.transpose()<<" "<<(gn->xs_std.col(0).transpose())<<endl;
+    //Get xs stdev and orientation matrix:
+    Vector3d rpy_std;
+    so3.g2q(rpy_std,eigen_vectors_stdev[0]);
+    trajfile<<ts[0]<<" "<<xs[0].p.transpose()<<" "<<xs[0].v.transpose()<<" "<<rpy.transpose()<<" "<<xs[0].w.transpose()<<" 0 "<<xs[0].u.transpose()<<" "<<(eigen_values_stdev[0].transpose())<<" "<<(rpy_std.transpose())<<endl;
     for(int i = 1; i < N+1;i++)
     {
       so3.g2q(rpy,xs[i].R);
-      trajfile<<ts[i]<<" "<<xs[i].p.transpose()<<" "<<xs[i].v.transpose()<<" "<<rpy.transpose()<<" "<<xs[i].w.transpose()<<" "<<us[i-1][0]<<" "<<xs[i].u.transpose()<<" "<<(gn->xs_std.col(i).transpose())<<endl;
+      so3.g2q(rpy_std,eigen_vectors_stdev[i]);
+      trajfile<<ts[i]<<" "<<xs[i].p.transpose()<<" "<<xs[i].v.transpose()<<" "<<rpy.transpose()<<" "<<xs[i].w.transpose()<<" "<<us[i-1][0]<<" "<<xs[i].u.transpose()<<" "<<(eigen_values_stdev[i].transpose())<<" "<<(rpy_std.transpose())<<endl;
     }
   }
 }
@@ -282,10 +304,12 @@ void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Ma
   {
     eigenVectorToGeometryMsgsVector(trajectory.statemsg.at(ind).basepose.translation, yawM*xs[count].p + pos_);
     so3ToGeometryMsgsQuaternion(trajectory.statemsg.at(ind).basepose.rotation, yawM*xs[count].R);
+    so3ToGeometryMsgsQuaternion(trajectory.pos_std.at(ind).rot_std, yawM*eigen_vectors_stdev[count]);
+    eigenVectorToGeometryMsgsVector(trajectory.pos_std.at(ind).scale_std,4*eigen_values_stdev[count]);
     //eigenVectorToGeometryMsgsVector(trajectory.statemsg[count].basetwist.linear,xs[count].v);
     //eigenVectorToGeometryMsgsVector(trajectory.statemsg[count].basetwist.angular,xs[count].w);
-    Vector3d x_std = gn->xs_std.col(count);
-    eigenVectorToGeometryMsgsVector(trajectory.pos_std.at(ind),4*x_std);//Diameter instead of radius
+    //double x_std_max =gn->xs_std.col(count).maxCoeff();
+    //trajectory.pos_std.at(ind).x = trajectory.pos_std.at(ind).y =trajectory.pos_std.at(ind).z =4*x_std_max;
     ind++;
   }
   for (int count = 0;count<N;count++)
@@ -306,5 +330,5 @@ void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Ma
   //DEBUG:
   Vector3d rpy;
   so3.g2q(rpy, xs[N].R);
-//  cout<<" "<<xs[N].p.transpose()<<" "<<xs[N].v.transpose()<<" "<<rpy.transpose()<<" "<<xs[N].w.transpose()<<" "<<xs[N].u.transpose()<<endl;
+  cout<<" "<<xs[N].p.transpose()<<" "<<xs[N].v.transpose()<<" "<<rpy.transpose()<<" "<<xs[N].w.transpose()<<" "<<xs[N].u.transpose()<<endl;
 }

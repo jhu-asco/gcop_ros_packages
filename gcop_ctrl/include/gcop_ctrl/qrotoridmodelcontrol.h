@@ -57,6 +57,8 @@ public:
     VectorXd tks;
     Matrix<double,13,1> p_mean;
     int skip_publish_segments;///< Skip these segments for publishing gcop trajectory
+    vector<Matrix3d> eigen_vectors_stdev;///<Stdev eigen vectors
+    vector<Vector3d> eigen_values_stdev;///< Stdev of eigen values
  public:
     vector<QRotorIDState> xs;
     vector<Vector4d> us;
