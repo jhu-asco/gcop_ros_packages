@@ -27,10 +27,18 @@ void getmeasurementCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, string trajfi
       {
         if(!getline(ifile,temp))
             goto RETURN_FUNC2;
+        if(trajectory.N == 0)
+          break;
       }
-      trajectory.N++;
       stringstream ss(temp);
       ss>>temp_d;//time;
+      /*if(temp_d < 0)
+      {
+          continue;
+      }
+      */
+      
+      trajectory.N++;
       trajectory.time.push_back(temp_d);
       ss>>current_pos[0]>>current_pos[1]>>current_pos[2];
       if(trajectory.N == 1)
@@ -67,10 +75,12 @@ void getMPCCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, string trajfile, int 
       {
         if(!getline(ifile,temp))
             goto RETURN_FUNC;
+        if(trajectory.N == 0)
+          break;
       }
-      trajectory.N++;
       stringstream ss(temp);
       ss>>temp_d;//time;
+      trajectory.N++;
       trajectory.time.push_back(temp_d);
       ss>>current_state.basepose.translation.x>>current_state.basepose.translation.y>>current_state.basepose.translation.z;
       for(int i = 0; i < 3; i++)
@@ -97,7 +107,8 @@ RETURN_FUNC:
 
 void timerCallback(const ros::TimerEvent &event, string trajfile, bool mpcmode, int skip_segments)
 {
-  double obs[8] = {0.3, 2,1.1,0, 0,0,1,0};
+  double obs[8] = {0.5, 1,0,0, 0,0,1,0};
+  //double obs[8] = {0.3, 2,1.1,0, 0,0,1,0};
   visualizer_->publishObstacle(obs,1,obs[7]);
   gcop_comm::CtrlTraj trajectory;
   if(mpcmode)

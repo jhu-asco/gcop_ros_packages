@@ -11,6 +11,7 @@
 #include <ros/ros.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/Image.h>
+#include <geometry_msgs/Vector3.h>
 
 #include <gcop/body3d.h>
 
@@ -33,6 +34,7 @@ private:
   void handleDepth(const sensor_msgs::ImageConstPtr& msg);
   void handleImage(const sensor_msgs::ImageConstPtr& msg);
   void handleCameraInfo(const sensor_msgs::CameraInfoConstPtr& msg);
+  void handleVelocity(const geometry_msgs::Vector3ConstPtr& msg);
   void cbReconfig(gcop_ctrl::HrotorOVSConfig &config, uint32_t level);
 
   void ovsHrotor(std::vector<Eigen::Vector3d> pts3d, std::vector<Eigen::Vector2d> pts2d, 
@@ -53,12 +55,15 @@ private:
   void getKeypointsAndDescriptors(cv::Mat& im, std::vector<cv::KeyPoint>& kps, 
     cv::Mat& desc_gpu);
   void generateTrajectory(cv::Mat im, cv::Mat depths, cv::Mat im_goal);
+  void saveGoalImage();
+  void ovsCallback(const ros::TimerEvent&);
 
   GcopTrajectoryVisualizer gtv;
 
   bool has_intrinsics;
   ros::Time img_time_stamp;
 
+  Eigen::Vector3d current_velocity;
   cv::Mat current_image, current_depth, im_goal;
   cv::Mat K;
   cv::Mat distcoeff;
@@ -69,9 +74,12 @@ private:
   ros::Subscriber camera_info_sub;
   ros::Subscriber image_sub;
   ros::Subscriber depth_sub;
+  ros::Subscriber velocity_sub;
 
   ros::Publisher traj_pub;
   ros::Publisher traj_marker_pub;
+
+  ros::Timer ovs_timer;
 
   dynamic_reconfigure::Server<gcop_ctrl::HrotorOVSConfig> dyn_server;
 
@@ -83,6 +91,8 @@ private:
   double imageQ;
   bool use_velocities;
   bool use_depth_mm;
+  bool iterate_cont;
+  bool send_trajectory;
   std::string world_frame, body_frame;
 
   tf::StampedTransform start_tf;

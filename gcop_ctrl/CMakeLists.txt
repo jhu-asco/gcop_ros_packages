@@ -3,6 +3,10 @@ project(gcop_ctrl)
 set(CMAKE_BUILD_TYPE Release)
 add_definitions(-g -std=c++0x -pthread)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+option(BUILD_CAR "builds car executables" OFF)
+option(BUILD_OVS "builds Optimal Visual Servoing executables" OFF)
+option(BUILD_QUAD "builds quadcopter control executables" ON)
+option(BUILD_MBS "builds quadcopter control executables" ON)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
@@ -42,6 +46,13 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 find_package(OpenCV REQUIRED COMPONENTS highgui imgproc)
 include(${OpenCV_INCLUDE_DIRS})
 set(LIBS ${LIBS} ${OpenCV_LIBRARIES})
+
+find_package(OpenMP)
+
+if (OPENMP_FOUND)
+  set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+  set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+endif()
 
 #pkg_check_modules(YAML_CPP yaml-cpp)
 #if(${YAML_CPP_VERSION} VERSION_GREATER 0.5)
@@ -147,54 +158,64 @@ include_directories(
   include
 )
 
-## Declare a cpp library
- add_library(qrotoridmodel_control
-   src/qrotoridmodelcontrol.cpp
- )
-
 ## Declare a cpp executable
 # add_executable(gcop_ctrl_node src/gcop_ctrl_node.cpp)
 
 #add_executable(chainload src/chainload.cc)
 #target_link_libraries(chainload ${LIBS} ${catkin_LIBRARIES})
 #add_dependencies(chainload ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+if (BUILD_MBS)
+  add_executable(mbstest src/mbstest.cc)
+  target_link_libraries(mbstest ${LIBS} ${catkin_LIBRARIES})
+  add_dependencies(mbstest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
-add_executable(mbstest src/mbstest.cc)
-target_link_libraries(mbstest ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(mbstest ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
-#
-add_executable(mbsnode src/mbsnode.cc)
-target_link_libraries(mbsnode ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(mbsnode ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+  add_executable(mbsnode src/mbsnode.cc)
+  target_link_libraries(mbsnode ${LIBS} ${catkin_LIBRARIES})
+  add_dependencies(mbsnode ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 #
 #add_executable(mbssim src/mbssim.cc)
 #target_link_libraries(mbssim ${LIBS} ${catkin_LIBRARIES})
 #add_dependencies(mbssim ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 #
-add_library(utils src/utils.cc)
-target_link_libraries(utils ${LIBS} ${catkin_LIBRARIES})
+endif (BUILD_MBS)
 
-#add_executable(hrotor_ovs src/hrotor_ovs.cc)
-#target_link_libraries(hrotor_ovs utils ${LIBS} ${catkin_LIBRARIES})
-#add_dependencies(hrotor_ovs ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp gcop_ctrl_generate_messages_cpp)
+if (BUILD_OVS)
+  add_executable(hrotor_ovs src/hrotor_ovs.cc)
+  target_link_libraries(hrotor_ovs utils ${LIBS} ${catkin_LIBRARIES})
+  add_dependencies(hrotor_ovs ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp gcop_ctrl_generate_messages_cpp)
 
-#add_executable(vs_evaluate src/vs_evaluate.cc)
-#target_link_libraries(vs_evaluate ${LIBS} ${catkin_LIBRARIES})
+  add_executable(vs_evaluate src/vs_evaluate.cc)
+  target_link_libraries(vs_evaluate ${LIBS} ${catkin_LIBRARIES})
 
-add_executable(rcctrl src/rccartest.cc)
-target_link_libraries(rcctrl ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(rcctrl ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+  add_library(utils src/utils.cc)
+  target_link_libraries(utils ${LIBS} ${catkin_LIBRARIES})
+endif (BUILD_OVS)
 
-add_executable(qrotoridmodel src/qrotoridmodeltest.cc)
-target_link_libraries(qrotoridmodel qrotoridmodel_control ${LIBS} ${catkin_LIBRARIES})
-add_dependencies(qrotoridmodel ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+if (BUILD_QUAD)
+  add_executable(qrotoridmodel src/qrotoridmodeltest.cc)
+  target_link_libraries(qrotoridmodel qrotoridmodel_control ${LIBS} ${catkin_LIBRARIES})
+  add_dependencies(qrotoridmodel ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
-add_executable(plotgcoptraj src/plot_gcop_trajectories.cpp)
-target_link_libraries(plotgcoptraj ${catkin_LIBRARIES})
+## Declare a cpp library
+ add_library(qrotoridmodel_control
+   src/qrotoridmodelcontrol.cpp
+ )
+endif (BUILD_QUAD)
 
-add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
-target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} ${LIBS})
-add_dependencies(dsl_ddp_planner ${PROJECT_NAME}_gencfg )
+if (BUILD_CAR)
+  add_executable(rcctrl src/rccartest.cc)
+  target_link_libraries(rcctrl ${LIBS} ${catkin_LIBRARIES})
+  add_dependencies(rcctrl ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
+
+
+#add_executable(plotgcoptraj src/plot_gcop_trajectories.cpp)
+#target_link_libraries(plotgcoptraj ${catkin_LIBRARIES})
+
+  add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
+  target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} ${LIBS})
+  add_dependencies(dsl_ddp_planner ${PROJECT_NAME}_gencfg )
+
+endif (BUILD_CAR)
 
 #add_executable(gcar_sim src/gcar_sim.cpp)
 #target_link_libraries(gcar_sim ${catkin_LIBRARIES} ${LIBS})

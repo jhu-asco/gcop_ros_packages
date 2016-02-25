@@ -51,6 +51,7 @@ find_package(catkin REQUIRED COMPONENTS
 	 Ctrl.msg
 	 State.msg
 	 CtrlTraj.msg
+	 Stdev.msg
      CurrPose.msg
 	 Iteration_req.msg
  )
