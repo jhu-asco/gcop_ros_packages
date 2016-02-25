@@ -12,6 +12,8 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <ctime>
+
 #include <gcop/body3d.h>
 #include <gcop/hrotor.h>
 //#include <gcop/utils.h>
@@ -39,6 +41,8 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
   hrotor_iterations(200),
   imageQ(.01),
   use_velocities(true),
+  iterate_cont(false),
+  send_trajectory(false),
   gtv(nh, "world")
 {
   std::string im_goal_filename;
@@ -103,6 +107,8 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
   traj_pub = nh.advertise<gcop_comm::CtrlTraj>("/hrotor_ovs/traj", 1);
   //traj_marker_pub = nh.advertise<visualization_msgs::Marker>("/hrotor_ovs/traj_marker", 1);
 
+  ovs_timer = nh.createTimer(ros::Rate(2), &HrotorOVS::ovsCallback, this); 
+
   ROS_INFO("Initialized");
 }
 
@@ -112,6 +118,11 @@ void HrotorOVS::cbReconfig(gcop_ctrl::HrotorOVSConfig &config, uint32_t level)
   final_time = config.final_time;
   hrotor_iterations = config.hrotor_iterations;
   use_velocities = config.use_velocities;
+  if(iterate_cont && !config.iterate_cont)
+  {
+    config.send_trajectory = false;
+    config.iterate = false;
+  }
   if(config.iterate && !config.send_trajectory)
   {
     generateTrajectory(current_image, current_depth, im_goal); 
@@ -119,10 +130,55 @@ void HrotorOVS::cbReconfig(gcop_ctrl::HrotorOVSConfig &config, uint32_t level)
   }
   else if(config.send_trajectory && !config.iterate)
   {
-    traj_pub.publish(traj_msg);
-    config.send_trajectory = false;
-    ROS_INFO("Sent trajectory");
+    if(!iterate_cont)
+    {
+      traj_pub.publish(traj_msg);
+      config.send_trajectory = false;
+      ROS_INFO("Sent trajectory");
+    }
   }
+  else if (config.save_goal_image)
+  {
+    saveGoalImage();
+    config.save_goal_image = false;
+    ROS_INFO("Saved goal image");
+  }
+  if(config.iterate_cont)
+  {
+    ovs_timer.start();
+  }
+  else
+  {
+    ovs_timer.stop();
+  }
+  iterate_cont = config.iterate_cont;
+  send_trajectory = config.send_trajectory; 
+}
+
+void HrotorOVS::ovsCallback(const ros::TimerEvent&)
+{
+  generateTrajectory(current_image, current_depth, im_goal); 
+  if(send_trajectory)
+  {
+    traj_pub.publish(traj_msg);
+  }
+}
+
+
+void HrotorOVS::saveGoalImage()
+{
+  im_goal = current_image;
+  time_t t = time(0);   // get time now
+  struct tm * now = localtime( & t );
+  std::string im_goal_filename(
+    std::string("~/.ros/ovs_goal_")+std::to_string(now->tm_year+1900)
+    +"_"+std::to_string(now->tm_mon + 1)+"_"
+    + std::to_string(now->tm_mday)+"_"+std::to_string(now->tm_hour)+"_"
+    + std::to_string(now->tm_min)+"_"+std::to_string(now->tm_sec));
+  std::cout << im_goal_filename << " position=" << start_tf.getOrigin() << std::endl;
+  imwrite(im_goal_filename, im_goal);
+  imshow("Goal Image", im_goal);
+  waitKey(10);
 }
 
 void HrotorOVS::handleDepth(const sensor_msgs::ImageConstPtr& msg)
@@ -204,7 +260,8 @@ void HrotorOVS::handleCameraInfo(const sensor_msgs::CameraInfoConstPtr& msg)
   camera_info_sub.shutdown();
 }
 
-void HrotorOVS::ovsHrotor(std::vector<Eigen::Vector3d> pts3d, std::vector<Eigen::Vector2d> pts2d, Eigen::Matrix3d K, vector<gcop::Body3dState>& xs,  vector<Vector4d>& us, int N, double tf)
+void HrotorOVS::ovsHrotor(std::vector<Eigen::Vector3d> pts3d, std::vector<Eigen::Vector2d> pts2d, 
+  Eigen::Matrix3d K, vector<gcop::Body3dState>& xs,  vector<Vector4d>& us, int N, double tf)
 {
   double h = tf/N; // time-step
 
@@ -367,7 +424,7 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
   vector<Vector4d> hr_us1;
   int N = 64;
   double tf = final_time;
-  Eigen::Matrix4d attitude_transform;
+  Eigen::Matrix4d attitude_transform = Eigen::Matrix4d::Identity();
   attitude_transform.setIdentity();  
   xs1.resize(N+1);
   us1.resize(N);
@@ -467,12 +524,20 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
   imshow("OVS Inlier Matches", inlier_match_img);
   waitKey(1);
 
-  Vector3d logRf;
-  gcop::SO3::Instance().log(logRf, xs1.back().R);
+  xs1[0].R = attitude_transform.topLeftCorner<3,3>(); 
+  // TODO: Set velocity in VS frame here
+  //xs1[0].v =  
+  Vector3d logRi;
+  Matrix3d Ri;
+  //gcop::SO3::Instance().log(logRf, xs1.back().R);
   for(int i = 1; i < xs1.size()-1; i++)
   {
     xs1[i].p = (double(i)/xs1.size())*xs1.back().p;
-    gcop::SO3::Instance().exp(xs1[i].R, logRf*(double(i)/xs1.size()));
+    //gcop::SO3::Instance().exp(xs1[i].R, logRf*(double(i)/xs1.size()));
+    //gcop::SO3::Instance().exp(xs1[i].R, logRf*(double(i)/xs1.size()));
+    gcop::SO3::Instance().log(logRi, xs1[0].R.transpose()*xs1.back().R);
+    gcop::SO3::Instance().exp(Ri, logRi*(double(i)/xs1.size()));
+    xs1[i].R = xs1[0].R*Ri;
   }
   ovsHrotor(inlier_pts3d, inlier_pts2d, K_eig, xs1, hr_us1, N, tf);
 

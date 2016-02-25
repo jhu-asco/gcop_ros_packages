@@ -53,6 +53,8 @@ private:
   void getKeypointsAndDescriptors(cv::Mat& im, std::vector<cv::KeyPoint>& kps, 
     cv::Mat& desc_gpu);
   void generateTrajectory(cv::Mat im, cv::Mat depths, cv::Mat im_goal);
+  void saveGoalImage();
+  void ovsCallback(const ros::TimerEvent&);
 
   GcopTrajectoryVisualizer gtv;
 
@@ -73,6 +75,8 @@ private:
   ros::Publisher traj_pub;
   ros::Publisher traj_marker_pub;
 
+  ros::Timer ovs_timer;
+
   dynamic_reconfigure::Server<gcop_ctrl::HrotorOVSConfig> dyn_server;
 
   gcop_comm::CtrlTraj traj_msg;
@@ -83,6 +87,8 @@ private:
   double imageQ;
   bool use_velocities;
   bool use_depth_mm;
+  bool iterate_cont;
+  bool send_trajectory;
   std::string world_frame, body_frame;
 
   tf::StampedTransform start_tf;

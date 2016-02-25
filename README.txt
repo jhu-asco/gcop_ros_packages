@@ -7,3 +7,5 @@ For compiling gcop_bullet_systems, you have to specify the GCOP_SOURCE_DIR in th
 Change the variable to the actual source directory where GCOP is installed (For example $HOME/projects/gcop)
 
 If you do not want to compile gcop_ros_bullet, add a CATKIN_IGNORE file in the folder gcop_ros_bullet and the package will not be compiled
+
+For hrotor_ovs, you must build cv_bridge from source using OpenCV 2.4.11
