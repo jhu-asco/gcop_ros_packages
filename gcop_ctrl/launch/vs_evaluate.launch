@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <launch>	
 	<node name="vs_evaluate" pkg="gcop_ctrl" type="vs_evaluate" output="screen">
-    <remap from="image" to="/camera/image_raw" />
-    <remap from="camera_info" to="/camera/camera_info" />
-    <!--<remap from="depth" to="/mesh_localize/depth" />-->
-    <param name="im_goal_filename" type="string" value="$(find gcop_ctrl)/data/frame0006.jpg" />
+    <remap from="image" to="/duo3d_camera/left/image_raw" />
+    <remap from="camera_info" to="/duo3d_camera/left/camera_info" />
+    <remap from="depth" to="/duo3d_camera/left/depth_image" />
+    <param name="im_goal_filename" type="string" value="$(find gcop_ctrl)/data/ovs_goal_2016_2_26_12_12_22.png" />
   </node>
 </launch>
