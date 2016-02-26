@@ -7,8 +7,8 @@
 #   loop_rate_main:    rate at which ros::spinOnce is called
 #   str_ind: indentation string. Indents debug statements nicely, try "| " or "  "
 
-debug_on: False
-debug_verbose_on: False
+debug_on: True
+debug_verbose_on: True
 send_gcar_ctrl: True
 loop_rate_main: 1000
 str_ind: "| "
@@ -127,7 +127,7 @@ dsl_use_geom_car: True
 dsl_car_dim_and_org: [0.8, 0.6,-0.22,0.0]
 dsl_onlyfwd: true
 dsl_prim_w_div: 5
-dsl_maxtanphi: 0.4
+dsl_maxtanphi: 0.35
 dsl_prim_vx_div: 2
 dsl_maxvx: 0.5
 dsl_backward_penalty: 1.0
@@ -140,7 +140,7 @@ dsl_backward_penalty: 1.0
 #   dsl_preint_delt: delt for pre-interpolation(deg1) as input to interpolation(deg 1/2/3)
 dsl_avg_speed: 3.0
 dsl_interp_deg: 3
-dsl_interp_delt: 0.25
+dsl_interp_delt: 0.2
 dsl_preint_delt: 1000
 dsl_loop_durn: 5.0       
 dsl_from_curr_posn: True
@@ -159,9 +159,10 @@ ddp_hot_start: false
 
 ###################################
 # DDP settings(static)
-#   ddp_Q: 0.5*x'Qx give the state cost per unit time. Q00:a, Q11:x, Q22:y, Q33:v
-#   ddp_Qf:0.5*x'Qx give the terminal state cost
-#   ddp_R: 0.5*u'Ru control cost per unit time
+#   Cost = (x-x_f)^TQ_f(x-x_f) + \int_0^tf\left{0.5*(x-x_d)^TQ(x-x_d) + 0.5*u^TRu  \right}dt
+#   ddp_Qf: Terminal state cost
+#   ddp_Q_per_t: Q = Q_per_t*tf 
+#   ddp_R_per_t: R = R_per_t*tf
 #   ddp_cost_disk_penl: penalty for obstacle avoidance
 #   ddp_disk_coln_rad: collison radius of disks
 #   ddp_mu:
@@ -174,17 +175,17 @@ ddp_hot_start: false
 #                  1: with constant forward vel and constant angular velocity based on  
 #   ddp_hot_start: if set to true it will initialize the controls with previous controls when ddp is called in loop
 #   TODO: have better convergence criteria and warn user if convergence is not achieved
-ddp_Q:   [1.00,  0.00,  0.00,  0.00,
-          0.00,  5.00,  0.00,  0.00,
-          0.00,  0.00,  5.00,  0.00,
-          0.00,  0.00,  0.00,  1.00]
-ddp_Qf:  [1.0, 0.0, 0.0, 0.0,
-          0.0, 1.0, 0.0, 0.0,
-          0.0, 0.0, 1.0, 0.0,
-          0.0, 0.0, 0.0, 1.0]
-ddp_R:   [0.005, 0.000, 
-          0.000, 0.001]
-ddp_cost_disk_penl: 10
+ddp_Qf:      [1.0, 0.0, 0.0, 0.0,
+              0.0, 1.0, 0.0, 0.0,
+              0.0, 0.0, 1.0, 0.0,
+              0.0, 0.0, 0.0, 1.0]
+ddp_Q_per_t: [0.01,  0.00,  0.00,  0.00,
+              0.00,  5.00,  0.00,  0.00,
+              0.00,  0.00,  5.00,  0.00,
+              0.00,  0.00,  0.00,  0.50]
+ddp_R_per_t:   [0.005, 0.000, 
+                0.000, 0.001]
+ddp_disk_penl_minmax: [0.01, 1000]                
 ddp_disk_coln_rad: 0.2
 ddp_mu:       1
 ddp_debug_on: False

@@ -432,10 +432,13 @@ private:
   Vector3d pt_ddp_start_, pt_ddp_goal_; //refers to grid point
   vector<Vector3d> centers_encirc_oinw_prev_;
   vector<double> rads_encirc_prev_;
+  Matrix4d ddp_Q_per_t_, ddp_Qf_;
+  Matrix2d ddp_R_per_t_;
+  Vector2d ddp_disk_penl_minmax_;
 
   Gcar sys_gcar_;
   LqCost< GcarState, 4, 2> ddp_cost_lq_;
-  double ddp_cost_disk_penl_,ddp_disk_coln_rad_;
+  double ddp_disk_coln_rad_;
   vector<double> ddp_ts_, ddp_ts_prev_;
   vector<GcarState> ddp_xs_;
   vector<Vector2d> ddp_us_, ddp_us_prev_;
@@ -569,6 +572,7 @@ void CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t
       config.dyn_dsl_plan_once = false;
     }
 
+
     if(config_.dyn_dsl_loop_durn != config.dyn_dsl_loop_durn)
       timer_dsl_.setPeriod(ros::Duration(config.dyn_dsl_loop_durn));
 
@@ -584,6 +588,12 @@ void CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t
     }
 
     //ddp settings
+
+    ddp_Q_per_t_.setZero();
+    ddp_Q_per_t_.diagonal() << config.dyn_ddp_Q_per_t_00
+                              ,config.dyn_ddp_Q_per_t_11
+                              ,config.dyn_ddp_Q_per_t_22
+                              ,config.dyn_ddp_Q_per_t_33;
     if(config.dyn_ddp_plan_once){
       if(ddpPlan() && config_.dyn_ddp_disp_rviz){
         rvizShowPathDdp();
@@ -643,11 +653,11 @@ void CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t
     config.dyn_ddp_plan_loop=false;
     config.dyn_ddp_disp_rviz      = yaml_node_["ddp_disp_rviz"].as<bool>();
     config.dyn_ddp_hot_start      = yaml_node_["ddp_hot_start"].as<bool>();
-    Matrix4d Q                    = yaml_node_["ddp_Q"].as<Matrix4d>();
-    config.dyn_ddp_q00            = Q(0,0);
-    config.dyn_ddp_q11            = Q(1,1);
-    config.dyn_ddp_q22            = Q(2,2);
-    config.dyn_ddp_q33            = Q(3,3);
+    Matrix4d Q_per_t              = yaml_node_["ddp_Q_per_t"].as<Matrix4d>();
+    config.dyn_ddp_Q_per_t_00          = Q_per_t(0,0);
+    config.dyn_ddp_Q_per_t_11          = Q_per_t(1,1);
+    config.dyn_ddp_Q_per_t_22          = Q_per_t(2,2);
+    config.dyn_ddp_Q_per_t_33          = Q_per_t(3,3);
 
     first_time = false;
   }
@@ -1398,10 +1408,11 @@ bool CallBackDslDdp::ddpInit(void){
     cout<<indStr(0)+"*Setting DDP params"<<endl;
 
   //Fetch and set all the parameter from yaml file
-  ddp_cost_lq_.Q  = yaml_node_["ddp_Q"].as<Matrix4d>();
-  ddp_cost_lq_.Qf = yaml_node_["ddp_Qf"].as<Matrix4d>();
-  ddp_cost_lq_.R  = yaml_node_["ddp_R"].as<Matrix2d>();
-  ddp_cost_disk_penl_= yaml_node_["ddp_cost_disk_penl"].as<double>();
+  ddp_Qf_       = yaml_node_["ddp_Qf"].as<Matrix4d>();
+  ddp_Q_per_t_  = yaml_node_["ddp_Q_per_t"].as<Matrix4d>();
+  ddp_R_per_t_  = yaml_node_["ddp_R_per_t"].as<Matrix2d>();
+
+  ddp_disk_penl_minmax_ = yaml_node_["ddp_disk_penl_minmax"].as<Vector2d>();
   ddp_disk_coln_rad_ = yaml_node_["ddp_disk_coln_rad"].as<double>();
   ddp_mu_ =yaml_node_["ddp_mu"].as<double>();
   ddp_debug_on_ =yaml_node_["ddp_debug_on"].as<bool>(); // turn off debug for speed
@@ -1414,9 +1425,6 @@ bool CallBackDslDdp::ddpInit(void){
   ddp_tol_goal_m_=yaml_node_["ddp_tol_goal_m"].as<double>();
   ddp_init_type_ = yaml_node_["ddp_init_type"].as<int>();
   ddp_force_cold_start_ = true;
-
-  //Update internal gains of cost_lq
-  ddp_cost_lq_.UpdateGains();
 
   //get obstacle detection parameters
   obs_search_radius_max_       = yaml_node_["obs_search_radius_max"].as<double>();
@@ -1657,8 +1665,10 @@ bool CallBackDslDdp::ddpPlan(void){
   int n_obs = disks_.size();
 
   //Update ddp params
-  ddp_cost_lq_.Q.setZero();
-  ddp_cost_lq_.Q.diagonal() << config_.dyn_ddp_q00,config_.dyn_ddp_q11,config_.dyn_ddp_q22,config_.dyn_ddp_q33;
+  ddp_cost_lq_.Qf = ddp_Qf_;
+  ddp_cost_lq_.Q = ddp_Q_per_t_*tf;
+  ddp_cost_lq_.R = ddp_R_per_t_*tf;
+
   ddp_cost_lq_.UpdateGains();
 
   //Setup multicost for DDP
@@ -1670,10 +1680,11 @@ bool CallBackDslDdp::ddpPlan(void){
     constraints[i]->func = GcarStateToVector2d;
     DiskConstraintCost_ptr ptr_diskcost(new DiskConstraintCost(sys_gcar_, tf, *constraints[i]));
     ddp_cost_disks[i] = ptr_diskcost;
-    ddp_cost_disks[i]->b = ddp_cost_disk_penl_;
+    ddp_cost_disks[i]->b = ddp_disk_penl_minmax_(0);
     ddp_mcost.costs[i] = ddp_cost_disks[i].get();
   }
   ddp_mcost.costs.back() = &ddp_cost_lq_;
+  double disk_penalty_step = pow(ddp_disk_penl_minmax_(1)/ddp_disk_penl_minmax_(0),1/ddp_nit_max_ );
 
   //setup DDP solver
   GcarDdp ddp_solver(sys_gcar_, ddp_mcost, ddp_ts_, ddp_xs_, ddp_us_);
@@ -1688,14 +1699,24 @@ bool CallBackDslDdp::ddpPlan(void){
 
   while(!ddp_conv && !g_shutdown_requested){
 
+    for(size_t i=0;i<disks_.size();i++)
+      ddp_cost_disks[i]->b = ddp_disk_penl_minmax_(0)* pow(disk_penalty_step, n_it);
     ddp_solver.Iterate();
-    n_it++;
 
-    if(                                     n_it  > ddp_nit_max_
-        ||             abs(ddp_solver.V - v_prev) < ddp_tol_abs_
-        || abs(ddp_solver.V - v_prev)/abs(v_prev) < ddp_tol_rel_)
+
+    cout<<"["<<n_it<<"] ddp step size a:"<< ddp_solver.a <<endl;
+    if(disks_.size())
+      cout<<"["<<n_it<<"] disk penalty:"<<ddp_cost_disks[0]->b <<endl;
+
+    if(n_it  > ddp_nit_max_)
       ddp_conv=true;
-    v_prev=ddp_solver.V;
+
+//    if(                                     n_it  > ddp_nit_max_
+//        ||             abs(ddp_solver.V - v_prev) < ddp_tol_abs_
+//        || abs(ddp_solver.V - v_prev)/abs(v_prev) < ddp_tol_rel_)
+//      ddp_conv=true;
+//    v_prev=ddp_solver.V;
+    n_it++;
   }
 
   //save prev controls for hot start if enabled
