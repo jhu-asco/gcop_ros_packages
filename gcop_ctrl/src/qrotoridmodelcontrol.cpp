@@ -104,6 +104,7 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
 
     //Rate of avoidance:
     params_loader_.GetDouble("max_ko",max_ko);
+    params_loader_.GetInt("max_iters",gn->max_iters);
     params_loader_.GetDouble("gain_ko",gain_ko);
 
     //Obstacles:
@@ -134,6 +135,7 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
     cout<<"stdev_init_state: "<<endl<<stdev_initial_state.transpose()<<endl;
     cout<<"stdev_params: "<<endl<<(gn->stdev_params)<<endl;
     cout<<"Number Of Obstacles: "<<obstacles.size()<<endl;
+    cout<<"Max Iters: "<<(gn->max_iters)<<endl;
 
     //Publisher for gcop trajectory:
     traj_publisher_ = nh.advertise<gcop_comm::CtrlTraj>("ctrltraj",2,true);//Latched
