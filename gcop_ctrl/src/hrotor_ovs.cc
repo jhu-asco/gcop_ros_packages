@@ -114,6 +114,7 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
   //traj_marker_pub = nh.advertise<visualization_msgs::Marker>("/hrotor_ovs/traj_marker", 1);
 
   ovs_timer = nh.createTimer(ros::Rate(2), &HrotorOVS::ovsCallback, this); 
+  ovs_timer.stop();
 
   ROS_INFO("Initialized");
 }
@@ -177,10 +178,10 @@ void HrotorOVS::saveGoalImage()
   time_t t = time(0);   // get time now
   struct tm * now = localtime( & t );
   std::string im_goal_filename(
-    std::string("~/.ros/ovs_goal_")+std::to_string(now->tm_year+1900)
+    std::string("/home/gowtham/.ros/ovs_goal_")+std::to_string(now->tm_year+1900)
     +"_"+std::to_string(now->tm_mon + 1)+"_"
     + std::to_string(now->tm_mday)+"_"+std::to_string(now->tm_hour)+"_"
-    + std::to_string(now->tm_min)+"_"+std::to_string(now->tm_sec));
+    + std::to_string(now->tm_min)+"_"+std::to_string(now->tm_sec)+std::string(".png"));
   std::cout << im_goal_filename << " position=" << start_tf.getOrigin() << std::endl;
   imwrite(im_goal_filename, im_goal);
   imshow("Goal Image", im_goal);
