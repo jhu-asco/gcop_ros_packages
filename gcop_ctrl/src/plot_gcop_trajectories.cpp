@@ -32,11 +32,11 @@ void getmeasurementCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, string trajfi
       }
       stringstream ss(temp);
       ss>>temp_d;//time;
-      /*if(temp_d < 0)
+      if(temp_d < 0)
       {
-          continue;
+        cout<<"Temp_d"<<temp_d<<endl;
+        continue;
       }
-      */
       
       trajectory.N++;
       trajectory.time.push_back(temp_d);
@@ -63,7 +63,8 @@ void getMPCCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, string trajfile, int 
 {
   ifstream ifile(trajfile);
   string temp;
-  geometry_msgs::Vector3 xs_std;
+  gcop_comm::Stdev xs_std;
+  geometry_msgs::Vector3 rpy_std;
   tf::Vector3 rpy;
   tf::Quaternion quat;
   trajectory.N = 0;
@@ -93,13 +94,17 @@ void getMPCCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, string trajfile, int 
       for(int i = 0; i < 7; i++)
           ss>>temp_d;
 
-      ss>>xs_std.x>>xs_std.y>>xs_std.z;
-      xs_std.x *= 4;
-      xs_std.y *= 4;
-      xs_std.z *= 4;
+      ss>>xs_std.scale_std.x>>xs_std.scale_std.y>>xs_std.scale_std.z;
+      xs_std.scale_std.x *= 4;
+      xs_std.scale_std.y *= 4;
+      xs_std.scale_std.z *= 4;
+      ss>>rpy_std.x>>rpy_std.y>>rpy_std.z;
+      tf::Quaternion qt;
+      qt.setEulerZYX(rpy_std.z, rpy_std.y, rpy_std.x);//Ypr
+      tf::quaternionTFToMsg(qt,xs_std.rot_std);
       trajectory.statemsg.push_back(current_state);
       trajectory.pos_std.push_back(xs_std);
-      cout<<"Data: "<<trajectory.N<<" "<<current_state.basepose.translation.x<<" "<<current_state.basepose.translation.y<<" "<<current_state.basepose.translation.z<<" "<<xs_std.x<<" "<<xs_std.y<<" "<<xs_std.z<<endl;
+      cout<<"Data: "<<trajectory.N<<" "<<current_state.basepose.translation.x<<" "<<current_state.basepose.translation.y<<" "<<current_state.basepose.translation.z<<" "<<xs_std.scale_std.x<<" "<<xs_std.scale_std.y<<" "<<xs_std.scale_std.z<<endl;
   }
 RETURN_FUNC:
   trajectory.N = trajectory.N - 1;
@@ -107,7 +112,8 @@ RETURN_FUNC:
 
 void timerCallback(const ros::TimerEvent &event, string trajfile, bool mpcmode, int skip_segments)
 {
-  double obs[8] = {0.5, 1,0,0, 0,0,1,0};
+  double obs[8] = {0.8, 1.5,0,0, 0,0,1,0};
+  //double obs[8] = {0.5, 1,0,0, 0,0,1,0};
   //double obs[8] = {0.3, 2,1.1,0, 0,0,1,0};
   visualizer_->publishObstacle(obs,1,obs[7]);
   gcop_comm::CtrlTraj trajectory;
@@ -132,23 +138,26 @@ int main(int argc, char** argv)
     ros::NodeHandle nh;
     visualizer_ = new GcopTrajectoryVisualizer(nh,"world",false);
     //Params
-    string trajfile;
+    string trajfile, dirname;
     int skip_segments, id;
     bool mpcmode;
     //Get Params for files
     nh.getParam("/trajfile",trajfile);
-    nh.param<int>("/skip_segments", skip_segments,0);
+    nh.getParam("/dirname",dirname);
+    nh.param<int>("/skip_segments", skip_segments,5);
     nh.param<bool>("/mpcmode",mpcmode,true);
     nh.param<int>("/id",id,1);
+    trajfile = dirname + "/"+trajfile;
     if(!mpcmode)
     {
       double r,g,b;
       nh.param<double>("r",r,1);
       nh.param<double>("g",g,1);
-      nh.param<double>("b",b,1);
+      nh.param<double>("b",b,0);
       visualizer_->setColorLineStrip(r,g,b);
       visualizer_->setID(id);
     }
+    nh.setParam("/id",id+1);//Increase id
 
     oneshot_timer = nh.createTimer(ros::Duration(2),boost::bind(&timerCallback,_1,trajfile,mpcmode,skip_segments),true);
     oneshot_timer.start();

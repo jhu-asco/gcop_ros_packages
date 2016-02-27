@@ -48,6 +48,7 @@ public:
     void setParametersAndStdev(Vector7d &gains, Matrix7d &stdev_gains, Vector6d *mean_offset = 0, Matrix6d *stdev_offsets = 0);
     void logTrajectory(std::string filename);
     void resetControls();
+    double getDesiredObjectDistance(double delay_send_time);
  protected:
     QRotorIdGnDocp *gn;
     SplineTparam *ctp;

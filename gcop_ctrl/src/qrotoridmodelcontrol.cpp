@@ -254,6 +254,12 @@ void QRotorIDModelControl::resetControls()
     }
 }
 
+double QRotorIDModelControl::getDesiredObjectDistance(double delay_send_time = 0.2)
+{
+  //cout<<"Xs[0].v.norm: "<<xs[0].v.norm()<<endl;
+  return obstacles.at(0).segment<3>(1).norm() + xs[0].v.norm()*delay_send_time;
+}
+
 void QRotorIDModelControl::getControl(Vector4d &ures)
 {
     ures(0) = us[0](0);
