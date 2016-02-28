@@ -10,6 +10,8 @@ ros::Timer oneshot_timer;
 
 GcopTrajectoryVisualizer *visualizer_;
 
+bool new_dataset;
+
 void getmeasurementCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, string trajfile, int skip_segments)
 {
   //Number of cols = 14; We care abt first 7
@@ -98,10 +100,18 @@ void getMPCCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, string trajfile, int 
       xs_std.scale_std.x *= 4;
       xs_std.scale_std.y *= 4;
       xs_std.scale_std.z *= 4;
-      ss>>rpy_std.x>>rpy_std.y>>rpy_std.z;
-      tf::Quaternion qt;
-      qt.setEulerZYX(rpy_std.z, rpy_std.y, rpy_std.x);//Ypr
-      tf::quaternionTFToMsg(qt,xs_std.rot_std);
+      if(new_dataset)
+      {
+        ss>>rpy_std.x>>rpy_std.y>>rpy_std.z;
+        tf::Quaternion qt;
+        qt.setEulerZYX(rpy_std.z, rpy_std.y, rpy_std.x);//Ypr
+        tf::quaternionTFToMsg(qt,xs_std.rot_std);
+      }
+      else
+      {
+        xs_std.rot_std.w = 1.0;
+        xs_std.rot_std.x = xs_std.rot_std.y = xs_std.rot_std.z = 0.0;//Aligned with global axis
+      }
       trajectory.statemsg.push_back(current_state);
       trajectory.pos_std.push_back(xs_std);
       cout<<"Data: "<<trajectory.N<<" "<<current_state.basepose.translation.x<<" "<<current_state.basepose.translation.y<<" "<<current_state.basepose.translation.z<<" "<<xs_std.scale_std.x<<" "<<xs_std.scale_std.y<<" "<<xs_std.scale_std.z<<endl;
@@ -146,6 +156,7 @@ int main(int argc, char** argv)
     nh.getParam("/dirname",dirname);
     nh.param<int>("/skip_segments", skip_segments,5);
     nh.param<bool>("/mpcmode",mpcmode,true);
+    nh.param<bool>("/new_dataset",new_dataset,true);
     nh.param<int>("/id",id,1);
     trajfile = dirname + "/"+trajfile;
     if(!mpcmode)
