@@ -104,9 +104,9 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
   camera_info_sub = nh.subscribe<sensor_msgs::CameraInfo>("camera_info", 1000,
     &HrotorOVS::handleCameraInfo,
     this, ros::TransportHints().tcpNoDelay());
-  velocity_sub = nh.subscribe<geometry_msgs::Vector3>("global_vel", 10, 
-    &HrotorOVS::handleVelocity,
-    this, ros::TransportHints().tcpNoDelay());
+  //velocity_sub = nh.subscribe<geometry_msgs::Vector3>("global_vel", 10, 
+  //  &HrotorOVS::handleVelocity,
+  //  this, ros::TransportHints().tcpNoDelay());
   
   current_velocity.setZero();
 
@@ -564,10 +564,11 @@ void HrotorOVS::generateTrajectory(Mat im, Mat depths, Mat im_goal)
                                     start_tf.getOrigin().y(), start_tf.getOrigin().z());
   traj_msg.N = xs1.size()-1;
   traj_msg.statemsg.resize(xs1.size());
+  traj_msg.time.resize(xs1.size());
   double max_sp = 0;
   for(int i = 0; i < xs1.size(); i++)
   {
-    traj_msg.time.push_back(i*tf/N);
+    traj_msg.time[i] = (i*tf/N);
 
     gcop_comm::State state;
     Eigen::Vector3d tjpt =
