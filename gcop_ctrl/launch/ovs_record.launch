@@ -1,4 +1,4 @@
 <?xml version="1.0"?>
 <launch>
-  <node pkg="rosbag" type="record" name="rosbag" args="-o ovs_data /duo3d_camera/left/image_raw /duo3d_camera/right/image_raw /duo3d_camera/left/depth_image /duo3d_camera/left/camera_info /duo3d_camera/right/camera_info /tf" />
+  <node pkg="rosbag" type="record" name="rosbag" args="-o ovs_data /duo3d_camera/left/camera_info /duo3d_camera/left/image_raw /guidance/left/image_raw /guidance/right/image_raw /guidance/left/depth_image /guidance/left/camera_info /guidance/right/camera_info /tf" />
 </launch>

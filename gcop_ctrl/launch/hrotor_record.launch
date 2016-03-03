@@ -1,0 +1,8 @@
+<launch>
+    <include file="$(find rqt_quadcoptergui)/launch/dji_onboard.launch" />
+    <include file="$(find gcop_ctrl)/launch/ovs_record.launch" />
+    <include file="$(find guidance)/launch/load_calib_file.launch" />
+    <include file="$(find disparity_image_proc)/launch/disparity_image_proc_guidance.launch"/>
+    <include file="$(find duo3d_ros)/launch/duo.launch" />
+    <param name="/duo_node/exposure" type="int" value="30"/>
+</launch>
