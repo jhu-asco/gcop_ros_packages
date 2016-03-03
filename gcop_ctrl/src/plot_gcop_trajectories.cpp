@@ -122,9 +122,9 @@ RETURN_FUNC:
 
 void timerCallback(const ros::TimerEvent &event, string trajfile, bool mpcmode, int skip_segments)
 {
-  double obs[8] = {0.8, 1.5,0,0, 0,0,1,0};
+  //double obs[8] = {0.8, 1.5,0,0, 0,0,1,0};
   //double obs[8] = {0.5, 1,0,0, 0,0,1,0};
-  //double obs[8] = {0.3, 2,1.1,0, 0,0,1,0};
+  double obs[8] = {0.3, 2,1.1,0, 0,0,1,0};
   visualizer_->publishObstacle(obs,1,obs[7]);
   gcop_comm::CtrlTraj trajectory;
   if(mpcmode)
