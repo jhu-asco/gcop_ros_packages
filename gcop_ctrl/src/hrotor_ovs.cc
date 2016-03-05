@@ -104,9 +104,9 @@ HrotorOVS::HrotorOVS(ros::NodeHandle nh, ros::NodeHandle nh_private) :
   camera_info_sub = nh.subscribe<sensor_msgs::CameraInfo>("camera_info", 1000,
     &HrotorOVS::handleCameraInfo,
     this, ros::TransportHints().tcpNoDelay());
-  image_sub2 = nh.subscribe<sensor_msgs::Image>("image2", 1,
-    &HrotorOVS::handleImage2,
-    this, ros::TransportHints().tcpNoDelay());
+  //image_sub2 = nh.subscribe<sensor_msgs::Image>("image2", 1,
+  //  &HrotorOVS::handleImage2,
+  //  this, ros::TransportHints().tcpNoDelay());
   //velocity_sub = nh.subscribe<geometry_msgs::Vector3>("global_vel", 10, 
   //  &HrotorOVS::handleVelocity,
   //  this, ros::TransportHints().tcpNoDelay());
@@ -185,16 +185,16 @@ void HrotorOVS::saveGoalImage()
     +"_"+std::to_string(now->tm_mon + 1)+"_"
     + std::to_string(now->tm_mday)+"_"+std::to_string(now->tm_hour)+"_"
     + std::to_string(now->tm_min)+"_"+std::to_string(now->tm_sec)+std::string(".png"));
-  std::string im_goal_filename2(
-    std::string("/home/gowtham/.ros/ovs_goal2_")+std::to_string(now->tm_year+1900)
-    +"_"+std::to_string(now->tm_mon + 1)+"_"
-    + std::to_string(now->tm_mday)+"_"+std::to_string(now->tm_hour)+"_"
-    + std::to_string(now->tm_min)+"_"+std::to_string(now->tm_sec)+std::string(".png"));
+  //std::string im_goal_filename2(
+  //  std::string("/home/gowtham/.ros/ovs_goal2_")+std::to_string(now->tm_year+1900)
+  //  +"_"+std::to_string(now->tm_mon + 1)+"_"
+  //  + std::to_string(now->tm_mday)+"_"+std::to_string(now->tm_hour)+"_"
+  //  + std::to_string(now->tm_min)+"_"+std::to_string(now->tm_sec)+std::string(".png"));
   std::cout << im_goal_filename << " position=" << start_tf.getOrigin() << std::endl;
   imwrite(im_goal_filename, im_goal);
-  imwrite(im_goal_filename2, current_image2);
+  //imwrite(im_goal_filename2, current_image2);
   imshow("Goal Image", im_goal);
-  imshow("Goal Image 2", current_image2);
+  //imshow("Goal Image 2", current_image2);
   waitKey(10);
 }
 
