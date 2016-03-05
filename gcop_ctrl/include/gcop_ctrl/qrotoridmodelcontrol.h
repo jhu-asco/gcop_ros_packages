@@ -40,7 +40,7 @@ public:
     QRotorIDModelControl(ros::NodeHandle &nh, string frame_id="optitrak");
     //void setGoal(const geometry_msgs::Pose &xf_);
     void setInitialVel(const geometry_msgs::Vector3 &vel, const geometry_msgs::Vector3 &rpy);
-    void iterate(double ko_start = 0.01);
+    void iterate(bool fast_iterate = false);
     void getControl(Vector4d &ures);
     void getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Matrix3d &yawM, Vector3d &pos_);
     void publishTrajectory(geometry_msgs::Vector3 &pos, geometry_msgs::Vector3 &rpy);

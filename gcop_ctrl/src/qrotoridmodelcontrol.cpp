@@ -181,9 +181,16 @@ void QRotorIDModelControl::setInitialVel(const geometry_msgs::Vector3 &vel, cons
   cout<<"Initial Vel: "<<xs[0].v.transpose()<<endl;
 }
 
-void QRotorIDModelControl::iterate(double ko_start)
+void QRotorIDModelControl::iterate(bool fast_iterate)
 {
-    gn->ko = ko_start;
+    if(fast_iterate)
+      gn->ko = (max_ko/2);
+    else
+      gn->ko = 0.01;
+
+    double temp_max_iters = gn->max_iters;
+    if(fast_iterate)
+      gn->max_iters = 10;
     while(gn->ko < max_ko)
     {
       ros::Time curr_time = ros::Time::now();
@@ -215,6 +222,8 @@ void QRotorIDModelControl::iterate(double ko_start)
       }
     }
     J = gn->J;
+    if(fast_iterate)
+      gn->max_iters = temp_max_iters;
 }
 void QRotorIDModelControl::logTrajectory(std::string filename)
 {
