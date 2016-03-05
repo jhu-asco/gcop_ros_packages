@@ -33,6 +33,7 @@ public:
 private:
   void handleDepth(const sensor_msgs::ImageConstPtr& msg);
   void handleImage(const sensor_msgs::ImageConstPtr& msg);
+  void handleImage2(const sensor_msgs::ImageConstPtr& msg);
   void handleCameraInfo(const sensor_msgs::CameraInfoConstPtr& msg);
   void handleVelocity(const geometry_msgs::Vector3ConstPtr& msg);
   void cbReconfig(gcop_ctrl::HrotorOVSConfig &config, uint32_t level);
@@ -64,7 +65,7 @@ private:
   ros::Time img_time_stamp;
 
   Eigen::Vector3d current_velocity;
-  cv::Mat current_image, current_depth, im_goal;
+  cv::Mat current_image, current_image2, current_depth, im_goal;
   cv::Mat K;
   cv::Mat distcoeff;
   Eigen::Matrix3d K_eig;
@@ -73,6 +74,7 @@ private:
 
   ros::Subscriber camera_info_sub;
   ros::Subscriber image_sub;
+  ros::Subscriber image_sub2;
   ros::Subscriber depth_sub;
   ros::Subscriber velocity_sub;
 
