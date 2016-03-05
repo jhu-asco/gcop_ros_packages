@@ -172,13 +172,17 @@ void QRotorIDModelControl::so3ToGeometryMsgsQuaternion(geometry_msgs::Quaternion
 
 void QRotorIDModelControl::setInitialVel(const geometry_msgs::Vector3 &vel, const geometry_msgs::Vector3 &rpy)
 {
-  Vector3d rpy_(0,0, rpy.z);
+  Vector3d rpy_(0, 0, -rpy.z);
   Matrix3d R;
   so3.q2g(R,rpy_);
   //QRotorIDState &x0 = xs[0];
   xs[0].v<<vel.x, vel.y, vel.z;
-  xs[0].v = R.transpose()*xs[0].v;//Rotate the velocity to body frame
+  xs[0].v = R*xs[0].v;//Rotate the velocity to body frame
+  //Set Initial rp based on measurements
+  Vector3d rp_(rpy.x, rpy.y, 0);
+  so3.q2g(xs[0].R,rp_);
   cout<<"Initial Vel: "<<xs[0].v.transpose()<<endl;
+  cout<<"Initial rp: "<<rp_.transpose()<<endl;
 }
 
 void QRotorIDModelControl::iterate(bool fast_iterate)
