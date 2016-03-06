@@ -196,6 +196,9 @@ if (BUILD_QUAD)
   target_link_libraries(qrotoridmodel qrotoridmodel_control ${LIBS} ${catkin_LIBRARIES})
   add_dependencies(qrotoridmodel ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
+  add_executable(plotgcoptraj src/plot_gcop_trajectories.cpp)
+  target_link_libraries(plotgcoptraj ${catkin_LIBRARIES})
+
 ## Declare a cpp library
  add_library(qrotoridmodel_control
    src/qrotoridmodelcontrol.cpp
@@ -206,10 +209,6 @@ if (BUILD_CAR)
   add_executable(rcctrl src/rccartest.cc)
   target_link_libraries(rcctrl ${LIBS} ${catkin_LIBRARIES})
   add_dependencies(rcctrl ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
-
-
-#add_executable(plotgcoptraj src/plot_gcop_trajectories.cpp)
-#target_link_libraries(plotgcoptraj ${catkin_LIBRARIES})
 
   add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
   target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} ${LIBS})

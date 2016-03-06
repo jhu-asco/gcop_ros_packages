@@ -39,15 +39,15 @@ protected:
 public:
     QRotorIDModelControl(ros::NodeHandle &nh, string frame_id="optitrak");
     //void setGoal(const geometry_msgs::Pose &xf_);
-    void setInitialState(const geometry_msgs::Vector3 &localpos, const geometry_msgs::Vector3 &vel,
-                         const geometry_msgs::Vector3 &rpy, const geometry_msgs::Vector3 &omega, const geometry_msgs::Quaternion &rpytcommand, QRotorIDState &x0_out);
-    void iterate();
+    void setInitialVel(const geometry_msgs::Vector3 &vel, const geometry_msgs::Vector3 &rpy);
+    void iterate(bool fast_iterate = false);
     void getControl(Vector4d &ures);
     void getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Matrix3d &yawM, Vector3d &pos_);
     void publishTrajectory(geometry_msgs::Vector3 &pos, geometry_msgs::Vector3 &rpy);
     void setParametersAndStdev(Vector7d &gains, Matrix7d &stdev_gains, Vector6d *mean_offset = 0, Matrix6d *stdev_offsets = 0);
     void logTrajectory(std::string filename);
     void resetControls();
+    double getDesiredObjectDistance(double delay_send_time);
  protected:
     QRotorIdGnDocp *gn;
     SplineTparam *ctp;
@@ -65,6 +65,7 @@ public:
     QRotorIDState xf;
     double tf;
     double step_size_;///< h
+    double J;///< Cost from optimization
 };
 
 #endif // QROTORIDMODELCONTROL_H

@@ -8,7 +8,7 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
                                                                                   , visualizer_(nh,frame_id)
                                                                                   , so3(SO3::Instance())
                                                                                   , skip_publish_segments(2), logged_trajectory_(false)
-                                                                                  , max_ko(100), gain_ko(2)
+                                                                                  , max_ko(100), gain_ko(2), J(1000)
 {
     //Temp Variables
     int N = 100;
@@ -170,23 +170,31 @@ void QRotorIDModelControl::so3ToGeometryMsgsQuaternion(geometry_msgs::Quaternion
 }
 */
 
-void QRotorIDModelControl::setInitialState(const geometry_msgs::Vector3 &localpos, const geometry_msgs::Vector3 &vel,
-    const geometry_msgs::Vector3 &rpy, const geometry_msgs::Vector3 &omega, const geometry_msgs::Quaternion &rpytcommand, QRotorIDState &x0_out)
+void QRotorIDModelControl::setInitialVel(const geometry_msgs::Vector3 &vel, const geometry_msgs::Vector3 &rpy)
 {
-  Vector3d rpy_(rpy.x, rpy.y, rpy.z);
+  Vector3d rpy_(0, 0, -rpy.z);
+  Matrix3d R;
+  so3.q2g(R,rpy_);
   //QRotorIDState &x0 = xs[0];
-  x0_out.p<<localpos.x, localpos.y, localpos.z;
-  x0_out.v<<vel.x, vel.y, vel.z;
-  so3.q2g(x0_out.R, rpy_);
-  x0_out.w<<omega.x, omega.y, omega.z;
-  x0_out.u<<rpytcommand.x, rpytcommand.y, rpytcommand.z;
-  //Vector3d acc_(acc.x, acc.y, acc.z+9.81);//Acc in Global Frame + gravity
-  //sys.a0 = (acc_ - sys.kt*rpytcommand.w*x0.R.col(2));
+  xs[0].v<<vel.x, vel.y, vel.z;
+  xs[0].v = R*xs[0].v;//Rotate the velocity to body frame
+  //Set Initial rp based on measurements
+  Vector3d rp_(rpy.x, rpy.y, 0);
+  so3.q2g(xs[0].R,rp_);
+  cout<<"Initial Vel: "<<xs[0].v.transpose()<<endl;
+  cout<<"Initial rp: "<<rp_.transpose()<<endl;
 }
 
-void QRotorIDModelControl::iterate()
+void QRotorIDModelControl::iterate(bool fast_iterate)
 {
-    gn->ko = 0.01;
+    if(fast_iterate)
+      gn->ko = (max_ko/2);
+    else
+      gn->ko = 0.01;
+
+    double temp_max_iters = gn->max_iters;
+    if(fast_iterate)
+      gn->max_iters = 10;
     while(gn->ko < max_ko)
     {
       ros::Time curr_time = ros::Time::now();
@@ -217,6 +225,9 @@ void QRotorIDModelControl::iterate()
         eigen_values_stdev[i](0) = temp;
       }
     }
+    J = gn->J;
+    if(fast_iterate)
+      gn->max_iters = temp_max_iters;
 }
 void QRotorIDModelControl::logTrajectory(std::string filename)
 {
@@ -252,6 +263,12 @@ void QRotorIDModelControl::resetControls()
     {
         us[i]<<(9.81/p_mean[0]),0,0,0;//Set to default values
     }
+}
+
+double QRotorIDModelControl::getDesiredObjectDistance(double delay_send_time = 0.2)
+{
+  //cout<<"Xs[0].v.norm: "<<xs[0].v.norm()<<endl;
+  return obstacles.at(0).segment<3>(1).norm() + xs[0].v.norm()*delay_send_time;
 }
 
 void QRotorIDModelControl::getControl(Vector4d &ures)

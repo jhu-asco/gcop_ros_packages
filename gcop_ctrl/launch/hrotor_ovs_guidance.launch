@@ -1,9 +1,10 @@
 <?xml version="1.0"?>
 <launch>	
 	<node name="hrotor_ovs" pkg="gcop_ctrl" type="hrotor_ovs" output="screen" >
-    <remap from="image" to="/duo3d_camera/left/image_rect" />
-    <remap from="camera_info" to="/duo3d_camera/left/camera_info" />
-    <remap from="depth" to="/duo3d_camera/depth_image" />
+    <remap from="image" to="/guidance/left/image_rect" />
+    <remap from="image2" to="/duo3d_camera/left/image_raw" />
+    <remap from="camera_info" to="/guidance/left/camera_info" />
+    <remap from="depth" to="/guidance/left/depth_image" />
     <remap from="/hrotor_ovs/traj" to="/onboard_node/ctrltraj" />
     <param name="im_goal_filename" type="string" value="$(find gcop_ctrl)/data/dji_goal_outside.png" />
     <param name="world_frame" type="string" value="world" />
