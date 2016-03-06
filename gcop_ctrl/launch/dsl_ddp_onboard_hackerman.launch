@@ -1,11 +1,13 @@
 <?xml version='1.0'?>
 <launch>
   <arg name="location" value="hackerman"/>
-
+  <arg name="use_planner" default="true"/>
+  
+  <group if="$(arg use_planner)">
   <node name="dsl_ddp_planner" pkg="gcop_ctrl" type="dsl_ddp_planner" output="screen" launch-prefix="">
     <param name="strfile_params" type="str" value="$(find gcop_ctrl)/params/dsl_ddp_planner_$(arg location).yaml"/> 
   </node>
-
+  </group>
   <node name='map_og_original_server' pkg='map_server' type='map_server' args='$(find gcop_ctrl)/map/map_$(arg location).yaml' output="screen">
     <param name='frame_id' value='og_org'/>
   </node> 

@@ -1,6 +1,6 @@
 <?xml version='1.0'?>
 <launch>
-  <node name="dsl_ddp_planner" pkg="gcop_ctrl" type="dsl_ddp_planner" output="screen" launch-prefix="">
+  <!--<node name="dsl_ddp_planner" pkg="gcop_ctrl" type="dsl_ddp_planner" output="screen" launch-prefix="">-->
 <param name="strfile_params" type="str" value="$(find gcop_ctrl)/params/dsl_ddp_planner_indoor.yaml"/> 
 </node>
 <!--    static transformation for indoor map     -->

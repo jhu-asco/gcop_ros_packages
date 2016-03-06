@@ -20,7 +20,7 @@ str_ind: "| "
 #   og_tol_unseen_msq: a means if area of connected unseen cells < a sqm then they are set to unoccupied
 #                      which should be little bit less than size of your vehicle
 og_downsample_factor: 3 (unimplemented)
-og_cell_m_resized: 0.08
+og_cell_m_resized: 0.05
 og_tol_unseen_sqm: 1
 
 ###################################
@@ -56,6 +56,7 @@ strtop_pose_start: "/initialpose"
 strtop_pose_goal:  "/move_base_simple/goal"
 strtop_og:         "/map"
 strtop_lidar:      "/first"
+strtop_clicked_point: "/clicked_point"
 
 ###################################
 # Topic name(Output)(static)
@@ -63,10 +64,15 @@ strtop_lidar:      "/first"
 #   strtop_diag: diagnostic messages
 #   strtop_marker_rivz: change this name. This is where we send the traj to be plotted on rvizS
 #   strtop_og_dild: topic for dilated occ grid
-strtop_diag:        "/insekf/diag"
-strtop_marker_rviz: "/visualization_marker"
-strtop_og_dild:     "/map_occgrid_dialated"
-strtop_ctrl:        "/ctrl_si"
+strtop_diag:             "diag"
+strtop_marker_rviz:      "visualization_marker"
+strtop_og_dild:          "map_occgrid_dialated"
+strtop_ctrl:             "ctrl_si"
+strtop_rviz_pose_start:       "pose_start"
+strtop_rviz_pose_goal:        "pose_goal"
+strtop_rviz_posearr_ddp:      "posearr_ddp"
+strtop_rviz_posearr_dsl:      "posearr_dsl"
+strtop_rviz_posearr_dsl_intp: "posearr_dsl_intp"
 
 ###################################
 # Publishing frequency(static)
@@ -78,7 +84,7 @@ hz_diag: -1.0  # Freq at which diagnostic data is published
 
 ###################################
 # path colors and scale(static)
-#   you set one of  [r,g,b] or [r,g,b,a] or [r,g,b,a,s] or [r,g,b,a,sx,sy] based on type of marker
+#   you set one of  [r,g,b,a] or [r,g,b,a,s] or [r,g,b,a,sx,sy,sz]... based on type of marker
 #   obs = [r,g,b,a]
 #   path_dsl = [red(max),green(max),blue(max),alpha,scale(width m)]
 #   wp_dsl   = [red(max),green(max),blue(max),alpha,scalex(width m), scaley(height m)]
@@ -86,22 +92,19 @@ hz_diag: -1.0  # Freq at which diagnostic data is published
 #   prop_wp is waypoint properties
 #   prop_path_pve_ddp: for positive velocity
 #   setting alpha to 0 will disable sending commands to rviz
-prop_obs: [1.0,0.0,0.0,0.6]
+marker_prop_obs:           [1.0,0.0,0.0,0.6]
 
-#prop_path_dsl:      [0.0,1.0,0.0,0.5,0.4]
-#prop_wp_dsl:        [0.0,0.5,0.0,0.5,0.18,0.18]
-prop_path_dsl:      [0.0,1.0,0.0,0.0,0.4]         #alpha=0 so it won't be displayed
-prop_wp_dsl:        [0.0,0.5,0.0,0.0,0.18,0.18]   #alpha=0 so it won't be displayed
+marker_prop_text_start:    [1.0, 0.0, 0.0, 0.8, 0.0,0.0,2.0]
+marker_prop_text_goal:     [1.0, 0.0, 0.0, 0.8, 0.0,0.0,2.0]
 
-prop_path_dsl_intp: [1.0,0.0,0.0,0.5,0.4]
-prop_wp_dsl_intp:   [0.5,0.0,0.0,0.5,0.18,0.18]
+marker_prop_path_dsl:      [0.0,1.0,0.0,0.5,0.4]
+marker_prop_wp_dsl:        [0.0,0.5,0.0,0.5,0.18,0.18]
+marker_prop_path_dsl_intp: [1.0, 0.0, 0.0, 0.0, 0.4]
+marker_prop_wp_dsl_intp:   [0.5, 0.0, 0.0, 0.0, 0.18, 0.18]
 
-prop_path_pve_ddp:      [0.0,0.0,1.0,0.5,0.4]
-prop_wp_pve_ddp:        [0.0,0.0,0.5,0.5,0.18,0.18]
+marker_prop_path_ddp:      [0.0, 0.0, 1.0, 0.5, 0.4         , 0.0, 0.50, 0.50, 0.5, 0.4]
+marker_prop_wp_ddp:        [0.0, 0.0, 0.5, 0.5, 0.18, 0.18  , 0.0, 0.25, 0.25, 0.5, 0.18,0.18]
 
-prop_path_nve_ddp:      [0.0,0.5,0.5,0.5,0.4]
-prop_wp_nve_ddp:        [0.0,0.25,0.25,0.5,0.18,0.18]
- 
 
 ###################################
 # DSL settings(static)
@@ -113,8 +116,6 @@ dsl_save_final_map:  False
 
 ###################################
 # DSL Geometric car settings(static)
-#   dsl_use_geom_car: Plan the trajectories on se2(x,y,theta) and not just on a x-y grid. All the following properties
-#                   are related to it. They are not used otherwise.
 #   dsl_car_dim_and_org: [length_m, breadth_m, org_x_m, org_y_m] org is with respect to center of rectangle
 #   dsl_onlyfwd: true will produce trajectory which only moves forward
 #   dsl_maxtanphi: 0.577=tan(M_PI/6)  the maximum allowable steering angle for the car
@@ -122,10 +123,18 @@ dsl_save_final_map:  False
 #                         It is important if you want the car to be able to drive in reverse if necessary
 #   dsl_prim_w_div: decides the discretization level of wmax in connectivity primitives
 #   TODO: have the option to be able to give custom car geometry
-dsl_use_geom_car: True
 #dsl_car_dim_and_org: [0.75, 0.43,-0.22,0.0]
 dsl_car_dim_and_org: [0.8, 0.6,-0.22,0.0]
 dsl_onlyfwd: true
+dsl_use_right_connectivity: true
+#dsl_tanphioverlmax: 0.58
+dsl_tanphioverlmax: 1.13
+dsl_nphis: 15
+dsl_primlenmax: 2
+dsl_nprimlengths: 2
+dsl_cell_delth: 0.4 
+#dsl_cell_delth: 0.19634954084
+
 dsl_prim_w_div: 5
 dsl_maxtanphi: 0.35
 dsl_prim_vx_div: 2
@@ -138,9 +147,9 @@ dsl_backward_penalty: 1.0
 #   dsl_interp_deg: degree of interpolation. Intp obtains piecewise polynomial curve in x and y wrt to t
 #   dsl_interp_delt: interp divides the global path to way points which are delt apart at avg_speed
 #   dsl_preint_delt: delt for pre-interpolation(deg1) as input to interpolation(deg 1/2/3)
-dsl_avg_speed: 3.0
+dsl_avg_speed: 2.0
 dsl_interp_deg: 3
-dsl_interp_delt: 0.2
+dsl_interp_delt: 0.4
 dsl_preint_delt: 1000
 dsl_loop_durn: 5.0       
 dsl_from_curr_posn: True
@@ -175,17 +184,13 @@ ddp_hot_start: false
 #                  1: with constant forward vel and constant angular velocity based on  
 #   ddp_hot_start: if set to true it will initialize the controls with previous controls when ddp is called in loop
 #   TODO: have better convergence criteria and warn user if convergence is not achieved
-ddp_Qf:      [1.0, 0.0, 0.0, 0.0,
-              0.0, 1.0, 0.0, 0.0,
-              0.0, 0.0, 1.0, 0.0,
-              0.0, 0.0, 0.0, 1.0]
-ddp_Q_per_t: [0.01,  0.00,  0.00,  0.00,
-              0.00,  5.00,  0.00,  0.00,
-              0.00,  0.00,  5.00,  0.00,
-              0.00,  0.00,  0.00,  0.50]
+ddp_Q_per_t: [0.001, 0.00,  0.00,  0.00,
+              0.00,  5.0,  0.00,  0.00,
+              0.00,  0.00,  5.0,  0.00,
+              0.00,  0.00,  0.00,  1.0]
 ddp_R_per_t:   [0.005, 0.000, 
                 0.000, 0.001]
-ddp_disk_penl_minmax: [0.01, 1000]                
+ddp_disk_penl_minmax: [0.01, 200]                
 ddp_disk_coln_rad: 0.2
 ddp_mu:       1
 ddp_debug_on: False
@@ -214,6 +219,7 @@ obs_search_angle_fwd: 1.57
 obs_cluster_count_max: 6
 obs_cluster_radius_max: 0.5
 obs_map_cell_size: 0.1
+obs_clicked_rad: 0.1   
      
 ###################################
 # Gcar settings(static)
@@ -223,5 +229,5 @@ obs_map_cell_size: 0.1
 #   gcar_maxphi: max steering angle. straight is 0 radians
 gcar_l: 0.51
 gcar_r: 1.0
-gcar_minphi: -0.3
-gcar_maxphi: 0.3
+gcar_minphi: -0.28
+gcar_maxphi: 0.28

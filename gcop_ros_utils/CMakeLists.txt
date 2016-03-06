@@ -96,7 +96,7 @@ include_directories(${YAML_CPP_INCLUDE_DIRS})
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-#  LIBRARIES gcop_comm
+  LIBRARIES lib_gcop_ros_utils
   CATKIN_DEPENDS geometry_msgs roscpp 
   DEPENDS YAML_CPP
 )
@@ -109,13 +109,14 @@ catkin_package(
 ## Your package locations should be listed before other locations
 # include_directories(include)
 include_directories(
+   include
   ${catkin_INCLUDE_DIRS}
 )
 
 ## Declare a cpp library
-# add_library(gcop_comm
-#   src/${PROJECT_NAME}/gcop_comm.cpp
-# )
+add_library(lib_gcop_ros_utils
+   src/lie_utils/so3.cc src/lie_utils/se3.cc src/pose_twist.cpp src/pose_twist2d.cpp
+)
 
 ## Declare a cpp executable
 # add_executable(gcop_comm_node src/gcop_comm_node.cpp)

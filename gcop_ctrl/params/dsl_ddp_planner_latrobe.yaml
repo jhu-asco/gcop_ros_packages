@@ -56,6 +56,7 @@ strtop_pose_start: "/initialpose"
 strtop_pose_goal:  "/move_base_simple/goal"
 strtop_og:         "/map"
 strtop_lidar:      "/first"
+strtop_clicked_point: "/clicked_point"
 
 ###################################
 # Topic name(Output)(static)
@@ -67,6 +68,11 @@ strtop_diag:        "/insekf/diag"
 strtop_marker_rviz: "/visualization_marker"
 strtop_og_dild:     "/map_occgrid_dialated"
 strtop_ctrl:        "/ctrl_si"
+strtop_rviz_pose_start:       "pose_start"
+strtop_rviz_pose_goal:        "pose_goal"
+strtop_rviz_posearr_ddp:      "posearr_ddp"
+strtop_rviz_posearr_dsl:      "posearr_dsl"
+strtop_rviz_posearr_dsl_intp: "posearr_dsl_intp"
 
 ###################################
 # Publishing frequency(static)
@@ -78,25 +84,28 @@ hz_diag: -1.0  # Freq at which diagnostic data is published
 
 ###################################
 # path colors and scale(static)
-#   you set one of  [r,g,b] or [r,g,b,a] or [r,g,b,a,s] or [r,g,b,a,sx,sy] based on type of marker
+#   you set one of  [r,g,b,a] or [r,g,b,a,s] or [r,g,b,a,sx,sy,sz]... based on type of marker
+#   obs = [r,g,b,a]
 #   path_dsl = [red(max),green(max),blue(max),alpha,scale(width m)]
 #   wp_dsl   = [red(max),green(max),blue(max),alpha,scalex(width m), scaley(height m)]
 #   size: width of the path line in meters
 #   prop_wp is waypoint properties
 #   prop_path_pve_ddp: for positive velocity
-prop_obs: [1.0,0.0,0.0,0.6]
+#   setting alpha to 0 will disable sending commands to rviz
+marker_prop_obs:           [1.0,0.0,0.0,0.6]
 
-prop_path_dsl:      [0.0,1.0,0.0,0.5,0.4]
-prop_wp_dsl:        [0.0,0.5,0.0,0.5,0.18,0.18]
+marker_prop_text_start:    [1.0, 0.0, 0.0, 0.8, 0.0,0.0,10.0]
+marker_prop_text_goal:     [1.0, 0.0, 0.0, 0.8, 0.0,0.0,10.0]
 
-prop_path_dsl_intp: [1.0,0.0,0.0,0.5,0.4]
-prop_wp_dsl_intp:   [0.5,0.0,0.0,0.5,0.18,0.18]
+marker_prop_path_dsl:      [1.0, 0.0, 0.0, 0.0, 1.0]
+marker_prop_wp_dsl:        [0.5, 0.0, 0.0, 0.0, 0.18, 0.18]
 
-prop_path_pve_ddp:      [0.0,0.0,1.0,0.5,0.4]
-prop_wp_pve_ddp:        [0.0,0.0,0.5,0.5,0.18,0.18]
+marker_prop_path_dsl_intp: [0.0,1.0,0.0,0.5,1.0]
+marker_prop_wp_dsl_intp:   [0.0,0.5,0.0,0.5,0.18,0.18]
 
-prop_path_nve_ddp:      [0.0,0.5,0.5,0.5,0.4]
-prop_wp_nve_ddp:        [0.0,0.25,0.25,0.5,0.18,0.18]
+marker_prop_path_ddp:      [0.0, 0.0, 1.0, 0.5, 1.0         , 0.0, 0.50, 0.50, 0.5, 1.0]
+marker_prop_wp_ddp:        [0.0, 0.0, 0.5, 0.5, 0.18, 0.18  , 0.0, 0.25, 0.25, 0.5, 0.18,0.18]
+
 
 ###################################
 # DSL settings(static)
@@ -108,8 +117,6 @@ dsl_save_final_map:  False
 
 ###################################
 # DSL Geometric car settings(static)
-#   dsl_use_geom_car: Plan the trajectories on se2(x,y,theta) and not just on a x-y grid. All the following properties
-#                   are related to it. They are not used otherwise.
 #   dsl_car_dim_and_org: [length_m, breadth_m, org_x_m, org_y_m] org is with respect to center of rectangle
 #   dsl_onlyfwd: true will produce trajectory which only moves forward
 #   dsl_maxtanphi: 0.577=tan(M_PI/6)  the maximum allowable steering angle for the car
@@ -117,12 +124,18 @@ dsl_save_final_map:  False
 #                         It is important if you want the car to be able to drive in reverse if necessary
 #   dsl_prim_w_div: decides the discretization level of wmax in connectivity primitives
 #   TODO: have the option to be able to give custom car geometry
-dsl_use_geom_car: True
 #dsl_car_dim_and_org: [0.75, 0.43,-0.22,0.0]
 dsl_car_dim_and_org: [0.8, 0.6,-0.22,0.0]
 dsl_onlyfwd: true
+dsl_use_right_connectivity: true
+dsl_tanphioverlmax: 0.58
+dsl_nphis: 11
+dsl_primlenmax: 2
+dsl_nprimlengths: 3
+dsl_cell_delth: 0.19634954084
+
 dsl_prim_w_div: 5
-dsl_maxtanphi: 0.577 
+dsl_maxtanphi: 0.35
 dsl_prim_vx_div: 2
 dsl_maxvx: 2
 dsl_backward_penalty: 1.0
@@ -135,7 +148,7 @@ dsl_backward_penalty: 1.0
 #   dsl_preint_delt: delt for pre-interpolation(deg1) as input to interpolation(deg 1/2/3)
 dsl_avg_speed: 2.0
 dsl_interp_deg: 3
-dsl_interp_delt: 0.5
+dsl_interp_delt: 2
 dsl_preint_delt: 1000
 dsl_loop_durn: 5.0       
 dsl_from_curr_posn: True
@@ -154,9 +167,10 @@ ddp_hot_start: false
 
 ###################################
 # DDP settings(static)
-#   ddp_Q: 0.5*x'Qx give the state cost per unit time. Q00:a, Q11:x, Q22:y, Q33:v
-#   ddp_Qf:0.5*x'Qx give the terminal state cost
-#   ddp_R: 0.5*u'Ru control cost per unit time
+#   Cost = (x-x_f)^TQ_f(x-x_f) + \int_0^tf\left{0.5*(x-x_d)^TQ(x-x_d) + 0.5*u^TRu  \right}dt
+#   ddp_Qf: Terminal state cost
+#   ddp_Q_per_t: Q = Q_per_t*tf 
+#   ddp_R_per_t: R = R_per_t*tf
 #   ddp_cost_disk_penl: penalty for obstacle avoidance
 #   ddp_disk_coln_rad: collison radius of disks
 #   ddp_mu:
@@ -169,18 +183,14 @@ ddp_hot_start: false
 #                  1: with constant forward vel and constant angular velocity based on  
 #   ddp_hot_start: if set to true it will initialize the controls with previous controls when ddp is called in loop
 #   TODO: have better convergence criteria and warn user if convergence is not achieved
-ddp_Q:   [0.00,  0.00,  0.00,  0.00,
-          0.00,  0.00,  0.00,  0.00,
-          0.00,  0.00,  0.00,  0.00,
-          0.00,  0.00,  0.00,  0.00]
-ddp_Qf:  [1.0, 0.0, 0.0, 0.0,
-          0.0, 1.0, 0.0, 0.0,
-          0.0, 0.0, 1.0, 0.0,
-          0.0, 0.0, 0.0, 1.0]
-ddp_R:   [0.005, 0.000, 
-          0.000, 0.001]
-ddp_cost_disk_penl: 1000
-ddp_disk_coln_rad: 0.3
+ddp_Q_per_t: [0.001, 0.00,  0.00,  0.00,
+              0.00,  5.0,  0.00,  0.00,
+              0.00,  0.00,  5.0,  0.00,
+              0.00,  0.00,  0.00,  1.0]
+ddp_R_per_t:   [0.005, 0.000, 
+                0.000, 0.001]
+ddp_disk_penl_minmax: [0.01, 200]                
+ddp_disk_coln_rad: 0.2
 ddp_mu:       1
 ddp_debug_on: False
 ddp_nseg_minmax: [7,50]
@@ -203,12 +213,13 @@ ddp_brake_at_goal: true
 #   obs_map_cell_size: The size of pixel when creating an image for clustering
 #   TODO: instead of using search radiuses and angles use velocity of car and ddp plan time to find a search area
 obs_search_radius_max: 10.0
-obs_search_radius_min: 0.1
+obs_search_radius_min: 0.2
 obs_search_angle_fwd: 1.57
-obs_cluster_count_max: 10
+obs_cluster_count_max: 6
 obs_cluster_radius_max: 0.5
 obs_map_cell_size: 0.1
-     
+obs_clicked_rad: 1.0     
+
 ###################################
 # Gcar settings(static)
 #   gcar_l: Axle length in meters
@@ -217,5 +228,5 @@ obs_map_cell_size: 0.1
 #   gcar_maxphi: max steering angle. straight is 0 radians
 gcar_l: 0.51
 gcar_r: 1.0
-gcar_minphi: -0.3
-gcar_maxphi: 0.3
+gcar_minphi: -0.28
+gcar_maxphi: 0.28
