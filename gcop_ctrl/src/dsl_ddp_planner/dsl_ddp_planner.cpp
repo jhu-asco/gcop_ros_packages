@@ -86,7 +86,7 @@
 #include <gcop/multicost.h>
 #include <gcop/diskconstraint.h>
 
-#include "miniball.hpp"
+#include <gcop_ctrl/obs_detection_lidar/miniball.hpp>
 
 //-------------------------------------------------------------------------
 //-----------------------NAME SPACES ---------------------------------
@@ -205,18 +205,16 @@ std::vector<T> selectVecElems(const std::vector<T>& vec, std::vector<std::size_t
  * @param K K nearest neighbor
  * @param rcmax maximum radius of the cluster
  */
-void findKClustersWithSizeConstraint(vector<vector<size_t>>& clusters, const vector<Vector2d>& pts_polar,double robs,int K, double rcmax){
-  if(!pts_polar.size())
+void findKClustersWithSizeConstraint(vector<vector<size_t>>& clusters, const vector<Vector2d>& pts_cart,double robs,int K, double rcmax){
+  if(!pts_cart.size())
     return;
 
   //  Make a vector of ranges and convert ptpol to cartesian
-  vector<int> clid(pts_polar.size(),-1);//-1 means cluster numbers have not been assigned
-  vector<double> ranges(pts_polar.size());
-  vector<size_t> idxs_noclid(pts_polar.size());//indexes of all the obstacles that don't have a cluster id
-  vector<Vector2d> pts_cart(pts_polar.size());
-  for(size_t i=0;i<pts_polar.size();i++){
-    pts_cart[i] = Vector2d(pts_polar[i](0)*cos(pts_polar[i](1)), pts_polar[i](0)*sin(pts_polar[i](1)));
-    ranges[i] = pts_polar[i](0);
+  vector<int> clid(pts_cart.size(),-1);//-1 means cluster numbers have not been assigned
+  vector<double> ranges(pts_cart.size());
+  vector<size_t> idxs_noclid(pts_cart.size());//indexes of all the obstacles that don't have a cluster id
+  for(size_t i=0;i<pts_cart.size();i++){
+    ranges[i] = pts_cart[i].norm();
     idxs_noclid[i] = i;
   }
 
@@ -231,7 +229,7 @@ void findKClustersWithSizeConstraint(vector<vector<size_t>>& clusters, const vec
 
     //  find the closest obstacle to center in the list of obstacles that don't belong to any clusters
     size_t idx_innoclid_closest = std::distance(ranges_noclid.begin(),min_element(ranges_noclid.begin(),ranges_noclid.end()));
-    Vector2d pt_polar_closest = pts_polar[idxs_noclid[idx_innoclid_closest]];
+    Vector2d pt_polar_closest = pts_cart[idxs_noclid[idx_innoclid_closest]];
 
     //find all obstacles with no clid which lie in a circle of radius rcmax and centered at
     //  pt_polar_closest + pt_polar(rcmax/2,0) and assign them the cluster id k
@@ -252,7 +250,7 @@ void findKClustersWithSizeConstraint(vector<vector<size_t>>& clusters, const vec
 
     //update idxs_noclid and k for the next loop
     idxs_noclid.clear();
-    for(size_t i=0;i<pts_polar.size();i++){
+    for(size_t i=0;i<pts_cart.size();i++){
       if(clid[i]==-1)
         idxs_noclid.push_back(i);
     }
@@ -285,6 +283,16 @@ void findCircumCircle(vector<Vector2d>& pts_cart_center_circle, vector<double>& 
 }
 
 
+struct ObsDetectionCfg{
+  double search_radius_max;
+  double search_radius_min;      //! The laser points
+  double search_angle_fwd;       //! restrict the search angle of the lidar data
+  int cluster_count_max;         //! max number of obstacles to be returned
+  double cluster_radius_max;     //! the max cluster radius
+  double map_cell_size;         //! cell size of the map
+  shared_ptr<sensor_msgs::LaserScan> p_laserscan_msg;//! Pointer to the laserscan message
+  shared_ptr<vector<Affine2d>> p_lidar2nodes;        //! Pointer to vector of transformation for lidar frame to nodei frame
+};
 
 //------------------------------------------------------------------------
 //-----------------------------CALLBACK CLASS ----------------------------
@@ -353,13 +361,14 @@ private:
   bool ddpFeasible(void);
   bool ddpInit(void);
   bool ddpPlan(void);
-  void obsDetect(vector<Vector3d>& centers_encirc, vector<double>& rads_encirc);
+  void obsDetect(vector<Vector3d>& centers_encirc, vector<double>& rads_encirc, const ObsDetectionCfg& obs_cfg);
   /**
    * Finds n obstacles that are closest to the entire trajectory
-   * @param centers_encirc
-   * @param rads_encirc
+   * @param centers_encirc center of the circle that encircles a set of pointsS
+   * @param rads_encirc radius of the circle that encirles a set of points
+   * @param cfg configuration for obstacle detection
    */
-  void obsFindCloseToTraj(vector<Vector3d>& centers_encirc, vector<double>& rads_encirc);
+  void obsFindCloseToTraj(vector<Vector3d>& centers_encirc_inlidar, vector<double>& rads_encirc, const ObsDetectionCfg& cfg);
 
   void setTfmsWorld2OgLL(void);
 
@@ -473,12 +482,7 @@ private:
 
   //obstacle properties
   vector<geometry_msgs::PointStamped> clicked_points_;
-  double obs_search_radius_max_;
-  double obs_search_radius_min_;
-  double obs_search_angle_fwd_;
-  int obs_cluster_count_max_;
-  double obs_cluster_radius_max_;
-  double obs_map_cell_size_;
+  ObsDetectionCfg obs_cfg_;
   double obs_clicked_rad_;
   sensor_msgs::LaserScan msg_lidar_;
   vector<Disk> disks_;
@@ -1091,7 +1095,7 @@ void CallBackDslDdp::dslInit(){
   bool expand_at_start = yaml_node_["dsl_expand_at_start"].as<bool>();
   double cell_width = og_final_.info.resolution;
   double cell_height = og_final_.info.resolution;
-  double cell_delth  = yaml_node_["dsl_cell_delth"].as<double>(); //default is M_PI/16
+  double cell_delth  = M_PI/16;
   int map_width = og_final_.info.width;
   int map_height = og_final_.info.height;
 
@@ -1103,12 +1107,12 @@ void CallBackDslDdp::dslInit(){
   double onlyfwd = yaml_node_["dsl_onlyfwd"].as<bool>();
 
   prim_cfg_.fwdonly = yaml_node_["dsl_onlyfwd"].as<bool>();
-  prim_cfg_.tphioverlmx = yaml_node_["dsl_tanphioverlmax"].as<double>();
-  prim_cfg_.nphis = yaml_node_["dsl_nphis"].as<double>();
-  prim_cfg_.vnom = config_.dyn_dsl_avg_speed;
-  prim_cfg_.lmn = 2* cell_width;
-  prim_cfg_.lmx = yaml_node_["dsl_primlenmax"].as<double>();
-  prim_cfg_.nls = yaml_node_["dsl_nprimlengths"].as<double>();
+  prim_cfg_.tphioverlmax = yaml_node_["dsl_tanphioverlmax"].as<double>();
+  prim_cfg_.lmin = yaml_node_["dsl_prim_lmin"].as<double>();
+  prim_cfg_.lmax = yaml_node_["dsl_prim_lmax"].as<double>();
+  prim_cfg_.nl = (uint) yaml_node_["dsl_prim_nl"].as<int>();
+  prim_cfg_.amax = yaml_node_["dsl_prim_amax"].as<double>();
+  prim_cfg_.na = (uint)yaml_node_["dsl_prim_na"].as<int>();
 
   bool dsl_save_final_map = yaml_node_["dsl_save_final_map"].as<bool>();
   dsl::CarGeom car_geom;
@@ -1137,9 +1141,11 @@ void CallBackDslDdp::dslInit(){
   }
 
   p_dsl_gridcar_   =  new dsl::CarGrid(car_geom,dsl_map2d, cell_width, cell_height, cell_delth, dsl_cost_scale, 0.5);
-  if(yaml_node_["dsl_use_right_connectivity"].as<bool>())
+  if(yaml_node_["dsl_use_right_connectivity"].as<bool>()){
     p_dsl_conncar_   =  new dsl::CarConnectivity(*p_dsl_gridcar_,prim_cfg_);
-  else
+    for(size_t i=0; i< p_dsl_conncar_->vss.size(); i++)
+      cout<<"n prims["<<i<<"]:"<<p_dsl_conncar_->vss[i].size()<<endl;
+  }else
     p_dsl_conncar_   =  new dsl::CarConnectivity(*p_dsl_gridcar_,bp, onlyfwd, dsl_prim_w_div,dsl_maxtanphi, dsl_prim_vx_div,dsl_maxvx);
   p_dsl_costcar_   =  new dsl::CarCost();
   p_dsl_searchcar_ =  new dsl::GridSearch<3, Matrix3d>(*p_dsl_gridcar_, *p_dsl_conncar_, *p_dsl_costcar_, expand_at_start);
@@ -1150,6 +1156,40 @@ void CallBackDslDdp::dslInit(){
     cout<<indStr(1)+"DSL grid initialized with map size:"<<og_final_.info.width<<" X "<<og_final_.info.height<<endl;
     cout<<indStr(1)+"delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
   }
+
+  //visualize the primitives
+    int img_hsize = ceil(prim_cfg_.lmax/cell_width);
+    int img_size = 2*img_hsize + 1;
+
+    cv::Mat img_prim;
+    Affine3d igorg_to_mgcorg = Scaling(Vector3d(1/cell_width, 1/cell_width, 1)) *Translation3d(Vector3d(img_hsize*cell_width, img_hsize*cell_width, 0));
+
+
+
+//    for(int idx_a=0; idx_a < p_dsl_conncar_->vss.size() && !g_shutdown_requested ;idx_a++){
+    if(yaml_node_["dsl_vis_prim"].as<bool>()){
+      cv::namedWindow("img_prim", cv::WINDOW_NORMAL);
+      for(int idx_a=15; idx_a < 16 && !g_shutdown_requested ;idx_a++){
+        img_prim = cv::Mat(img_size,img_size,CV_8UC1, cv::Scalar(0));
+        double th = p_dsl_gridcar_->xlb(0) + p_dsl_gridcar_->cs(0)*(idx_a+0.5);
+        //cout<<"theta:"<<th<<" at idx_a:"<<idx_a<<endl;
+        Affine3d igorg_to_car = igorg_to_mgcorg * AngleAxisd(th,Vector3d::UnitZ());
+        for(int idx_p=0; idx_p< p_dsl_conncar_->vss[idx_a].size();idx_p++){
+          //cout<<"prim["<<idx_p<<"]:"<<p_dsl_conncar_->vss[idx_a][idx_p].transpose()<<endl;
+          Matrix3d dg; SE2::Instance().exp(dg, p_dsl_conncar_->vss[idx_a][idx_p]);
+          Vector3d xyzend(dg(0,2),dg(1,2),0);
+          Vector3i idxi = (igorg_to_car * xyzend).cast<int>();
+
+          if( idxi(1) < img_size && idxi(2) < img_size )
+            img_prim.at<uchar>(idxi(1),idxi(0)) = 255;
+
+        }
+        cv::imshow("img_prim", img_prim);
+        cv::waitKey(0);
+      }
+    cv::destroyWindow("img_prim");
+    }
+
 
   ind_count_--;
 }
@@ -1474,13 +1514,15 @@ bool CallBackDslDdp::ddpInit(void){
   ddp_force_cold_start_ = true;
 
   //get obstacle detection parameters
-  obs_search_radius_max_       = yaml_node_["obs_search_radius_max"].as<double>();
-  obs_search_radius_min_       = yaml_node_["obs_search_radius_min"].as<double>();
-  obs_search_angle_fwd_    = yaml_node_["obs_search_angle_fwd"].as<double>();
-  obs_cluster_count_max_   = yaml_node_["obs_cluster_count_max"].as<int>();
-  obs_cluster_radius_max_  = yaml_node_["obs_cluster_radius_max"].as<double>();
-  obs_map_cell_size_       = yaml_node_["obs_map_cell_size"].as<double>();
+  obs_cfg_.search_radius_max       = yaml_node_["obs_search_radius_max"].as<double>();
+  obs_cfg_.search_radius_min       = yaml_node_["obs_search_radius_min"].as<double>();
+  obs_cfg_.search_angle_fwd    = yaml_node_["obs_search_angle_fwd"].as<double>();
+  obs_cfg_.cluster_count_max   = yaml_node_["obs_cluster_count_max"].as<int>();
+  obs_cfg_.cluster_radius_max  = yaml_node_["obs_cluster_radius_max"].as<double>();
+  obs_cfg_.map_cell_size       = yaml_node_["obs_map_cell_size"].as<double>();
+  obs_cfg_.p_laserscan_msg.reset(&msg_lidar_);
   obs_clicked_rad_         = yaml_node_["obs_clicked_rad"].as<double>();
+
   ind_count_--;
 }
 
@@ -1554,20 +1596,6 @@ bool CallBackDslDdp::ddpPlan(void){
   vector<double>::iterator it_t_away = upper_bound(t_stl.begin(),t_stl.end(),t_stl[idx_nearest]+t_away);
   int idx_t_away = it_t_away-t_stl.begin()==t_stl.size()? t_stl.size()-1: it_t_away-t_stl.begin();
 
-//  //Check idx_t_away for collision with obstacle and move it forward if that's the case
-//  //Not necessary. DDP should automatically move it out of the way
-//  if(config_.dyn_ddp_move_goal){
-//    for(size_t n=0; n< n_obs ; n++){
-//      Vector2d xy_w2o = centers_encirc_oinw[n].head<2>();
-//      Vector2d xy_w2b = path_gcar_w2b_dsl_intp_[idx_t_away].g.topRightCorner<2,1>();
-//      double dist = (xy_w2o - xy_w2b).norm();
-//      if(dist < disks_[n].r +0.5){
-//        idx_t_away++;
-//        n=0;
-//      }
-//    }
-//  }
-
   //  DDP goal
   pose_aff3d_w2b_ddp_goal_ = tfm_world2og_ll_ * axyToAffine3d(a_ll2b_intp_(idx_t_away),
                                                                x_ll2b_intp_(idx_t_away),
@@ -1627,13 +1655,11 @@ bool CallBackDslDdp::ddpPlan(void){
     cout<<indStr(2)+"nseg:"<<ddp_nseg<<endl;
   }
 
-
-
   //detect obstacles in the frame of the robots current position(in body frame) and convert it to world frame
   disks_.clear();
   vector<Vector3d> centers_encirc_oinb;
   vector<double> rads_encirc;
-  obsDetect(centers_encirc_oinb, rads_encirc);
+  //obsDetect(centers_encirc_oinb, rads_encirc, obs_cfg_);
   size_t n_obs_detected = rads_encirc.size();
   vector<Vector3d>centers_encirc_oinw(centers_encirc_oinb.size());
   transform(centers_encirc_oinb.begin(),centers_encirc_oinb.end(), centers_encirc_oinw.begin(),
@@ -1778,11 +1804,11 @@ bool CallBackDslDdp::ddpPlan(void){
   return true;
 }
 
-void CallBackDslDdp::obsDetect(vector<Vector3d>& centers_encirc, vector<double>& rads_encirc){
+void CallBackDslDdp::obsDetect(vector<Vector3d>& centers_encirc, vector<double>& rads_encirc, const ObsDetectionCfg& cfg){
   ind_count_++;
   if(config_.dyn_debug_on)
     cout<<indStr(0)+"*Detecting obstacles"<<endl;
-  if(!msg_lidar_.ranges.size()){
+  if(!cfg.p_laserscan_msg->ranges.size()){
     if(config_.dyn_debug_on)
       cout<<indStr(1)+"Obstacle detection not done as it seems there is no lidar message"<<endl;
     ind_count_--;
@@ -1791,38 +1817,36 @@ void CallBackDslDdp::obsDetect(vector<Vector3d>& centers_encirc, vector<double>&
 
   ros::Time t_start =  ros::Time::now();
   //range values out of these ranges are not correct
-  double dela = msg_lidar_.angle_increment;
-  double mina = msg_lidar_.angle_min;
-  double maxa = msg_lidar_.angle_max;
-  int n_skip = abs(mina + obs_search_angle_fwd_)/dela;
+  double dela = cfg.p_laserscan_msg->angle_increment;
+  double mina = cfg.p_laserscan_msg->angle_min;
+  double maxa = cfg.p_laserscan_msg->angle_max;
+  int n_skip = abs(mina + cfg.search_angle_fwd)/dela;
 
-  // Find ranges which lie in the radius
-  vector<float>::iterator it_begin = msg_lidar_.ranges.begin()+n_skip;
-  vector<float>::iterator it_end   = msg_lidar_.ranges.end()-n_skip;
+  // Find lidar endpoints which lie in the radius
+  vector<float>::iterator it_begin = cfg.p_laserscan_msg->ranges.begin()+n_skip;
+  vector<float>::iterator it_end   = cfg.p_laserscan_msg->ranges.end()-n_skip;
 
   std::vector<size_t> idxs_inrange;
-  vector<float>::iterator it= find_if(it_begin,it_end , [=](float r){return ((r < obs_search_radius_max_)&& (r > obs_search_radius_min_) );});
+  vector<float>::iterator it= find_if(it_begin,it_end , [=](float r){return ((r < cfg.search_radius_max)&& (r > cfg.search_radius_min) );});
   while (it != it_end) {
-    idxs_inrange.push_back(std::distance(msg_lidar_.ranges.begin(), it));
-    it = find_if(++it, it_end, [=](float r){return ((r < obs_search_radius_max_)&& (r > obs_search_radius_min_) );});
+    idxs_inrange.push_back(std::distance(cfg.p_laserscan_msg->ranges.begin(), it));
+    it = find_if(++it, it_end, [=](float r){return ((r < cfg.search_radius_max)&& (r > cfg.search_radius_min) );});
   }
 
   //Get the obstacle points
-  vector<Vector2d> pts_polar(idxs_inrange.size());
   vector<Vector2d> pts_cart(idxs_inrange.size());
-  for(int i=0;i<pts_polar.size();i++){
-    double range = msg_lidar_.ranges[idxs_inrange[i]];
-    double angle = msg_lidar_.angle_min + msg_lidar_.angle_increment*idxs_inrange[i];
-    pts_polar[i] = Vector2d(range,angle);
-    pts_cart[i] = Vector2d(pts_polar[i](0)*cos(pts_polar[i](1)), pts_polar[i](0)*sin(pts_polar[i](1)));
+  for(int i=0;i<pts_cart.size();i++){
+    double r = cfg.p_laserscan_msg->ranges[idxs_inrange[i]];
+    double a = cfg.p_laserscan_msg->angle_min + cfg.p_laserscan_msg->angle_increment*idxs_inrange[i];
+    pts_cart[i] = Vector2d(r*cos(a), r*sin(a));
   }
 
   //find the KNN closes to center
   vector<vector<size_t>> clusters;
-  double r_obs = obs_map_cell_size_/sqrt(2);
+  double r_obs = cfg.map_cell_size/sqrt(2);
 
   //find cluster centers
-  findKClustersWithSizeConstraint(clusters,pts_polar,r_obs, obs_cluster_count_max_, obs_cluster_radius_max_);
+  findKClustersWithSizeConstraint(clusters,pts_cart,r_obs, cfg.cluster_count_max, cfg.cluster_radius_max);
 
   //get cluster radius and center
   vector<Vector2d> centers2d_encirc;
@@ -1841,66 +1865,66 @@ void CallBackDslDdp::obsDetect(vector<Vector3d>& centers_encirc, vector<double>&
 }
 
 
-void CallBackDslDdp::obsFindCloseToTraj(vector<Vector3d>& centers_encirc, vector<double>& rads_encirc){
+void CallBackDslDdp::obsFindCloseToTraj(vector<Vector3d>& centers_encirc_inlidar, vector<double>& rads_encirc,const ObsDetectionCfg& cfg){
   ind_count_++;
-  if(config_.dyn_debug_on)
-    cout<<indStr(0)+"*Detecting obstacles"<<endl;
-  if(!msg_lidar_.ranges.size()){
-    if(config_.dyn_debug_on)
-      cout<<indStr(1)+"Obstacle detection not done as it seems there is no lidar message"<<endl;
-    ind_count_--;
-    return;
-  }
+   if(config_.dyn_debug_on)
+     cout<<indStr(0)+"*Detecting obstacles"<<endl;
+   if(!cfg.p_laserscan_msg->ranges.size()){
+     if(config_.dyn_debug_on)
+       cout<<indStr(1)+"Obstacle detection not done as it seems there is no lidar message"<<endl;
+     ind_count_--;
+     return;
+   }
 
-  ros::Time t_start =  ros::Time::now();
-  //range values out of these ranges are not correct
-  double dela = msg_lidar_.angle_increment;
-  double mina = msg_lidar_.angle_min;
-  double maxa = msg_lidar_.angle_max;
-  int n_skip = abs(mina + obs_search_angle_fwd_)/dela;
+   ros::Time t_start =  ros::Time::now();
 
-  // Find ranges which lie in the radius
-  vector<float>::iterator it_begin = msg_lidar_.ranges.begin()+n_skip;
-  vector<float>::iterator it_end   = msg_lidar_.ranges.end()-n_skip;
+   double dela = cfg.p_laserscan_msg->angle_increment;
+   double mina = cfg.p_laserscan_msg->angle_min;
+   double maxa = cfg.p_laserscan_msg->angle_max;
 
-  std::vector<size_t> idxs_inrange;
-  vector<float>::iterator it= find_if(it_begin,it_end , [=](float r){return ((r < obs_search_radius_max_)&& (r > obs_search_radius_min_) );});
-  while (it != it_end) {
-    idxs_inrange.push_back(std::distance(msg_lidar_.ranges.begin(), it));
-    it = find_if(++it, it_end, [=](float r){return ((r < obs_search_radius_max_)&& (r > obs_search_radius_min_) );});
-  }
+   vector<float>::iterator it_begin = cfg.p_laserscan_msg->ranges.begin();
+   vector<float>::iterator it_end   = cfg.p_laserscan_msg->ranges.end();
 
-  //Get the obstacle points
-  vector<Vector2d> pts_polar(idxs_inrange.size());
-  vector<Vector2d> pts_cart(idxs_inrange.size());
-  for(int i=0;i<pts_polar.size();i++){
-    double range = msg_lidar_.ranges[idxs_inrange[i]];
-    double angle = msg_lidar_.angle_min + msg_lidar_.angle_increment*idxs_inrange[i];
-    pts_polar[i] = Vector2d(range,angle);
-    pts_cart[i] = Vector2d(pts_polar[i](0)*cos(pts_polar[i](1)), pts_polar[i](0)*sin(pts_polar[i](1)));
-  }
+   for(size_t idx_node=0; idx_node < cfg.p_lidar2nodes->size(); idx_node++){
+     Affine2d& lidar2node = (*cfg.p_lidar2nodes)[idx_node];
+     std::vector<size_t> idxs_inrange(cfg.p_laserscan_msg->ranges.size()); //TODO replace it with filtered ranges
+     std::iota(idxs_inrange.begin(), idxs_inrange.end(),0);
 
-  //find the KNN closes to center
-  vector<vector<size_t>> clusters;
-  double r_obs = obs_map_cell_size_/sqrt(2);
+     //Get the obstacle points
+     vector<Vector2d> pts_cart_innode(idxs_inrange.size());
+     for(int i=0;i<pts_cart_innode.size();i++){
+       double r = cfg.p_laserscan_msg->ranges[idxs_inrange[i]];
+       double a = cfg.p_laserscan_msg->angle_min + cfg.p_laserscan_msg->angle_increment*idxs_inrange[i];
+       pts_cart_innode[i] = lidar2node.inverse() * Vector2d(r*cos(a), r*sin(a));
+     }
 
-  //find cluster centers
-  findKClustersWithSizeConstraint(clusters,pts_polar,r_obs, obs_cluster_count_max_, obs_cluster_radius_max_);
+     //find the KNN closest to center
+     vector<vector<size_t>> clusters;
+     double r_obs = cfg.map_cell_size/sqrt(2);
 
-  //get cluster radius and center
-  vector<Vector2d> centers2d_encirc;
-  findCircumCircle(centers2d_encirc, rads_encirc, clusters, pts_cart);
-  centers_encirc.resize(centers2d_encirc.size());
-  transform(centers2d_encirc.begin(), centers2d_encirc.end(), centers_encirc.begin(),
-            [](const Vector2d& c){return Vector3d(c(0), c(1), 0);});
+     //find the nearest cluster center
+     findKClustersWithSizeConstraint(clusters,pts_cart_innode,r_obs, 1, cfg.cluster_radius_max);
 
-  ros::Time t_end =  ros::Time::now();
-  if(config_.dyn_debug_verbose_on){
-    cout<<indStr(1)+"Obstacle detection done:"<<endl;
-    cout<<indStr(1)+"delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
-  }
+     //get cluster radius and center
+     vector<Vector2d> centers2d_encirc_innode;
+     vector<double> rads_encirc_fornodei;
+     findCircumCircle(centers2d_encirc_innode, rads_encirc_fornodei, clusters, pts_cart_innode);
+     centers_encirc_inlidar.resize(centers2d_encirc_innode.size());
 
-  ind_count_--;
+     Vector2d c = centers2d_encirc_innode[0];
+     rads_encirc.push_back(rads_encirc_fornodei[0]);
+     centers_encirc_inlidar.push_back(toAffine3d(lidar2node) * Vector3d(c(0), c(1), 0));
+
+   }
+
+
+   ros::Time t_end =  ros::Time::now();
+   if(config_.dyn_debug_verbose_on){
+     cout<<indStr(1)+"Obstacle detection done:"<<endl;
+     cout<<indStr(1)+"delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
+   }
+
+   ind_count_--;
 }
 
 
@@ -2088,7 +2112,7 @@ void CallBackDslDdp::rvizMarkersInit(void){
   marker_obs_.scale.z = 0.5;
   marker_obs_.lifetime = ros::Duration(config_.dyn_ddp_loop_durn);
   rvizMarkersEdit(marker_obs_,marker_prop_obs_);
-  marker_id_ += obs_cluster_count_max_;
+  marker_id_ += obs_cfg_.cluster_count_max;
 
   ind_count_--;
 }

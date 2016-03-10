@@ -20,7 +20,7 @@ str_ind: "| "
 #   og_tol_unseen_msq: a means if area of connected unseen cells < a sqm then they are set to unoccupied
 #                      which should be little bit less than size of your vehicle
 og_downsample_factor: 3 (unimplemented)
-og_cell_m_resized: 0.05
+og_cell_m_resized: 0.08
 og_tol_unseen_sqm: 1
 
 ###################################
@@ -124,16 +124,16 @@ dsl_save_final_map:  False
 #   dsl_prim_w_div: decides the discretization level of wmax in connectivity primitives
 #   TODO: have the option to be able to give custom car geometry
 #dsl_car_dim_and_org: [0.75, 0.43,-0.22,0.0]
+dsl_use_right_connectivity: true
+dsl_vis_prim: false
 dsl_car_dim_and_org: [0.8, 0.6,-0.22,0.0]
 dsl_onlyfwd: true
-dsl_use_right_connectivity: true
-#dsl_tanphioverlmax: 0.58
-dsl_tanphioverlmax: 1.13
-dsl_nphis: 15
-dsl_primlenmax: 2
-dsl_nprimlengths: 2
-dsl_cell_delth: 0.4 
-#dsl_cell_delth: 0.19634954084
+dsl_tanphioverlmax: 0.58
+dsl_prim_lmin: 0.24
+dsl_prim_lmax: 2
+dsl_prim_nl: 2
+dsl_prim_amax: 1.57
+dsl_prim_na: 19
 
 dsl_prim_w_div: 5
 dsl_maxtanphi: 0.35
