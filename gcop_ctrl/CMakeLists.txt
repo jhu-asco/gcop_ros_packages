@@ -14,8 +14,8 @@ find_package(catkin REQUIRED COMPONENTS
   dynamic_reconfigure
   gcop_comm
   geometry_msgs
-	visualization_msgs
-	sensor_msgs
+  visualization_msgs
+  sensor_msgs
   roscpp
   rospy
   roslib

@@ -42,6 +42,7 @@ dilation_min_m: 0.5  #unimplemented
 strfrm_world: "/world"          
 strfrm_robot: "/base_link"  
 strfrm_og_org: "/og_org"
+strfrm_lidar: "/laser"
 
 ###################################
 # Topic name(Input)(static)
@@ -97,49 +98,40 @@ marker_prop_obs:           [1.0,0.0,0.0,0.6]
 marker_prop_text_start:    [1.0, 0.0, 0.0, 0.8, 0.0,0.0,2.0]
 marker_prop_text_goal:     [1.0, 0.0, 0.0, 0.8, 0.0,0.0,2.0]
 
-marker_prop_path_dsl:      [0.0,1.0,0.0,0.5,0.4]
-marker_prop_wp_dsl:        [0.0,0.5,0.0,0.5,0.18,0.18]
-marker_prop_path_dsl_intp: [1.0, 0.0, 0.0, 0.0, 0.4]
-marker_prop_wp_dsl_intp:   [0.5, 0.0, 0.0, 0.0, 0.18, 0.18]
+marker_prop_path_dsl:      [0.0, 1.0, 0.0, 0.2, 0.4]
+marker_prop_wp_dsl:        [0.0, 0.5, 0.0, 0.2, 0.18, 0.18]
+marker_prop_path_dsl_intp: [1.0, 0.0, 0.0, 0.5, 0.4]
+marker_prop_wp_dsl_intp:   [0.5, 0.0, 0.0, 0.5, 0.18, 0.18]
 
 marker_prop_path_ddp:      [0.0, 0.0, 1.0, 0.5, 0.4         , 0.0, 0.50, 0.50, 0.5, 0.4]
 marker_prop_wp_ddp:        [0.0, 0.0, 0.5, 0.5, 0.18, 0.18  , 0.0, 0.25, 0.25, 0.5, 0.18,0.18]
 
-
-###################################
-# DSL settings(static)
-#   dsl_expand: deicdes whether to expand the whole dsl grid into its graph at init
-#                 Expanding at startup is to be used if startup time and memory is not an issue
-#   dsl_save_final_map:  If true saves the final process occupancy grid which is the input map to dsl
-dsl_expand_at_start: True
-dsl_save_final_map:  False
-
 ###################################
 # DSL Geometric car settings(static)
 #   dsl_car_dim_and_org: [length_m, breadth_m, org_x_m, org_y_m] org is with respect to center of rectangle
+#   dsl_expand: deicdes whether to expand the whole dsl grid into its graph at init
+#                 Expanding at startup is to be used if startup time and memory is not an issue
+#   dsl_save_final_map:  If true saves the final process occupancy grid which is the input map to dsl
 #   dsl_onlyfwd: true will produce trajectory which only moves forward
-#   dsl_maxtanphi: 0.577=tan(M_PI/6)  the maximum allowable steering angle for the car
-#   dsl_backward_penalty: 2.0 means cost of a backward path =2.0 * cost of forward path of same length 
-#                         It is important if you want the car to be able to drive in reverse if necessary
-#   dsl_prim_w_div: decides the discretization level of wmax in connectivity primitives
-#   TODO: have the option to be able to give custom car geometry
+#   dsl_tanphioverlmax: tan(maximum allowable steering angle for the car)/l where l=dist between front wheel and rear
+#   dsl_prim_lmin: min length of the primitive
+#   dsl_prim_lmax: max length of the primitive
+#   dsl_prim_nl:   number of different primitive lengths S
+#   dsl_prim_amax: max change in angle for a single primitve wrt to starting angle
+#   dsl_prim_na:   number of different steering angle from 0 to phi
 #dsl_car_dim_and_org: [0.75, 0.43,-0.22,0.0]
-dsl_use_right_connectivity: true
-dsl_vis_prim: false
+dsl_vis_prim: False
 dsl_car_dim_and_org: [0.8, 0.6,-0.22,0.0]
+dsl_expand_at_start: True
+dsl_save_final_map:  False
 dsl_onlyfwd: true
-dsl_tanphioverlmax: 0.58
-dsl_prim_lmin: 0.24
+dsl_tanphioverlmax: 0.54
+dsl_prim_lmin: 0.32
 dsl_prim_lmax: 2
-dsl_prim_nl: 2
 dsl_prim_amax: 1.57
-dsl_prim_na: 19
-
-dsl_prim_w_div: 5
-dsl_maxtanphi: 0.35
-dsl_prim_vx_div: 2
-dsl_maxvx: 0.5
-dsl_backward_penalty: 1.0
+dsl_prim_nl: 2
+dsl_prim_na: 8
+dsl_pert: true
 
 ###################################
 # DSL settings(reconfigurable)
@@ -160,20 +152,21 @@ dsl_disp_rviz: True
 #   ddp_t_away: Choose a wpoint on dsl path which is t_away sec away
 #   ddp_loop_durn: duration after which ddp planning is called again
 #   ddp_from_curr_posn: if enabled plans(ddp) from current position else from rivz start
-ddp_t_away: 1.5
-ddp_loop_durn: 0.05
+ddp_t_away: 2.0
+ddp_loop_durn: 0.07 #0.05
 ddp_from_curr_posn: True
 ddp_disp_rviz: True
 ddp_hot_start: false
 
 ###################################
 # DDP settings(static)
+#   ddp_traj_track: trajectory tracking controller enabled or just end point tracking
 #   Cost = (x-x_f)^TQ_f(x-x_f) + \int_0^tf\left{0.5*(x-x_d)^TQ(x-x_d) + 0.5*u^TRu  \right}dt
-#   ddp_Qf: Terminal state cost
+#   ddp_Qf: Terminal state cost (disabled when using trajectory tracking)
 #   ddp_Q_per_t: Q = Q_per_t*tf 
 #   ddp_R_per_t: R = R_per_t*tf
 #   ddp_cost_disk_penl: penalty for obstacle avoidance
-#   ddp_disk_coln_rad: collison radius of disks
+#   ddp_disk_cr: collison radius of disks. 
 #   ddp_mu:
 #   ddp_N: number of segments of trajectory(number of nodes=n+1)
 #   ddp_niter: max number of iteration until convergence
@@ -184,6 +177,12 @@ ddp_hot_start: false
 #                  1: with constant forward vel and constant angular velocity based on  
 #   ddp_hot_start: if set to true it will initialize the controls with previous controls when ddp is called in loop
 #   TODO: have better convergence criteria and warn user if convergence is not achieved
+ddp_traj_track: True
+ddp_Qf:      [1.0, 0.0, 0.0, 0.0,
+              0.0, 1.0, 0.0, 0.0,
+              0.0, 0.0, 1.0, 0.0,
+              0.0, 0.0, 0.0, 1.0]
+              
 ddp_Q_per_t: [0.001, 0.00,  0.00,  0.00,
               0.00,  5.0,  0.00,  0.00,
               0.00,  0.00,  5.0,  0.00,
@@ -191,11 +190,11 @@ ddp_Q_per_t: [0.001, 0.00,  0.00,  0.00,
 ddp_R_per_t:   [0.005, 0.000, 
                 0.000, 0.001]
 ddp_disk_penl_minmax: [0.01, 200]                
-ddp_disk_coln_rad: 0.2
+ddp_disk_cr: 0.32 # half width of the car?
 ddp_mu:       1
 ddp_debug_on: False
 ddp_nseg_minmax: [7,50]
-ddp_tseg_ideal:  0.04
+ddp_tseg_ideal:  0.1
 ddp_nit_max: 30
 ddp_tol_abs: 1e-6
 ddp_tol_rel: 1e-3
@@ -217,7 +216,7 @@ obs_search_radius_max: 10.0
 obs_search_radius_min: 0.2
 obs_search_angle_fwd: 1.57
 obs_cluster_count_max: 6
-obs_cluster_radius_max: 0.5
+obs_cluster_radius_max: 0.2
 obs_map_cell_size: 0.1
 obs_clicked_rad: 0.1   
      

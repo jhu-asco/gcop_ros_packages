@@ -17,6 +17,8 @@
 
 using namespace Eigen;
 
+typedef Matrix<double,7,1> Vector7d;
+
 void eig2PoseMsg(geometry_msgs::Pose& msg_pose, const Matrix3d& orientation, const Vector3d& position)
 {
   Quaterniond quat(orientation);
@@ -168,4 +170,26 @@ Vector3d affine2dToAxy(const Affine2d& pose){
   return affine3dToAxy(toAffine3d(pose));
 }
 
+/**
+ * Converts the Eigen::Affine3d to an Eigen::Vector7d
+ * @param posequat [x, y, z, qx, qy, qz, qw]
+ * @param pose
+ */
+void affine3dToPosequat(Vector7d& posnxyzw, const Affine3d& aff3d)
+{
+  Quaterniond quat(aff3d.rotation());
+  posnxyzw(3) = quat.x();
+  posnxyzw(4) = quat.y();
+  posnxyzw(5) = quat.z();
+  posnxyzw(6) = quat.w();
+
+  posnxyzw(0) = aff3d.translation()(0);
+  posnxyzw(1) = aff3d.translation()(1);
+  posnxyzw(2) = aff3d.translation()(2);
+}
+void posequatToAffine3d(Affine3d& aff3d, const Vector7d& posnxyzw)
+{
+  aff3d = Translation3d(posnxyzw.head<3>())
+            *Quaterniond(posnxyzw(6) , posnxyzw(7), posnxyzw(7) , posnxyzw(9));
+}
 #endif /* EIGEN_ROS_CONV_H_ */
