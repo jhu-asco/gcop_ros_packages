@@ -170,7 +170,7 @@ void QRotorIDModelControl::so3ToGeometryMsgsQuaternion(geometry_msgs::Quaternion
 }
 */
 
-void QRotorIDModelControl::setInitialVel(const geometry_msgs::Vector3 &vel, const geometry_msgs::Vector3 &rpy)
+void QRotorIDModelControl::setInitialState(const geometry_msgs::Vector3 &vel, const geometry_msgs::Vector3 &rpy)
 {
   Vector3d rpy_(0, 0, -rpy.z);
   Matrix3d R;
@@ -183,6 +183,17 @@ void QRotorIDModelControl::setInitialVel(const geometry_msgs::Vector3 &vel, cons
   so3.q2g(xs[0].R,rp_);
   cout<<"Initial Vel: "<<xs[0].v.transpose()<<endl;
   cout<<"Initial rp: "<<rp_.transpose()<<endl;
+}
+
+void QRotorIDModelControl::setObstacleCenter(const int &index, const double &x, const double &y, const double &z)
+{
+  if(index < obstacles.size())
+  {
+    Eigen::Vector3d center(x,y,z);
+    gn->SetObstaclePos(index, center);
+    //Update the obstacles also for plotting:
+    obstacles[index].segment<3>(1) = center;
+  }
 }
 
 void QRotorIDModelControl::iterate(bool fast_iterate)

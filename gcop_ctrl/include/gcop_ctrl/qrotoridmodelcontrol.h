@@ -39,7 +39,8 @@ protected:
 public:
     QRotorIDModelControl(ros::NodeHandle &nh, string frame_id="optitrak");
     //void setGoal(const geometry_msgs::Pose &xf_);
-    void setInitialVel(const geometry_msgs::Vector3 &vel, const geometry_msgs::Vector3 &rpy);
+    void setInitialState(const geometry_msgs::Vector3 &vel, const geometry_msgs::Vector3 &rpy);
+    void setObstacleCenter(const int &index, const double &x, const double &y, const double &z);
     void iterate(bool fast_iterate = false);
     void getControl(Vector4d &ures);
     void getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Matrix3d &yawM, Vector3d &pos_);
