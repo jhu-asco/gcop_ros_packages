@@ -14,4 +14,7 @@
   
   <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_og_org" args="121 102 0 0 0 0.72428717437 0.68949843295 world og_org" />
 
+  <!-- Transformation between base_link and laser -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="base_link2laser" args="0.30 0 0 0 0 0 1 /base_link /laser"/>
+
 </launch>

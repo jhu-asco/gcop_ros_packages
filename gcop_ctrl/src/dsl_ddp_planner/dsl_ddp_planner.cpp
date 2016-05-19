@@ -64,6 +64,7 @@
 #include <string.h>
 #include <algorithm>
 #include <iterator>
+#include <stack>
 
 //D* Lite algorithm
 #include <dsl/gridsearch.h>
@@ -86,7 +87,7 @@
 #include <gcop/multicost.h>
 #include <gcop/diskconstraint.h>
 
-#include "miniball.hpp"
+#include <gcop_ctrl/obs_detection_lidar/miniball.hpp>
 
 //-------------------------------------------------------------------------
 //-----------------------NAME SPACES ---------------------------------
@@ -182,12 +183,6 @@ void FindBlobs(const cv::Mat &binary, std::vector < std::vector<cv::Point2i> > &
   }
 }
 
-int GcarStateToVector2d(Vector2d &p, const GcarState &x){
-  p[0] = x.g(0,2);   // x.g is the car SE(2) pose matrix
-  p[1] = x.g(1,2);
-  return 1;  // index where position coordinates start (the car model coordinates are (theta,x,y,v)
-}
-
 
 template<class T>
 std::vector<T> selectVecElems(const std::vector<T>& vec, std::vector<std::size_t> indxs){
@@ -196,27 +191,28 @@ std::vector<T> selectVecElems(const std::vector<T>& vec, std::vector<std::size_t
     ret.push_back(vec.at(ind));
   return ret;
 }
-
 /**
  * It finds a maximum of K clusters which are closest to origin. Each cluster has a maximum radius
  * @param clusters The returned clusters
- * @param ptpol pt in polar coordinates of the obstacle locations
+ * @param pts_cart pt in cartesian coordinates of the obstacle locations
  * @param robs radius of individual obstacle point
  * @param K K nearest neighbor
  * @param rcmax maximum radius of the cluster
  */
-void findKClustersWithSizeConstraint(vector<vector<size_t>>& clusters, const vector<Vector2d>& pts_polar,double robs,int K, double rcmax){
-  if(!pts_polar.size())
+void findKClustersWithSizeConstraint(vector<vector<size_t>>& clusters, const vector<Vector2d>& pts_cart,double robs,int K, double rcmax){
+  if(!pts_cart.size())
     return;
 
   //  Make a vector of ranges and convert ptpol to cartesian
-  vector<int> clid(pts_polar.size(),-1);//-1 means cluster numbers have not been assigned
-  vector<double> ranges(pts_polar.size());
-  vector<size_t> idxs_noclid(pts_polar.size());//indexes of all the obstacles that don't have a cluster id
-  vector<Vector2d> pts_cart(pts_polar.size());
-  for(size_t i=0;i<pts_polar.size();i++){
-    pts_cart[i] = Vector2d(pts_polar[i](0)*cos(pts_polar[i](1)), pts_polar[i](0)*sin(pts_polar[i](1)));
-    ranges[i] = pts_polar[i](0);
+  size_t n_pts = pts_cart.size();
+  vector<int> clid(n_pts,-1);//-1 means cluster numbers have not been assigned
+  vector<double> ranges(n_pts);
+  vector<size_t> idxs_noclid(n_pts);//indexes of all the obstacles that don't have a cluster id
+  vector<Vector2d> pts_polar(n_pts);
+  for(size_t i=0;i<n_pts;i++){
+    ranges[i] = pts_cart[i].norm();
+    pts_polar[i](0) = ranges[i];
+    pts_polar[i](1) = atan2(pts_cart[i](1), pts_cart[i](0));
     idxs_noclid[i] = i;
   }
 
@@ -252,15 +248,13 @@ void findKClustersWithSizeConstraint(vector<vector<size_t>>& clusters, const vec
 
     //update idxs_noclid and k for the next loop
     idxs_noclid.clear();
-    for(size_t i=0;i<pts_polar.size();i++){
+    for(size_t i=0;i<n_pts;i++){
       if(clid[i]==-1)
         idxs_noclid.push_back(i);
     }
     k++;
   }
 }
-
-
 
 void findCircumCircle(vector<Vector2d>& pts_cart_center_circle, vector<double>& radiuses_circle,
                       const vector<vector<size_t>>&clusters,const vector<Vector2d>& pts_cart){
@@ -285,6 +279,34 @@ void findCircumCircle(vector<Vector2d>& pts_cart_center_circle, vector<double>& 
 }
 
 
+struct ObsDetectionCfg{
+  double search_radius_max;            //! The lidar points lying outside this range are rejected
+  double search_radius_min;            //! The lidar points lying inside this range are rejected
+  double search_angle_fwd;             //! restrict the search angle of the lidar data
+  int    cluster_count_max;            //! max number of obstacles to be returned
+  double cluster_radius_max;           //! the max cluster radius
+  double map_cell_size;                //! cell size of the map
+  vector<Affine3d> tfm_l2b_nodes; //! Pointer to vector of transformation for lidar frame to nodei frame
+  shared_ptr<sensor_msgs::LaserScan> p_laserscan_msg;//! Pointer to the laserscan message
+};
+//------------------------------------------------------------------------
+//-----------------------------DelT CLASS ----------------------------
+//------------------------------------------------------------------------
+class DelT{
+public:
+  DelT(){}
+  ~DelT(){}
+
+  void set(){
+    ts_.push(ros::Time::now());
+  }
+  double get(){
+    return (ros::Time::now() - ts_.top()).toSec();
+    ts_.pop();
+  }
+private:
+  stack<ros::Time> ts_;
+};
 
 //------------------------------------------------------------------------
 //-----------------------------CALLBACK CLASS ----------------------------
@@ -307,6 +329,7 @@ public:
 public:
   CallBackDslDdp();
   ~CallBackDslDdp();
+  int GcarStateToVector2d(Vector2d &p, const GcarState &x);
 
 private:
 
@@ -327,6 +350,7 @@ private:
 
 
   void setupTopicsAndNames(void);
+  void initTransformations(void);
   void initSubsPubsAndTimers(void);
 
   void rvizColorMsgEdit(std_msgs::ColorRGBA& rgba_msg, VectorXd& rgba_vec);
@@ -353,13 +377,17 @@ private:
   bool ddpFeasible(void);
   bool ddpInit(void);
   bool ddpPlan(void);
-  void obsDetect(vector<Vector3d>& centers_encirc, vector<double>& rads_encirc);
+
+
+
+  void obsDetect(vector<Vector3d>& centers_encirc, vector<double>& rads_encirc, const ObsDetectionCfg& obs_cfg);
   /**
    * Finds n obstacles that are closest to the entire trajectory
-   * @param centers_encirc
-   * @param rads_encirc
+   * @param centers_encirc center of the circle that encircles a set of pointsS
+   * @param rads_encirc radius of the circle that encirles a set of points
+   * @param cfg configuration for obstacle detection
    */
-  void obsFindCloseToTraj(vector<Vector3d>& centers_encirc, vector<double>& rads_encirc);
+  void obsFindCloseToTraj(vector<Vector3d>& centers_encirc_inlidar, vector<double>& rads_encirc, const ObsDetectionCfg& cfg);
 
   void setTfmsWorld2OgLL(void);
 
@@ -378,13 +406,14 @@ private:
   dynamic_reconfigure::Server<gcop_ctrl::DslDdpPlannerConfig> dyn_server_;
   int ind_count_;
   string ind_str_;
+  DelT delt_;
 
   string strtop_odom_, strtop_pose_start_, strtop_pose_goal_, strtop_og_, strtop_lidar_;
   string strtop_diag_, strtop_marker_rviz_, strtop_og_dild_, strtop_ctrl_;
   string strtop_rviz_pose_start_, strtop_rviz_pose_goal_;
   string strtop_rviz_posearr_ddp_,strtop_rviz_posearr_dsl_, strtop_rviz_posearr_dsl_intp_;
   string strtop_clicked_point_;
-  string strfrm_world_, strfrm_robot_, strfrm_og_org_;
+  string strfrm_world_, strfrm_robot_, strfrm_ogorg_, strfrm_lidar_;
 
   ros::Subscriber sub_odom_, sub_pose_start_, sub_pose_goal_, sub_og_, sub_lidar_;
   ros::Subscriber sub_clicked_point_;
@@ -419,9 +448,8 @@ private:
   int marker_id_;
 
   // Frames and transformation
-  Affine3d tfm_world2og_org_, tfm_world2og_ll_,tfm_og_org2og_ll_;
-  Transform2d tfm_world2og_ll_2d_;
-  Affine3d pose_w2b_rviz_start_, pose_w2b_rviz_goal_;
+  Affine3d tfm_w2ogorg_, tfm_w2ogll_,tfm_ogorg2ogll_, tfm_b2l_, tfm_w2l_;
+  Affine3d tfm_w2b_rviz_start_, tfm_w2b_rviz_goal_;
 
   //Paths
   vector<GcarState>& path_gcar_w2b_ddp_;
@@ -429,11 +457,12 @@ private:
   vector<GcarState>  path_gcar_w2b_dsl_intp_;
 
   // Velocity poses and time of the object
-  Affine3d pose_aff3d_w2b_curr_;
+  Affine3d tfm_w2b_curr_;
   double vel_binb_curr_;
   ros::Time time_curr_;
 
   // DSL vars
+  dsl::CarGeom car_geom_;
   double* p_dsl_map_;
   //   dsl with geometric car
   dsl::CarCost*                 p_dsl_costcar_;
@@ -442,7 +471,7 @@ private:
   dsl::GridSearch<3, Matrix3d>* p_dsl_searchcar_;
   vector<Vector3d>              path_axy_ll2b_opt_;
   bool dsl_cond_feas_s_, dsl_cond_feas_g_, dsl_done_;
-  VectorXd x_ll2b_intp_, y_ll2b_intp_,a_ll2b_intp_, t_dsl_intp_;//x,y,angle,t of the path, ll2b: body in lower left of og
+  VectorXd x_ogll2b_intp_, y_ogll2b_intp_,a_ogll2b_intp_, t_dsl_intp_;//x,y,angle,t of the path, ll2b: body in lower left of og
   Affine3d pose_w2b_dsl_start_, pose_w2b_dsl_goal_;//w2b: body in world
   SplineFunction_ptr p_spline_x_ll2b_, p_spline_y_ll2b_;
   dsl::CarPrimitiveCfg          prim_cfg_;
@@ -454,31 +483,27 @@ private:
   int ddp_nseg_max_,ddp_nseg_min_, ddp_nit_max_, ddp_init_type_;
   double ddp_tseg_ideal_;
   double ddp_tol_rel_, ddp_tol_abs_, ddp_tol_goal_m_;
-  Affine3d pose_aff3d_w2b_ddp_start_, pose_aff3d_w2b_ddp_goal_;
+  Affine3d tfm_w2b_ddp_start_, tfm_w2b_ddp_goal_;
   ros::Time time_ddp_start_;
   double vel_binb_ddp_start_,     vel_ddp_goal_;
   Vector3d pt_ddp_start_, pt_ddp_goal_; //refers to grid point
   vector<Vector3d> centers_encirc_oinw_prev_;
-  vector<double> rads_encirc_prev_;
+  //vector<double> rads_encirc_prev_;
+  Matrix4d ddp_Qf_;
   Matrix4d ddp_Q_per_t_;
   Matrix2d ddp_R_per_t_;
   Vector2d ddp_disk_penl_minmax_;
 
   Gcar sys_gcar_;
   LqCost< GcarState, 4, 2> ddp_cost_lq_;
-  double ddp_disk_coln_rad_;
+  double ddp_disk_cr_;
   vector<double> ddp_ts_, ddp_ts_prev_;
   vector<GcarState> ddp_xs_;
   vector<Vector2d> ddp_us_, ddp_us_prev_;
 
   //obstacle properties
   vector<geometry_msgs::PointStamped> clicked_points_;
-  double obs_search_radius_max_;
-  double obs_search_radius_min_;
-  double obs_search_angle_fwd_;
-  int obs_cluster_count_max_;
-  double obs_cluster_radius_max_;
-  double obs_map_cell_size_;
+  ObsDetectionCfg obs_cfg_;
   double obs_clicked_rad_;
   sensor_msgs::LaserScan msg_lidar_;
   vector<Disk> disks_;
@@ -519,11 +544,15 @@ ind_count_++;
   // Setup topic names
   setupTopicsAndNames();
 
+  //frames and transfomation
+  initTransformations();
+
   //Setup Subscriber, publishers and Timers
   initSubsPubsAndTimers();
 
   //Setup rviz markers
   rvizMarkersInit();
+
 
   //Set gcar properties
   sys_gcar_.l = yaml_node_["gcar_l"].as<double>();
@@ -692,6 +721,7 @@ void CallBackDslDdp::cbReconfig(gcop_ctrl::DslDdpPlannerConfig &config, uint32_t
     config.dyn_ddp_plan_loop=false;
     config.dyn_ddp_disp_rviz      = yaml_node_["ddp_disp_rviz"].as<bool>();
     config.dyn_ddp_hot_start      = yaml_node_["ddp_hot_start"].as<bool>();
+    config.dyn_ddp_traj_track     = yaml_node_["ddp_traj_track"].as<bool>();
 
     Matrix2d R_per_t              = yaml_node_["ddp_R_per_t"].as<Matrix2d>();
     config.dyn_ddp_R_per_t_00     = R_per_t(0,0);
@@ -738,12 +768,41 @@ void CallBackDslDdp::setupTopicsAndNames(void){
   strtop_rviz_posearr_dsl_intp_= yaml_node_["strtop_rviz_posearr_dsl_intp"].as<string>();
 
   // Frames
-  strfrm_world_        = yaml_node_["strfrm_world"].as<string>();
+  strfrm_world_      = yaml_node_["strfrm_world"].as<string>();
   strfrm_robot_      = yaml_node_["strfrm_robot"].as<string>();
-  strfrm_og_org_         = yaml_node_["strfrm_og_org"].as<string>();
+  strfrm_ogorg_     = yaml_node_["strfrm_og_org"].as<string>();
+  strfrm_lidar_      = yaml_node_["strfrm_lidar"].as<string>();
+
 
   ind_count_--;
 }
+
+Affine3d lookupAff3d(string strfrm_from, string strfrm_to){
+  static tf::TransformListener tf_lr;
+
+  Affine3d aff3d;
+  tf::StampedTransform st;
+  tf_lr.waitForTransform(strfrm_from,strfrm_to,ros::Time(0),ros::Duration(4.0));
+  tf_lr.lookupTransform(strfrm_from,strfrm_to, ros::Time(0), st);
+  tf::transformTFToEigen(st,aff3d);
+  return aff3d;
+
+}
+
+void CallBackDslDdp::initTransformations(void){
+  ind_count_++;
+  if(config_.dyn_debug_on)
+    cout<<indStr(0)+"*Setting up transformation"<<endl;
+
+  //w2ogorg: world to occ grid origin
+  tfm_w2ogorg_ = lookupAff3d(strfrm_world_, strfrm_ogorg_);
+
+  //b2l: base_link to lidar
+  tfm_b2l_ = lookupAff3d(strfrm_robot_, strfrm_lidar_);
+
+  ind_count_--;
+}
+
 
 void CallBackDslDdp::initSubsPubsAndTimers(void){
   ind_count_++;
@@ -821,7 +880,7 @@ void CallBackDslDdp::cbTimerDdp(const ros::TimerEvent& event){
 
 void CallBackDslDdp::cbOdom(const nav_msgs::OdometryConstPtr& msg_odom){
   time_curr_ = msg_odom->header.stamp;
-  poseMsg2Eig(pose_aff3d_w2b_curr_,msg_odom->pose.pose);
+  poseMsg2Eig(tfm_w2b_curr_,msg_odom->pose.pose);
   vel_binb_curr_ = msg_odom->twist.twist.linear.x;
 }
 
@@ -829,15 +888,15 @@ void CallBackDslDdp::cbPoseStart(const geometry_msgs::PoseWithCovarianceStampedC
   ind_count_++;
   if(config_.dyn_debug_on)
     cout<<indStr(0)+"*Initial pose received from rviz"<<endl;
-  poseMsg2Eig(pose_w2b_rviz_start_,msg_pose_start->pose.pose);
-  rvizShowText(pub_rviz_pose_start_,pose_w2b_rviz_start_, marker_text_start_, marker_prop_text_start_);
-  Affine3d pose_ll2b_rviz_start = tfm_world2og_ll_.inverse()*pose_w2b_rviz_start_;
+  poseMsg2Eig(tfm_w2b_rviz_start_,msg_pose_start->pose.pose);
+  rvizShowText(pub_rviz_pose_start_,tfm_w2b_rviz_start_, marker_text_start_, marker_prop_text_start_);
+  Affine3d pose_ll2b_rviz_start = tfm_w2ogll_.inverse()*tfm_w2b_rviz_start_;
   Vector3d rpy_rviz_start; SO3::Instance().g2q(rpy_rviz_start,pose_ll2b_rviz_start.rotation().matrix());
   Vector3d axy_ll_rviz_start(rpy_rviz_start(2),pose_ll2b_rviz_start.translation()(0),pose_ll2b_rviz_start.translation()(1));
   IOFormat iof(StreamPrecision,0,", ",",\n",indStr(3)+"","","","");
   if(config_.dyn_debug_verbose_on){
     cout<<indStr(2)+"In world frame:\n"
-        <<pose_w2b_rviz_start_.affine().format(iof)<<endl;
+        <<tfm_w2b_rviz_start_.affine().format(iof)<<endl;
     cout<<indStr(2)+"In ll frame axy:\n"
         <<axy_ll_rviz_start.transpose().format(iof)<<endl;
   }
@@ -849,15 +908,15 @@ void CallBackDslDdp::cbPoseGoal(const geometry_msgs::PoseStampedConstPtr& msg_po
   ind_count_++;
   if(config_.dyn_debug_on)
     cout<<indStr(0)+"*Initial pose received from rviz"<<endl;
-  poseMsg2Eig(pose_w2b_rviz_goal_,msg_pose_goal->pose);
-  rvizShowText(pub_rviz_pose_goal_,pose_w2b_rviz_goal_, marker_text_goal_, marker_prop_text_goal_);
-  Affine3d pose_ll2b_rviz_goal = tfm_world2og_ll_.inverse()*pose_w2b_rviz_goal_;
+  poseMsg2Eig(tfm_w2b_rviz_goal_,msg_pose_goal->pose);
+  rvizShowText(pub_rviz_pose_goal_,tfm_w2b_rviz_goal_, marker_text_goal_, marker_prop_text_goal_);
+  Affine3d pose_ll2b_rviz_goal = tfm_w2ogll_.inverse()*tfm_w2b_rviz_goal_;
   Vector3d rpy_rviz_goal; SO3::Instance().g2q(rpy_rviz_goal,pose_ll2b_rviz_goal.rotation().matrix());
   Vector3d axy_ll_rviz_goal(rpy_rviz_goal(2),pose_ll2b_rviz_goal.translation()(0),pose_ll2b_rviz_goal.translation()(1));
   IOFormat iof(StreamPrecision,0,", ",",\n",indStr(3)+"","","","");
   if(config_.dyn_debug_verbose_on){
     cout<<indStr(2)+"In world frame:\n"
-        <<pose_w2b_rviz_goal_.affine().format(iof)<<endl;
+        <<tfm_w2b_rviz_goal_.affine().format(iof)<<endl;
     cout<<indStr(2)+"In ll frame axy:\n"
         <<axy_ll_rviz_goal.transpose().format(iof)<<endl;
   }
@@ -874,10 +933,8 @@ void CallBackDslDdp::cbOccGrid(const nav_msgs::OccupancyGridConstPtr& msg_occ_gr
   //Copy OG to be used elsewhere
   og_original_ = *msg_occ_grid;
 
-  //Find transformation between origin of og and world
-  //  done in og subscriber because when a og arrives then you know that the launch file
-  //  with transformations are also running
-  setTfmsWorld2OgLL();
+  poseMsg2Eig(tfm_ogorg2ogll_,og_original_.info.origin);
+  tfm_w2ogll_ = tfm_w2ogorg_*tfm_ogorg2ogll_;
 
   // Process Occ Grid and publish
   occGridProcessAndPub();
@@ -891,31 +948,11 @@ void CallBackDslDdp::cbOccGrid(const nav_msgs::OccupancyGridConstPtr& msg_occ_gr
 
 void CallBackDslDdp::cbLidar(const sensor_msgs::LaserScanConstPtr& pmsg_lidar){
   msg_lidar_ = *pmsg_lidar;
+  tfm_w2l_ = tfm_w2b_curr_ * tfm_b2l_;
 }
 
 void CallBackDslDdp::cbClickedPoint(const geometry_msgs::PointStampedConstPtr& pmsg_cp ){
   clicked_points_.push_back(*pmsg_cp);
-}
-
-void CallBackDslDdp::setTfmsWorld2OgLL(void){
-  ind_count_++;
-  if(config_.dyn_debug_on)
-    cout<<indStr(0)+"*Find the transformation between the world and the ll(lower left) corner of OG"<<endl;
-
-  //get the transformation between map to bottom left of the occupancy grid
-  tf::StampedTransform tfms_world2og_org;
-  tf_lr_.waitForTransform(strfrm_world_,strfrm_og_org_,ros::Time(0),ros::Duration(1.0));
-  tf_lr_.lookupTransform(strfrm_world_,strfrm_og_org_, ros::Time(0), tfms_world2og_org);
-
-  tf::transformTFToEigen(tfms_world2og_org,tfm_world2og_org_);
-  poseMsg2Eig(tfm_og_org2og_ll_,og_original_.info.origin);
-  tfm_world2og_ll_ = tfm_world2og_org_*tfm_og_org2og_ll_;
-
-  double th = atan2(tfm_world2og_ll_.matrix()(1,0),tfm_world2og_ll_.matrix()(0,0));
-  double x = tfm_world2og_ll_.matrix()(0,3);
-  double y = tfm_world2og_ll_.matrix()(1,3);
-  tfm_world2og_ll_2d_ = Translation2d(x,y)* Rotation2Dd(th);
-  ind_count_--;
 }
 
 void CallBackDslDdp::occGridProcessAndPub(void){
@@ -998,7 +1035,7 @@ void CallBackDslDdp::occGridDilateAndFilterUnseen(const nav_msgs::OccupancyGrid&
   cv::Mat img_og_dild_fild = cv::max(img_og_unseen_fild,img_og_dild);
 
   //display the final occ grid in rviz
-  geometry_msgs::Pose pose_org; eig2PoseMsg(pose_org,tfm_world2og_ll_);
+  geometry_msgs::Pose pose_org; eig2PoseMsg(pose_org,tfm_w2ogll_);
   occGridFromImg(img_og_dild_fild,pose_org, og_cell_m_original,og_dild_fild);
 
   ind_count_--;
@@ -1029,10 +1066,8 @@ void CallBackDslDdp::occGridResize(const nav_msgs::OccupancyGrid& og_dild_fild, 
   cv::Mat map_y(rows_resized,cols_resized, CV_32FC1 );
 
   // remap the resized image
-  for(int r=0;r<rows_resized; r++)
-  {
-    for(int c=0;c<cols_resized; c++)
-    {
+  for(int r=0;r<rows_resized; r++){
+    for(int c=0;c<cols_resized; c++){
       map_x.at<float>(r,c) = (c +0.5)*og_cell_m_resized/og_cell_m_original;
       map_y.at<float>(r,c) = (r +0.5)*og_cell_m_resized/og_cell_m_original;
     }
@@ -1040,7 +1075,7 @@ void CallBackDslDdp::occGridResize(const nav_msgs::OccupancyGrid& og_dild_fild, 
   cv::remap( img_og_dild_fild, img_og_final_, map_x, map_y, cv::INTER_NEAREST, cv::BORDER_CONSTANT);
 
   //create occ_grid_final
-  geometry_msgs::Pose pose_org; eig2PoseMsg(pose_org,tfm_world2og_ll_);
+  geometry_msgs::Pose pose_org; eig2PoseMsg(pose_org,tfm_w2ogll_);
   nav_msgs::OccupancyGrid occ_grid_dilated;
   occGridFromImg(img_og_final_,pose_org, og_cell_m_resized,og_final);
 
@@ -1091,29 +1126,22 @@ void CallBackDslDdp::dslInit(){
   bool expand_at_start = yaml_node_["dsl_expand_at_start"].as<bool>();
   double cell_width = og_final_.info.resolution;
   double cell_height = og_final_.info.resolution;
-  double cell_delth  = yaml_node_["dsl_cell_delth"].as<double>(); //default is M_PI/16
+  double cell_delth  = M_PI/16;
   int map_width = og_final_.info.width;
   int map_height = og_final_.info.height;
 
-  int  dsl_prim_w_div = yaml_node_["dsl_prim_w_div"].as<int>();
-  double dsl_maxtanphi = yaml_node_["dsl_maxtanphi"].as<double>();
-  int  dsl_prim_vx_div = yaml_node_["dsl_prim_vx_div"].as<int>();
-  double dsl_maxvx = yaml_node_["dsl_maxvx"].as<double>();
-  double bp = yaml_node_["dsl_backward_penalty"].as<double>();
-  double onlyfwd = yaml_node_["dsl_onlyfwd"].as<bool>();
-
-  prim_cfg_.fwdonly = yaml_node_["dsl_onlyfwd"].as<bool>();
-  prim_cfg_.tphioverlmx = yaml_node_["dsl_tanphioverlmax"].as<double>();
-  prim_cfg_.nphis = yaml_node_["dsl_nphis"].as<double>();
-  prim_cfg_.vnom = config_.dyn_dsl_avg_speed;
-  prim_cfg_.lmn = 2* cell_width;
-  prim_cfg_.lmx = yaml_node_["dsl_primlenmax"].as<double>();
-  prim_cfg_.nls = yaml_node_["dsl_nprimlengths"].as<double>();
+  prim_cfg_.fwdonly      = yaml_node_["dsl_onlyfwd"].as<bool>();
+  prim_cfg_.tphioverlmax = yaml_node_["dsl_tanphioverlmax"].as<double>();
+  prim_cfg_.lmin         = yaml_node_["dsl_prim_lmin"].as<double>();
+  prim_cfg_.lmax         = yaml_node_["dsl_prim_lmax"].as<double>();
+  prim_cfg_.nl           = yaml_node_["dsl_prim_nl"].as<int>();
+  prim_cfg_.amax         = yaml_node_["dsl_prim_amax"].as<double>();
+  prim_cfg_.na           = yaml_node_["dsl_prim_na"].as<int>();
+  prim_cfg_.pert         = yaml_node_["dsl_pert"].as<bool>();
 
   bool dsl_save_final_map = yaml_node_["dsl_save_final_map"].as<bool>();
-  dsl::CarGeom car_geom;
   Vector4d geom = yaml_node_["dsl_car_dim_and_org"].as<Vector4d>();
-  car_geom.l = geom(0); car_geom.b = geom(1); car_geom.ox = geom(2); car_geom.oy = geom(3);
+  car_geom_.l = geom(0); car_geom_.b = geom(1); car_geom_.ox = geom(2); car_geom_.oy = geom(3);
   double dsl_cost_scale=1;
 
   if(expand_at_start && config_.dyn_debug_verbose_on){
@@ -1136,11 +1164,8 @@ void CallBackDslDdp::dslInit(){
     dsl::save_map((const char*) img_og_final_.data, map_width, map_height, file.c_str());
   }
 
-  p_dsl_gridcar_   =  new dsl::CarGrid(car_geom,dsl_map2d, cell_width, cell_height, cell_delth, dsl_cost_scale, 0.5);
-  if(yaml_node_["dsl_use_right_connectivity"].as<bool>())
-    p_dsl_conncar_   =  new dsl::CarConnectivity(*p_dsl_gridcar_,prim_cfg_);
-  else
-    p_dsl_conncar_   =  new dsl::CarConnectivity(*p_dsl_gridcar_,bp, onlyfwd, dsl_prim_w_div,dsl_maxtanphi, dsl_prim_vx_div,dsl_maxvx);
+  p_dsl_gridcar_   =  new dsl::CarGrid(car_geom_,dsl_map2d, cell_width, cell_height, cell_delth, dsl_cost_scale, 0.5);
+  p_dsl_conncar_   =  new dsl::CarConnectivity(*p_dsl_gridcar_,prim_cfg_);
   p_dsl_costcar_   =  new dsl::CarCost();
   p_dsl_searchcar_ =  new dsl::GridSearch<3, Matrix3d>(*p_dsl_gridcar_, *p_dsl_conncar_, *p_dsl_costcar_, expand_at_start);
 
@@ -1150,6 +1175,39 @@ void CallBackDslDdp::dslInit(){
     cout<<indStr(1)+"DSL grid initialized with map size:"<<og_final_.info.width<<" X "<<og_final_.info.height<<endl;
     cout<<indStr(1)+"delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
   }
+
+  //visualize the primitives
+    int img_hsize = ceil(prim_cfg_.lmax/cell_width);
+    int img_size = 2*img_hsize + 1;
+
+    cv::Mat img_prim;
+    Affine3d igorg_to_mgcorg = Scaling(Vector3d(1/cell_width, 1/cell_width, 1)) *Translation3d(Vector3d(img_hsize*cell_width, img_hsize*cell_width, 0));
+
+//    for(int idx_a=0; idx_a < p_dsl_conncar_->vss.size() && !g_shutdown_requested ;idx_a++){
+    if(yaml_node_["dsl_vis_prim"].as<bool>()){
+      cv::namedWindow("img_prim", cv::WINDOW_NORMAL);
+      for(int idx_a=0; idx_a < 32 && !g_shutdown_requested ;idx_a++){
+        img_prim = cv::Mat(img_size,img_size,CV_8UC1, cv::Scalar(0));
+        double th = p_dsl_gridcar_->xlb(0) + p_dsl_gridcar_->cs(0)*(idx_a+0.5);
+        cout<<"theta:"<<th<<" at idx_a:"<<idx_a<<endl;
+        Affine3d igorg_to_car = igorg_to_mgcorg * AngleAxisd(th,Vector3d::UnitZ());
+        for(int idx_p=0; idx_p< p_dsl_conncar_->vss[idx_a].size();idx_p++){
+          cout<<"prim["<<idx_p<<"]:"<<p_dsl_conncar_->vss[idx_a][idx_p].transpose()<<endl; //TODO remove this cout
+          Matrix3d dg; SE2::Instance().exp(dg, p_dsl_conncar_->vss[idx_a][idx_p]);
+          Vector3d xyzend(dg(0,2),dg(1,2),0);
+          Vector3d idxd = igorg_to_car * xyzend;
+          Vector3i idxi(round(idxd(0)),round(idxd(1)),round(idxd(2)));
+
+          if( idxi(1) < img_size && idxi(2) < img_size )
+            img_prim.at<uchar>(idxi(1),idxi(0)) = 255;
+
+        }
+        cv::imshow("img_prim", img_prim);
+        cv::waitKey(0);
+      }
+    cv::destroyWindow("img_prim");
+    }
+
 
   ind_count_--;
 }
@@ -1166,7 +1224,7 @@ bool CallBackDslDdp::dslSetStartIfFeasible(void){
   int w = og_final_.info.width;
   int h = og_final_.info.height;
 
-  Affine3d pose_ll2b_dsl_start = tfm_world2og_ll_.inverse()*pose_w2b_dsl_start_;
+  Affine3d pose_ll2b_dsl_start = tfm_w2ogll_.inverse()*pose_w2b_dsl_start_;
   Vector3d rpy_start; SO3::Instance().g2q(rpy_start,pose_ll2b_dsl_start.rotation().matrix());
   Vector3d axy_ll_dsl_start = Vector3d(rpy_start(2),pose_ll2b_dsl_start.translation()(0),pose_ll2b_dsl_start.translation()(1));
 
@@ -1188,7 +1246,7 @@ bool CallBackDslDdp::dslSetGoalIfFeasible(void){
   int w = og_final_.info.width;
   int h = og_final_.info.height;
 
-  Affine3d pose_ll2b_dsl_goal = tfm_world2og_ll_.inverse()*pose_w2b_dsl_goal_;
+  Affine3d pose_ll2b_dsl_goal = tfm_w2ogll_.inverse()*pose_w2b_dsl_goal_;
   Vector3d rpy_goal; SO3::Instance().g2q(rpy_goal,pose_ll2b_dsl_goal.rotation().matrix());
   Vector3d axy_ll_dsl_goal = Vector3d(rpy_goal(2),pose_ll2b_dsl_goal.translation()(0),pose_ll2b_dsl_goal.translation()(1));
 
@@ -1210,10 +1268,10 @@ bool CallBackDslDdp::dslPlan(){
 
   //Set dsl start and goal
   if(config_.dyn_dsl_from_curr_posn)
-    pose_w2b_dsl_start_ = pose_aff3d_w2b_curr_;
+    pose_w2b_dsl_start_ = tfm_w2b_curr_;
   else
-    pose_w2b_dsl_start_ = pose_w2b_rviz_start_;
-  pose_w2b_dsl_goal_ = pose_w2b_rviz_goal_;
+    pose_w2b_dsl_start_ = tfm_w2b_rviz_start_;
+  pose_w2b_dsl_goal_ = tfm_w2b_rviz_goal_;
 
   dslSetStartIfFeasible();
   dslSetGoalIfFeasible();
@@ -1236,7 +1294,7 @@ bool CallBackDslDdp::dslPlan(){
     //convert the se2 path in to the gcar state path
     path_gcar_w2b_dsl_.clear(); path_gcar_w2b_dsl_.resize(path_dsl_ll2b_opt.cells.size());
     for (size_t i=0 ; i<path_dsl_ll2b_opt.cells.size() ; i++){
-      path_gcar_w2b_dsl_[i].g = (toAffine2d(tfm_world2og_ll_) * axyToAffine2d(path_dsl_ll2b_opt.cells[i].c)).matrix();
+      path_gcar_w2b_dsl_[i].g = (toAffine2d(tfm_w2ogll_) * axyToAffine2d(path_dsl_ll2b_opt.cells[i].c)).matrix();
       path_gcar_w2b_dsl_[i].v = config_.dyn_dsl_avg_speed;
     }
 
@@ -1326,7 +1384,6 @@ void CallBackDslDdp::dslInterpolate(void){
 
   //  Create linear interpolator for pre-interpolation from opt points
   //  TODO: a simple spline interpolation wouldn't work for se2
-  //SplineFunction lint_a(t_opt,a_ll_opt,1);
   SplineFunction lint_x(t_opt,x_ll_opt,1);
   SplineFunction lint_y(t_opt,y_ll_opt,1);
 
@@ -1342,7 +1399,6 @@ void CallBackDslDdp::dslInterpolate(void){
   int n_nodes_reg = n_segs_reg+1;//regularly spaced points
   double dt_reg= (double)(t_opt(n-1))/(double)n_segs_reg;
 
-
   //  Reserve space for regularly spaced nodes and the original nodes.
   //    n-2 because the 1st and last interpolated points are same as original
   vector<double> pt_x_dsl_preint_stl;vector<double> pt_y_dsl_preint_stl;vector<double> t_dsl_preint_stl;
@@ -1357,10 +1413,8 @@ void CallBackDslDdp::dslInterpolate(void){
   while( abs(t_opt(n-1) - t_dsl_preint_stl.back()) > tol){
     //insert the original points if they are not already there
     double t_next = idx_reg*dt_reg;
-    while( t_opt(idx_opt)<= t_next && idx_opt<n-1)
-    {
-      if(abs(t_opt(idx_opt) - t_next ) > 1e-8)
-      {
+    while( t_opt(idx_opt)<= t_next && idx_opt<n-1){
+      if(abs(t_opt(idx_opt) - t_next ) > 1e-8){
         pt_x_dsl_preint_stl.push_back(x_ll_opt(idx_opt));
         pt_y_dsl_preint_stl.push_back(y_ll_opt(idx_opt));
         t_dsl_preint_stl.push_back(t_opt(idx_opt));
@@ -1408,34 +1462,28 @@ void CallBackDslDdp::dslInterpolate(void){
   int n_nodes = n_segs+1;
   double dt= (double)(t_opt(n-1))/(double)n_segs;
 
-  x_ll2b_intp_.resize(n_nodes); y_ll2b_intp_.resize(n_nodes);a_ll2b_intp_.resize(n_nodes); t_dsl_intp_.resize(n_nodes);
-  x_ll2b_intp_(0) = x_ll_opt(0);     y_ll2b_intp_(0) = y_ll_opt(0);     t_dsl_intp_(0) = t_opt(0);
-
-  for(int i=1;i<n_nodes;i++){
-    t_dsl_intp_(i) = i*dt;
-    x_ll2b_intp_(i) = intp_x[i*dt];
-    y_ll2b_intp_(i) = intp_y[i*dt];
-
-    double dx = x_ll2b_intp_(i) -x_ll2b_intp_(i-1);
-    double dy = y_ll2b_intp_(i) -y_ll2b_intp_(i-1);
-    a_ll2b_intp_(i-1) = atan2(dy,dx);
-  }
-  a_ll2b_intp_(n_nodes-1) = a_ll2b_intp_(n_nodes-2);
-
-  //convert the interpolated axy path in to the gcar state path
+  x_ogll2b_intp_.resize(n_nodes); y_ogll2b_intp_.resize(n_nodes);a_ogll2b_intp_.resize(n_nodes); t_dsl_intp_.resize(n_nodes);
   path_gcar_w2b_dsl_intp_.resize(n_nodes);
   for(int i=0;i<n_nodes;i++){
-    path_gcar_w2b_dsl_intp_[i].g = toAffine2d(tfm_world2og_ll_*axyToAffine3d(a_ll2b_intp_[i],x_ll2b_intp_[i],y_ll2b_intp_[i])).matrix();
+    t_dsl_intp_(i) = i*dt;
+    x_ogll2b_intp_(i) = intp_x[i*dt];
+    y_ogll2b_intp_(i) = intp_y[i*dt];
+
+    double dx = intp_x[i*dt+dt/100] -x_ogll2b_intp_(i);
+    double dy = intp_y[i*dt+dt/100] -y_ogll2b_intp_(i);
+    a_ogll2b_intp_(i) = atan2(dy,dx);
+
+    path_gcar_w2b_dsl_intp_[i].g = toAffine2d(tfm_w2ogll_*axyToAffine3d(a_ogll2b_intp_[i],x_ogll2b_intp_[i],y_ogll2b_intp_[i])).matrix();
     path_gcar_w2b_dsl_intp_[i].v = config_.dyn_dsl_avg_speed;
   }
 
-  if(config_.dyn_debug_verbose_on){
-    cout<<"  The number of final interpolation points: "<<x_ll2b_intp_.size()<<endl;
 
+  if(config_.dyn_debug_verbose_on){
+    cout<<"  The number of final interpolation points: "<<x_ogll2b_intp_.size()<<endl;
     cout<<indStr(1)+"The final interpolated points are: "<<endl;
-    cout<<indStr(2)+"x:"<<x_ll2b_intp_.transpose()<<endl;
-    cout<<indStr(2)+"y:"<<y_ll2b_intp_.transpose()<<endl;
-    cout<<indStr(2)+"a:"<<   a_ll2b_intp_.transpose()<<endl;
+    cout<<indStr(2)+"x:"<<x_ogll2b_intp_.transpose()<<endl;
+    cout<<indStr(2)+"y:"<<y_ogll2b_intp_.transpose()<<endl;
+    cout<<indStr(2)+"a:"<<   a_ogll2b_intp_.transpose()<<endl;
     cout<<indStr(2)+"t:"<<   t_dsl_intp_.transpose()<<endl;
   }
 
@@ -1456,11 +1504,12 @@ bool CallBackDslDdp::ddpInit(void){
     cout<<indStr(0)+"*Setting DDP params"<<endl;
 
   //Fetch and set all the parameter from yaml file
+  ddp_Qf_       = yaml_node_["ddp_Qf"].as<Matrix4d>();
   ddp_Q_per_t_  = yaml_node_["ddp_Q_per_t"].as<Matrix4d>();
   ddp_R_per_t_  = yaml_node_["ddp_R_per_t"].as<Matrix2d>();
 
   ddp_disk_penl_minmax_ = yaml_node_["ddp_disk_penl_minmax"].as<Vector2d>();
-  ddp_disk_coln_rad_ = yaml_node_["ddp_disk_coln_rad"].as<double>();
+  ddp_disk_cr_ = yaml_node_["ddp_disk_cr"].as<double>();
   ddp_mu_ =yaml_node_["ddp_mu"].as<double>();
   ddp_debug_on_ =yaml_node_["ddp_debug_on"].as<bool>(); // turn off debug for speed
   ddp_nseg_min_= (yaml_node_["ddp_nseg_minmax"].as<Vector2d>())(0);
@@ -1474,20 +1523,23 @@ bool CallBackDslDdp::ddpInit(void){
   ddp_force_cold_start_ = true;
 
   //get obstacle detection parameters
-  obs_search_radius_max_       = yaml_node_["obs_search_radius_max"].as<double>();
-  obs_search_radius_min_       = yaml_node_["obs_search_radius_min"].as<double>();
-  obs_search_angle_fwd_    = yaml_node_["obs_search_angle_fwd"].as<double>();
-  obs_cluster_count_max_   = yaml_node_["obs_cluster_count_max"].as<int>();
-  obs_cluster_radius_max_  = yaml_node_["obs_cluster_radius_max"].as<double>();
-  obs_map_cell_size_       = yaml_node_["obs_map_cell_size"].as<double>();
+  obs_cfg_.search_radius_max       = yaml_node_["obs_search_radius_max"].as<double>();
+  obs_cfg_.search_radius_min       = yaml_node_["obs_search_radius_min"].as<double>();
+  obs_cfg_.search_angle_fwd    = yaml_node_["obs_search_angle_fwd"].as<double>();
+  obs_cfg_.cluster_count_max   = yaml_node_["obs_cluster_count_max"].as<int>();
+  obs_cfg_.cluster_radius_max  = yaml_node_["obs_cluster_radius_max"].as<double>();
+  obs_cfg_.map_cell_size       = yaml_node_["obs_map_cell_size"].as<double>();
+  obs_cfg_.p_laserscan_msg.reset(&msg_lidar_);
   obs_clicked_rad_         = yaml_node_["obs_clicked_rad"].as<double>();
+
   ind_count_--;
 }
 
 
 bool CallBackDslDdp::ddpPlan(void){
   ind_count_++;
-  ros::Time t_start =  ros::Time::now();
+  delt_.set();
+  ros::Time ddp_start = ros::Time::now();
 
   if(config_.dyn_debug_on)
     cout<<indStr(0)+"*Entering DDP planning"<<endl;
@@ -1503,23 +1555,23 @@ bool CallBackDslDdp::ddpPlan(void){
   //if dyn_ddp_from_curr_posn=true then start is current position else
   if(config_.dyn_ddp_from_curr_posn){
     time_ddp_start_ = time_curr_;
-    pose_aff3d_w2b_ddp_start_ = pose_aff3d_w2b_curr_;
+    tfm_w2b_ddp_start_ = tfm_w2b_curr_;
     vel_binb_ddp_start_  =  vel_binb_curr_;
   }else{
     time_ddp_start_ = ros::Time::now();
-    pose_aff3d_w2b_ddp_start_ = pose_w2b_rviz_start_;
+    tfm_w2b_ddp_start_ = tfm_w2b_rviz_start_;
     vel_binb_ddp_start_  = 0;
   }
   if(config_.dyn_debug_on){
     IOFormat iof(StreamPrecision,0,", ",",\n",indStr(2)+"","","","");
     cout<<indStr(1)+"DDP start pose(affine matrix) is"<<endl;
-    cout<< pose_aff3d_w2b_ddp_start_.affine().format(iof)<<endl;
+    cout<< tfm_w2b_ddp_start_.affine().format(iof)<<endl;
     cout<<indStr(1)+"DDP start forward velocity is:"<<vel_binb_ddp_start_<<endl;
   }
 
   //Don't do DDP planning if robot is near path goal
   //TODO: put better stopping criteria
-  double dist_start_goal = (pose_aff3d_w2b_ddp_start_.translation() - pose_w2b_dsl_goal_.translation()).head<2>().norm();
+  double dist_start_goal = (tfm_w2b_ddp_start_.translation() - pose_w2b_dsl_goal_.translation()).head<2>().norm();
   if(dist_start_goal < ddp_tol_goal_m_){
     if(config_.dyn_debug_on)
       cout<<indStr(1)+"DDP planning not done because robot is already close to goal. Dist to goal:"
@@ -1540,10 +1592,10 @@ bool CallBackDslDdp::ddpPlan(void){
   //  that is t_away sec away from current position
 
   //  find nearest row(idx_nearest) on the [x_ll_intp_ ,y_ll_intp_] to posn_ddp_start_
-  int n_nodes_dsl = x_ll2b_intp_.size();
-  Vector3d pos_ll_ddp_start = (tfm_world2og_ll_.inverse()*pose_aff3d_w2b_ddp_start_).translation();
-  VectorXd dist_sq =(x_ll2b_intp_ - VectorXd::Ones(n_nodes_dsl)*pos_ll_ddp_start(0)).array().square()
-                                                           +(y_ll2b_intp_ - VectorXd::Ones(n_nodes_dsl)*pos_ll_ddp_start(1)).array().square();
+  int n_nodes_dsl = x_ogll2b_intp_.size();
+  Vector3d pos_ll_ddp_start = (tfm_w2ogll_.inverse()*tfm_w2b_ddp_start_).translation();
+  VectorXd dist_sq =(x_ogll2b_intp_ - VectorXd::Ones(n_nodes_dsl)*pos_ll_ddp_start(0)).array().square()
+                                                           +(y_ogll2b_intp_ - VectorXd::Ones(n_nodes_dsl)*pos_ll_ddp_start(1)).array().square();
   VectorXd::Index idx_min; dist_sq.minCoeff(&idx_min);
   int idx_nearest = (int)idx_min;
 
@@ -1554,24 +1606,10 @@ bool CallBackDslDdp::ddpPlan(void){
   vector<double>::iterator it_t_away = upper_bound(t_stl.begin(),t_stl.end(),t_stl[idx_nearest]+t_away);
   int idx_t_away = it_t_away-t_stl.begin()==t_stl.size()? t_stl.size()-1: it_t_away-t_stl.begin();
 
-//  //Check idx_t_away for collision with obstacle and move it forward if that's the case
-//  //Not necessary. DDP should automatically move it out of the way
-//  if(config_.dyn_ddp_move_goal){
-//    for(size_t n=0; n< n_obs ; n++){
-//      Vector2d xy_w2o = centers_encirc_oinw[n].head<2>();
-//      Vector2d xy_w2b = path_gcar_w2b_dsl_intp_[idx_t_away].g.topRightCorner<2,1>();
-//      double dist = (xy_w2o - xy_w2b).norm();
-//      if(dist < disks_[n].r +0.5){
-//        idx_t_away++;
-//        n=0;
-//      }
-//    }
-//  }
-
   //  DDP goal
-  pose_aff3d_w2b_ddp_goal_ = tfm_world2og_ll_ * axyToAffine3d(a_ll2b_intp_(idx_t_away),
-                                                               x_ll2b_intp_(idx_t_away),
-                                                               y_ll2b_intp_(idx_t_away));
+  tfm_w2b_ddp_goal_ = tfm_w2ogll_ * axyToAffine3d(a_ogll2b_intp_(idx_t_away),
+                                                  x_ogll2b_intp_(idx_t_away),
+                                                  y_ogll2b_intp_(idx_t_away));
   //length in distance and time of DSL path segment(which ddp will track)
   double tf = t_dsl_intp_(idx_t_away) - t_dsl_intp_(idx_nearest);
   double len_ddp_path = tf*config_.dyn_dsl_avg_speed;
@@ -1582,89 +1620,100 @@ bool CallBackDslDdp::ddpPlan(void){
   ddp_nseg = ddp_nseg>ddp_nseg_max_?ddp_nseg_max_:ddp_nseg;
   ddp_nseg = ddp_nseg<ddp_nseg_min_?ddp_nseg_min_:ddp_nseg;
   int n_nodes_ddp = ddp_nseg + 1;
-  double h=tf/ddp_nseg;
+
   ddp_ts_.resize(n_nodes_ddp);
   ddp_xs_.resize(n_nodes_ddp);
   ddp_us_.resize(ddp_nseg);
 
   // Start and goal ddp state(GcarState. M3 is se2 elem and V1 is forward vel)
-  GcarState x0(toAffine2d(pose_aff3d_w2b_ddp_start_).matrix(), vel_binb_ddp_start_);
-  GcarState xf(toAffine2d(pose_aff3d_w2b_ddp_goal_).matrix(), config_.dyn_dsl_avg_speed);
+  GcarState x0(toAffine2d(tfm_w2b_ddp_start_).matrix(), vel_binb_ddp_start_);
+  GcarState xf(toAffine2d(tfm_w2b_ddp_goal_).matrix(), config_.dyn_dsl_avg_speed);
 
   //The Desired trajectory is the dsl trajectory segment from dsl_nearest to dsl_t_away
-  double t_dsl_nearest = t_dsl_intp_(idx_nearest);
+  SplineFunction& intp_x(*p_spline_x_ll2b_);
+  SplineFunction& intp_y(*p_spline_y_ll2b_);
+  //SplineFunction intp_x(t_dsl_intp_, x_ogll2b_intp_,3);
+  //SplineFunction intp_y(t_dsl_intp_, y_ogll2b_intp_,3);
   vector<GcarState> gcar_reftraj(n_nodes_ddp);
-//  SplineFunction& intp_x(*p_spline_x_ll2b_);
-//  SplineFunction& intp_y(*p_spline_y_ll2b_);
-  SplineFunction intp_x(t_dsl_intp_, x_ll2b_intp_,3); //TODO: get the degree from yaml file
-  SplineFunction intp_y(t_dsl_intp_, y_ll2b_intp_,3); //TODO: get the degree from yaml file
-  vector<double> xd_ll2b(n_nodes_ddp), yd_ll2b(n_nodes_ddp), ad_ll2b(n_nodes_ddp);
-  xd_ll2b[0] = intp_x[t_dsl_nearest]; yd_ll2b[0] = intp_y[t_dsl_nearest];
-  for(int i=1;i<n_nodes_ddp;i++){
-    double t = t_dsl_nearest + i*h;
-    xd_ll2b[i] = intp_x[t];
-    yd_ll2b[i] = intp_y[t];
-
-    double dx = xd_ll2b[i] -xd_ll2b[i-1];
-    double dy = yd_ll2b[i] -yd_ll2b[i-1];
-    ad_ll2b[i-1] = atan2(dy,dx);
-  }
-  ad_ll2b[n_nodes_ddp-1] = ad_ll2b[n_nodes_ddp-2];//repeat last node
-
   for(int i=0;i<n_nodes_ddp;i++){
-    gcar_reftraj[i] = GcarState(toAffine2d(tfm_world2og_ll_*axyToAffine3d(ad_ll2b[i],xd_ll2b[i],yd_ll2b[i])).matrix(),
+    double h=tf/ddp_nseg;
+    double t = t_dsl_intp_(idx_nearest) + i*h;
+    double xd = intp_x[t];
+    double yd = intp_y[t];
+    double dx = intp_x[t+h/100] - xd;
+    double dy = intp_y[t+h/100] - yd;
+    double ad = atan2(dy,dx);
+    gcar_reftraj[i] = GcarState(toAffine2d(tfm_w2ogll_*axyToAffine3d(ad,xd,yd)).matrix(),
                                 config_.dyn_dsl_avg_speed);
   }
 
-  Vector3d rpy_start; SO3::Instance().g2q(rpy_start,pose_aff3d_w2b_ddp_start_.linear());
-  Vector3d rpy_goal; SO3::Instance().g2q(rpy_goal,pose_aff3d_w2b_ddp_goal_.linear());
+  Vector3d rpy_start; SO3::Instance().g2q(rpy_start,tfm_w2b_ddp_start_.linear());
+  Vector3d rpy_goal; SO3::Instance().g2q(rpy_goal,tfm_w2b_ddp_goal_.linear());
   if(config_.dyn_debug_on){
     cout<<indStr(1)+"The ddp request is as follows"<<endl;
-    cout<<indStr(2)+"Start x:"<<pose_aff3d_w2b_ddp_start_.translation()(0)<<"\ty:"<<pose_aff3d_w2b_ddp_start_.translation()(1)<<"\ta:"<<rpy_start(2)<<endl;
-    cout<<indStr(2)+"Goal x:"<<pose_aff3d_w2b_ddp_goal_.translation()(0)<<"\ty:"<<pose_aff3d_w2b_ddp_goal_.translation()(1)<<"\ta:"<<rpy_goal(2)<<endl;
+    cout<<indStr(2)+"Start x:"<<tfm_w2b_ddp_start_.translation()(0)<<"\ty:"<<tfm_w2b_ddp_start_.translation()(1)<<"\ta:"<<rpy_start(2)<<endl;
+    cout<<indStr(2)+"Goal x:"<<tfm_w2b_ddp_goal_.translation()(0)<<"\ty:"<<tfm_w2b_ddp_goal_.translation()(1)<<"\ta:"<<rpy_goal(2)<<endl;
     cout<<indStr(2)+"tf:"<< tf<<" sec";
     cout<<indStr(2)+"path length:"<<len_ddp_path<<endl;
     cout<<indStr(2)+"nseg:"<<ddp_nseg<<endl;
   }
 
+  //detect obstacles closest to a trajectory in lidar frame and then transform it to world frame
+  obs_cfg_.tfm_l2b_nodes.resize(obs_cfg_.cluster_count_max);
+  Affine3d tfm_l2ogll = tfm_w2l_.inverse() * tfm_w2ogll_;
+  for(size_t idx_n=0; idx_n < obs_cfg_.cluster_count_max ; idx_n++){
+    double h=tf/(obs_cfg_.cluster_count_max-1);
+    double t = t_dsl_intp_(idx_nearest) + idx_n * h;
+    double x = intp_x[t];
+    double y = intp_y[t];
+    double dx = intp_x[t+h/100] - x;
+    double dy = intp_y[t+h/100] - y;
+    double a = atan2(dy,dx);
 
+    Affine3d tfm_ogll2b_nodei = axyToAffine3d(a, x, y);
+    obs_cfg_.tfm_l2b_nodes[idx_n] = tfm_l2ogll * tfm_ogll2b_nodei;
+  }
 
-  //detect obstacles in the frame of the robots current position(in body frame) and convert it to world frame
-  disks_.clear();
-  vector<Vector3d> centers_encirc_oinb;
-  vector<double> rads_encirc;
-  obsDetect(centers_encirc_oinb, rads_encirc);
-  size_t n_obs_detected = rads_encirc.size();
-  vector<Vector3d>centers_encirc_oinw(centers_encirc_oinb.size());
-  transform(centers_encirc_oinb.begin(),centers_encirc_oinb.end(), centers_encirc_oinw.begin(),
-            [&](Vector3d& c_oinb){return pose_aff3d_w2b_curr_* c_oinb;});
+  vector<Vector3d> obs_cents_oinl; // All obstacles in lidar frame
+  vector<double> obs_rads;
+  obsFindCloseToTraj(obs_cents_oinl, obs_rads, obs_cfg_);
+  size_t n_obs_detected = obs_rads.size();
+  vector<Vector3d>obs_cents_oinw(n_obs_detected);
 
-
-  // Detect the nearest obstacle for regularly spaced position
+  transform(obs_cents_oinl.begin(),obs_cents_oinl.end(), obs_cents_oinw.begin(),
+            [&](Vector3d& c_oinl){return tfm_w2l_* c_oinl;});
 
   //Add clicked points to list of obstacles
-  centers_encirc_oinw.resize(n_obs_detected + clicked_points_.size());
-  rads_encirc.resize(n_obs_detected +clicked_points_.size());
-  for(size_t i=n_obs_detected; i < n_obs_detected + clicked_points_.size();i++){
-    centers_encirc_oinw[i] << clicked_points_[i].point.x, clicked_points_[i].point.y, 0;
-    rads_encirc[i] = obs_clicked_rad_;
+  int n_obs = n_obs_detected + clicked_points_.size();
+  obs_cents_oinw.resize(n_obs);
+  obs_rads.resize(n_obs);
+  for(size_t i=n_obs_detected; i < n_obs;i++){
+    obs_cents_oinw[i] << clicked_points_[i].point.x, clicked_points_[i].point.y, 0;
+    obs_rads[i] = obs_clicked_rad_;
+  }
+
+  if(config_.dyn_debug_on){
+    cout<<indStr(1)+"The number of obstacles detected:"<<n_obs_detected<<endl;
+    cout<<indStr(1)+"The total number of obstacles(detected+fake):"<<n_obs<<endl;
   }
 
   //Update the disks_ vector with all the obstacles
-  for(int i=0; i< centers_encirc_oinw.size();i++)
-    disks_.push_back(Disk(centers_encirc_oinw[i].head<2>(), rads_encirc[i]));
-  int n_obs = disks_.size();
-
-  if(config_.dyn_debug_on)
-    cout<<indStr(1)+"The number of obstacles detected:"<<n_obs<<endl;
+  disks_.clear();
+  disks_.reserve(n_obs);
+  for(int i=0; i< obs_cents_oinw.size();i++)
+    disks_.push_back(Disk(obs_cents_oinw[i].head<2>(), obs_rads[i]));
 
 
   //Set tf and xf for ddp_cost_lq_
   ddp_cost_lq_.tf = tf;
   ddp_cost_lq_.xf = &xf;
-  ddp_cost_lq_.xds = &gcar_reftraj;
+  if(config_.dyn_ddp_traj_track)
+    ddp_cost_lq_.xds = &gcar_reftraj;
+  else
+    ddp_cost_lq_.xds = 0;
 
   //Initialize trajectory(ts, xs and us)
+  double h=tf/ddp_nseg;
   for (int k = 0; k <ddp_nseg+1; ++k)
     ddp_ts_[k] = k*h;
 
@@ -1701,10 +1750,14 @@ bool CallBackDslDdp::ddpPlan(void){
   }
 
   //Update ddp params
-  ddp_cost_lq_.Qf.setZero(); //since we are tracking a trajectory
-  ddp_cost_lq_.Q = ddp_Q_per_t_*tf;
+  if(config_.dyn_ddp_traj_track){
+    ddp_cost_lq_.Qf.setZero(); //since we are tracking a trajectory
+    ddp_cost_lq_.Q = ddp_Q_per_t_*tf;
+  }else{
+    ddp_cost_lq_.Qf = ddp_Qf_;
+    ddp_cost_lq_.Q.setZero();
+  }
   ddp_cost_lq_.R = ddp_R_per_t_*tf;
-
   ddp_cost_lq_.UpdateGains();
 
   //Setup multicost for DDP
@@ -1712,8 +1765,8 @@ bool CallBackDslDdp::ddpPlan(void){
   vector<DiskConstraintCost_ptr> ddp_cost_disks(n_obs);
   MultiCost<GcarState, 4, 2> ddp_mcost(sys_gcar_,tf); ddp_mcost.costs.resize(n_obs+1);
   for (int i = 0; i < disks_.size(); ++i) {
-    constraints[i].reset(new GcarDiskConstraint(disks_[i], 1.0));
-    constraints[i]->func = GcarStateToVector2d;
+    constraints[i].reset(new GcarDiskConstraint(disks_[i], ddp_disk_cr_));
+    constraints[i]->func = bind(&CallBackDslDdp::GcarStateToVector2d, this, _1, _2);
     DiskConstraintCost_ptr ptr_diskcost(new DiskConstraintCost(sys_gcar_, tf, *constraints[i]));
     ddp_cost_disks[i] = ptr_diskcost;
     ddp_cost_disks[i]->b = ddp_disk_penl_minmax_(0);
@@ -1733,6 +1786,7 @@ bool CallBackDslDdp::ddpPlan(void){
   bool ddp_conv=false;
   double v_prev; v_prev=ddp_solver.V;
 
+  delt_.set();
   while(!ddp_conv && !g_shutdown_requested){
     for(size_t i=0;i<disks_.size();i++)
       ddp_cost_disks[i]->b = ddp_disk_penl_minmax_(0)* pow(disk_penalty_step, n_it);
@@ -1749,6 +1803,7 @@ bool CallBackDslDdp::ddpPlan(void){
     //    v_prev=ddp_solver.V;
     n_it++;
   }
+  cout<<indStr(1)+"Delt for ddp while loop:"<<delt_.get()<<endl;
 
   //save prev controls for hot start if enabled
   ddp_us_prev_ = ddp_us_;
@@ -1768,21 +1823,29 @@ bool CallBackDslDdp::ddpPlan(void){
     pub_ctrl_.publish(msg_ctrl);
   }
 
-  ros::Time t_end =  ros::Time::now();
-
+  ros::Time ddp_end = ros::Time::now();
   if(config_.dyn_debug_verbose_on){
     cout<<indStr(1)+"DDP planning done:"<<endl;
-    cout<<indStr(1)+"delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
+    cout<<indStr(1)+"delta t:"<<delt_.get()<<" sec"<<endl;
+    cout<<indStr(1)+"ddp_end-ddp_start:"<<(ddp_end - ddp_start).toSec()<<" sec"<<endl;
   }
   ind_count_--;
   return true;
 }
 
-void CallBackDslDdp::obsDetect(vector<Vector3d>& centers_encirc, vector<double>& rads_encirc){
+int CallBackDslDdp::GcarStateToVector2d(Vector2d &p, const GcarState &x){
+
+  Affine2d tfm_w2b = toAffine2d(x.g);
+  Affine2d tfm_w2c = tfm_w2b* Translation2d(Vector2d(-car_geom_.ox, 0));//world2base_link * world2base_link
+  p = tfm_w2c.translation();
+  return 1;  // index where position coordinates start (the car model coordinates are (theta,x,y,v)
+}
+
+void CallBackDslDdp::obsDetect(vector<Vector3d>& centers_encirc, vector<double>& rads_encirc, const ObsDetectionCfg& cfg){
   ind_count_++;
   if(config_.dyn_debug_on)
     cout<<indStr(0)+"*Detecting obstacles"<<endl;
-  if(!msg_lidar_.ranges.size()){
+  if(!cfg.p_laserscan_msg->ranges.size()){
     if(config_.dyn_debug_on)
       cout<<indStr(1)+"Obstacle detection not done as it seems there is no lidar message"<<endl;
     ind_count_--;
@@ -1791,38 +1854,36 @@ void CallBackDslDdp::obsDetect(vector<Vector3d>& centers_encirc, vector<double>&
 
   ros::Time t_start =  ros::Time::now();
   //range values out of these ranges are not correct
-  double dela = msg_lidar_.angle_increment;
-  double mina = msg_lidar_.angle_min;
-  double maxa = msg_lidar_.angle_max;
-  int n_skip = abs(mina + obs_search_angle_fwd_)/dela;
+  double dela = cfg.p_laserscan_msg->angle_increment;
+  double mina = cfg.p_laserscan_msg->angle_min;
+  double maxa = cfg.p_laserscan_msg->angle_max;
+  int n_skip = abs(mina + cfg.search_angle_fwd)/dela;
 
   // Find ranges which lie in the radius
-  vector<float>::iterator it_begin = msg_lidar_.ranges.begin()+n_skip;
-  vector<float>::iterator it_end   = msg_lidar_.ranges.end()-n_skip;
+  vector<float>::iterator it_begin = cfg.p_laserscan_msg->ranges.begin()+n_skip;
+  vector<float>::iterator it_end   = cfg.p_laserscan_msg->ranges.end()-n_skip;
 
   std::vector<size_t> idxs_inrange;
-  vector<float>::iterator it= find_if(it_begin,it_end , [=](float r){return ((r < obs_search_radius_max_)&& (r > obs_search_radius_min_) );});
+  vector<float>::iterator it= find_if(it_begin,it_end , [=](float r){return ((r < cfg.search_radius_max)&& (r > cfg.search_radius_min) );});
   while (it != it_end) {
-    idxs_inrange.push_back(std::distance(msg_lidar_.ranges.begin(), it));
-    it = find_if(++it, it_end, [=](float r){return ((r < obs_search_radius_max_)&& (r > obs_search_radius_min_) );});
+    idxs_inrange.push_back(std::distance(cfg.p_laserscan_msg->ranges.begin(), it));
+    it = find_if(++it, it_end, [=](float r){return ((r <cfg.search_radius_max)&& (r > cfg.search_radius_min) );});
   }
 
   //Get the obstacle points
-  vector<Vector2d> pts_polar(idxs_inrange.size());
   vector<Vector2d> pts_cart(idxs_inrange.size());
-  for(int i=0;i<pts_polar.size();i++){
-    double range = msg_lidar_.ranges[idxs_inrange[i]];
-    double angle = msg_lidar_.angle_min + msg_lidar_.angle_increment*idxs_inrange[i];
-    pts_polar[i] = Vector2d(range,angle);
-    pts_cart[i] = Vector2d(pts_polar[i](0)*cos(pts_polar[i](1)), pts_polar[i](0)*sin(pts_polar[i](1)));
+  for(int i=0;i<pts_cart.size();i++){
+    double r = cfg.p_laserscan_msg->ranges[idxs_inrange[i]];
+    double a = cfg.p_laserscan_msg->angle_min + cfg.p_laserscan_msg->angle_increment*idxs_inrange[i];
+    pts_cart[i] = Vector2d(r*cos(a), r*sin(a));
   }
 
   //find the KNN closes to center
   vector<vector<size_t>> clusters;
-  double r_obs = obs_map_cell_size_/sqrt(2);
+  double r_obs = cfg.map_cell_size/sqrt(2);
 
   //find cluster centers
-  findKClustersWithSizeConstraint(clusters,pts_polar,r_obs, obs_cluster_count_max_, obs_cluster_radius_max_);
+  findKClustersWithSizeConstraint(clusters,pts_cart,r_obs, cfg.cluster_count_max, cfg.cluster_radius_max);
 
   //get cluster radius and center
   vector<Vector2d> centers2d_encirc;
@@ -1840,67 +1901,73 @@ void CallBackDslDdp::obsDetect(vector<Vector3d>& centers_encirc, vector<double>&
   ind_count_--;
 }
 
-
-void CallBackDslDdp::obsFindCloseToTraj(vector<Vector3d>& centers_encirc, vector<double>& rads_encirc){
+//TODO: for each laser point find the closes nodei and this way build a set of points for everynode i that is close to nodei and
+// also satisfies some criteria. Then find the closest point for each of nodes among those points.
+void CallBackDslDdp::obsFindCloseToTraj(vector<Vector3d>& centers_encirc_inlidar, vector<double>& rads_encirc,const ObsDetectionCfg& cfg){
   ind_count_++;
-  if(config_.dyn_debug_on)
-    cout<<indStr(0)+"*Detecting obstacles"<<endl;
-  if(!msg_lidar_.ranges.size()){
-    if(config_.dyn_debug_on)
-      cout<<indStr(1)+"Obstacle detection not done as it seems there is no lidar message"<<endl;
-    ind_count_--;
-    return;
-  }
+   if(config_.dyn_debug_on)
+     cout<<indStr(0)+"*Detecting obstacles"<<endl;
+   if(!cfg.p_laserscan_msg->ranges.size()){
+     if(config_.dyn_debug_on)
+       cout<<indStr(1)+"Obstacle detection not done as it seems there is no lidar message"<<endl;
+     ind_count_--;
+     return;
+   }
 
-  ros::Time t_start =  ros::Time::now();
-  //range values out of these ranges are not correct
-  double dela = msg_lidar_.angle_increment;
-  double mina = msg_lidar_.angle_min;
-  double maxa = msg_lidar_.angle_max;
-  int n_skip = abs(mina + obs_search_angle_fwd_)/dela;
+   centers_encirc_inlidar.clear();
+   rads_encirc.clear();
 
-  // Find ranges which lie in the radius
-  vector<float>::iterator it_begin = msg_lidar_.ranges.begin()+n_skip;
-  vector<float>::iterator it_end   = msg_lidar_.ranges.end()-n_skip;
+   ros::Time t_start =  ros::Time::now();
 
-  std::vector<size_t> idxs_inrange;
-  vector<float>::iterator it= find_if(it_begin,it_end , [=](float r){return ((r < obs_search_radius_max_)&& (r > obs_search_radius_min_) );});
-  while (it != it_end) {
-    idxs_inrange.push_back(std::distance(msg_lidar_.ranges.begin(), it));
-    it = find_if(++it, it_end, [=](float r){return ((r < obs_search_radius_max_)&& (r > obs_search_radius_min_) );});
-  }
+   double dela = cfg.p_laserscan_msg->angle_increment;
+   double mina = cfg.p_laserscan_msg->angle_min;
+   double maxa = cfg.p_laserscan_msg->angle_max;
 
-  //Get the obstacle points
-  vector<Vector2d> pts_polar(idxs_inrange.size());
-  vector<Vector2d> pts_cart(idxs_inrange.size());
-  for(int i=0;i<pts_polar.size();i++){
-    double range = msg_lidar_.ranges[idxs_inrange[i]];
-    double angle = msg_lidar_.angle_min + msg_lidar_.angle_increment*idxs_inrange[i];
-    pts_polar[i] = Vector2d(range,angle);
-    pts_cart[i] = Vector2d(pts_polar[i](0)*cos(pts_polar[i](1)), pts_polar[i](0)*sin(pts_polar[i](1)));
-  }
+   vector<float>::iterator it_begin = cfg.p_laserscan_msg->ranges.begin();
+   vector<float>::iterator it_end   = cfg.p_laserscan_msg->ranges.end();
 
-  //find the KNN closes to center
-  vector<vector<size_t>> clusters;
-  double r_obs = obs_map_cell_size_/sqrt(2);
+   for(size_t idx_node=0; idx_node < cfg.tfm_l2b_nodes.size(); idx_node++){
+     const Affine3d& tfm_l2b_nodei = cfg.tfm_l2b_nodes[idx_node];
+     std::vector<size_t> idxs_inrange(cfg.p_laserscan_msg->ranges.size()); //TODO replace it with filtered ranges
+     std::iota(idxs_inrange.begin(), idxs_inrange.end(),0);
 
-  //find cluster centers
-  findKClustersWithSizeConstraint(clusters,pts_polar,r_obs, obs_cluster_count_max_, obs_cluster_radius_max_);
+     //Get the obstacle points
+     vector<Vector2d> pts_cart_innodei(idxs_inrange.size());
+     for(int i=0;i<pts_cart_innodei.size();i++){
+       double r = cfg.p_laserscan_msg->ranges[idxs_inrange[i]];
+       double a = cfg.p_laserscan_msg->angle_min + cfg.p_laserscan_msg->angle_increment*idxs_inrange[i];
+       pts_cart_innodei[i] = (tfm_l2b_nodei.inverse() * Vector3d(r*cos(a), r*sin(a),0)).head<2>();
+     }
 
-  //get cluster radius and center
-  vector<Vector2d> centers2d_encirc;
-  findCircumCircle(centers2d_encirc, rads_encirc, clusters, pts_cart);
-  centers_encirc.resize(centers2d_encirc.size());
-  transform(centers2d_encirc.begin(), centers2d_encirc.end(), centers_encirc.begin(),
-            [](const Vector2d& c){return Vector3d(c(0), c(1), 0);});
+     //find the KNN closest to center
+     vector<vector<size_t>> clusters;
+     double r_obs = cfg.map_cell_size/sqrt(2);
 
-  ros::Time t_end =  ros::Time::now();
-  if(config_.dyn_debug_verbose_on){
-    cout<<indStr(1)+"Obstacle detection done:"<<endl;
-    cout<<indStr(1)+"delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
-  }
+     //find the nearest cluster center
+     findKClustersWithSizeConstraint(clusters,pts_cart_innodei,r_obs, cfg.cluster_count_max, cfg.cluster_radius_max);
+     assert(clusters.size());
 
-  ind_count_--;
+     //get cluster radius and center
+     vector<Vector2d> centers2d_innode;
+     vector<double> rads;
+     findCircumCircle(centers2d_innode, rads, clusters, pts_cart_innodei);
+
+     //just store the 1st cluster
+     //TODO find the n closes clusters and push that
+     Vector2d c = centers2d_innode[0];
+     rads_encirc.push_back(rads[0]);
+     centers_encirc_inlidar.push_back(tfm_l2b_nodei * Vector3d(c(0), c(1), 0));
+
+   }
+
+
+   ros::Time t_end =  ros::Time::now();
+   if(config_.dyn_debug_verbose_on){
+     cout<<indStr(1)+"Obstacle detection done:"<<endl;
+     cout<<indStr(1)+"delta t:"<<(t_end - t_start).toSec()<<" sec"<<endl;
+   }
+
+   ind_count_--;
 }
 
 
@@ -2088,7 +2155,7 @@ void CallBackDslDdp::rvizMarkersInit(void){
   marker_obs_.scale.z = 0.5;
   marker_obs_.lifetime = ros::Duration(config_.dyn_ddp_loop_durn);
   rvizMarkersEdit(marker_obs_,marker_prop_obs_);
-  marker_id_ += obs_cluster_count_max_;
+  marker_id_ += obs_cfg_.cluster_count_max;
 
   ind_count_--;
 }

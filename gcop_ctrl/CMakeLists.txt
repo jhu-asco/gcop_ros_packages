@@ -5,8 +5,8 @@ add_definitions(-g -std=c++0x -pthread)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 option(BUILD_CAR "builds car executables" OFF)
 option(BUILD_OVS "builds Optimal Visual Servoing executables" OFF)
-option(BUILD_QUAD "builds quadcopter control executables" ON)
-option(BUILD_MBS "builds quadcopter control executables" ON)
+option(BUILD_QUAD "builds quadcopter control executables" OFF)
+option(BUILD_MBS "builds quadcopter control executables" OFF)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
@@ -14,8 +14,8 @@ find_package(catkin REQUIRED COMPONENTS
   dynamic_reconfigure
   gcop_comm
   geometry_msgs
-	visualization_msgs
-	sensor_msgs
+  visualization_msgs
+  sensor_msgs
   roscpp
   rospy
   roslib
@@ -140,7 +140,7 @@ generate_dynamic_reconfigure_options(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  INCLUDE_DIRS include
+  INCLUDE_DIRS include/gcop_ctrl
   LIBRARIES qrotoridmodel_control
 #  CATKIN_DEPENDS dynamic_reconfigure gcop_comm geometry_msgs roscpp rospy tf
 #  DEPENDS YAML_CPP
@@ -210,10 +210,18 @@ if (BUILD_CAR)
   target_link_libraries(rcctrl ${LIBS} ${catkin_LIBRARIES})
   add_dependencies(rcctrl ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)
 
-  add_executable(dsl_ddp_planner src/dsl_ddp_planner.cpp)
+  add_executable(dsl_ddp_planner src/dsl_ddp_planner/dsl_ddp_planner.cpp)
   target_link_libraries(dsl_ddp_planner ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} ${LIBS})
   add_dependencies(dsl_ddp_planner ${PROJECT_NAME}_gencfg )
 
+  add_executable(test_node src/test_node.cpp)
+  target_link_libraries(test_node ${catkin_LIBRARIES}  ${DSL_LIBRARY} ${YAML_CPP_LIBRARIES} ${LIBS})
+  
+  ## Declare a cpp library
+ add_library(obs_detect_lidar
+   src/obs_detection_lidar/obs_detection_lidar.cpp
+   )
+   
 endif (BUILD_CAR)
 
 #add_executable(gcar_sim src/gcar_sim.cpp)
