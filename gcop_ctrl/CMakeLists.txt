@@ -140,7 +140,7 @@ generate_dynamic_reconfigure_options(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  INCLUDE_DIRS include/gcop_ctrl
+  INCLUDE_DIRS include
   LIBRARIES qrotoridmodel_control
 #  CATKIN_DEPENDS dynamic_reconfigure gcop_comm geometry_msgs roscpp rospy tf
 #  DEPENDS YAML_CPP
