@@ -49,6 +49,7 @@ public:
     void logTrajectory(std::string filename);
     void resetControls();
     double getDesiredObjectDistance(double delay_send_time);
+    const QRotorIDState &getInitialState();
  protected:
     QRotorIdGnDocp *gn;
     SplineTparam *ctp;
@@ -60,6 +61,8 @@ public:
     int skip_publish_segments;///< Skip these segments for publishing gcop trajectory
     vector<Matrix3d> eigen_vectors_stdev;///<Stdev eigen vectors
     vector<Vector3d> eigen_values_stdev;///< Stdev of eigen values
+    VectorXd obstacles_copy_original;
+    QRotorIDState x0_copy_original;
  public:
     vector<QRotorIDState> xs;
     vector<Vector4d> us;

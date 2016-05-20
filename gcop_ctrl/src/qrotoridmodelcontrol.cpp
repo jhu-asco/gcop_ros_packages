@@ -52,6 +52,7 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
       so3.q2g(x0.R, rpy);
     }
     x0.u<<0,0,0;
+    x0_copy_original = x0;
     xs.resize(N+1,x0);
     eigen_values_stdev.resize(N+1);
     eigen_vectors_stdev.resize(N+1);
@@ -110,6 +111,7 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
     //Obstacles:
     params_loader_.GetVectorXd("obs1",obs_info);
     obstacles.push_back(obs_info);
+    obstacles_copy_original = obstacles.at(0);
     if(params_loader_.Exists("obs2"))
     {
       params_loader_.GetVectorXd("obs2",obs_info);
@@ -201,7 +203,11 @@ void QRotorIDModelControl::iterate(bool fast_iterate)
     if(fast_iterate)
       gn->ko = (max_ko/2);
     else
+    {
       gn->ko = 0.01;
+      xs[0] = x0_copy_original;
+      obstacles[0] = obstacles_copy_original;
+    }
 
     double temp_max_iters = gn->max_iters;
     if(fast_iterate)
@@ -279,9 +285,13 @@ void QRotorIDModelControl::resetControls()
 double QRotorIDModelControl::getDesiredObjectDistance(double delay_send_time = 0.2)
 {
   //cout<<"Xs[0].v.norm: "<<xs[0].v.norm()<<endl;
-  return obstacles.at(0).segment<3>(1).norm() + xs[0].v.norm()*delay_send_time;
+  return obstacles_copy_original.segment<3>(1).norm() + xs[0].v.norm()*delay_send_time;
 }
 
+const QRotorIDState & QRotorIDModelControl::getInitialState()
+{
+  return x0_copy_original;
+}
 void QRotorIDModelControl::getControl(Vector4d &ures)
 {
     ures(0) = us[0](0);
