@@ -183,6 +183,7 @@ void QRotorIDModelControl::setInitialState(const geometry_msgs::Vector3 &vel, co
   //Set Initial rp based on measurements
   Vector3d rp_(rpy.x, rpy.y, 0);
   so3.q2g(xs[0].R,rp_);
+  xs[0].u = rp_;// set commanded rp equal to initial state
   cout<<"Initial Vel: "<<xs[0].v.transpose()<<endl;
   cout<<"Initial rp: "<<rp_.transpose()<<endl;
 }

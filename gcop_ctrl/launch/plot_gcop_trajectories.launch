@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<launch>	
+  <arg name="dirname" />
+  <arg name="trajfile" />
+  <param name="robot_description" textfile="$(find gcop_urdf)/urdf/quadrotor.urdf"/>
+  <!--<param name="/skip_segments" value="0"/>-->
+  <param name="/skip_segments" value="2"/>
+  <param name="/dirname" value="$(find rqt_quadcoptergui)/djilogfiles/$(arg dirname)"/>
+  <param name="/trajfile" value="$(arg trajfile)"/>
+	<node name="plot_gcop_trajectories" pkg="gcop_ctrl" type="plotgcoptraj" output="screen">
+  </node>
+</launch>

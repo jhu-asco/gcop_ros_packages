@@ -2,6 +2,7 @@
 #include <iostream>
 #include <gcop_comm/gcop_trajectory_visualizer.h>
 #include <tf/transform_datatypes.h>
+#include <tf/transform_broadcaster.h>
 #include <fstream>
 
 using namespace std;
@@ -54,6 +55,17 @@ void getmeasurementCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, string trajfi
       current_pos = origin_yaw*(current_pos - origin);
       tf::vector3TFToMsg(current_pos,current_state.basepose.translation);
       trajectory.statemsg.push_back(current_state);
+      //Get rpy:
+      tf::Vector3 rpy;
+      for(int i =0; i < 3; i++)
+        ss>>rpy[i];
+      tf::Matrix3x3 current_orientation;
+      current_orientation.setEulerZYX(rpy[2],rpy[1],rpy[0]);
+      current_orientation = origin_yaw*current_orientation;
+      tf::Transform current_tf(current_orientation, current_pos);
+      static tf::TransformBroadcaster br;
+      br.sendTransform(tf::StampedTransform(current_tf, ros::Time::now(), "world", "airbase"));
+      ros::Duration(0.08).sleep();
       //DEBUG:
       cout<<"xs: "<<current_pos[0]<<" "<<current_pos[1]<<" "<<current_pos[2]<<endl;
   }
@@ -114,7 +126,7 @@ void getMPCCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, string trajfile, int 
       }
       trajectory.statemsg.push_back(current_state);
       trajectory.pos_std.push_back(xs_std);
-      cout<<"Data: "<<trajectory.N<<" "<<current_state.basepose.translation.x<<" "<<current_state.basepose.translation.y<<" "<<current_state.basepose.translation.z<<" "<<xs_std.scale_std.x<<" "<<xs_std.scale_std.y<<" "<<xs_std.scale_std.z<<endl;
+      cout<<"Data: "<<trajectory.N<<" "<<current_state.basepose.translation.x<<" "<<current_state.basepose.translation.y<<" "<<current_state.basepose.translation.z<<endl;
   }
 RETURN_FUNC:
   trajectory.N = trajectory.N - 1;
@@ -124,7 +136,9 @@ void timerCallback(const ros::TimerEvent &event, string trajfile, bool mpcmode, 
 {
   //double obs[8] = {0.8, 1.5,0,0, 0,0,1,0};
   //double obs[8] = {0.5, 1,0,0, 0,0,1,0};
-  double obs[8] = {0.3, 2,1.1,0, 0,0,1,0};
+  //double obs[8] = {0.3, 2,1.1,0, 0,0,1,0};
+  //double obs[8] = {0.78, 3,0,0, 0,0,1,0};
+  double obs[8] = {0.78, 3,0.32,0, 0,0,1,0};
   visualizer_->publishObstacle(obs,1,obs[7]);
   gcop_comm::CtrlTraj trajectory;
   if(mpcmode)
@@ -137,7 +151,7 @@ void timerCallback(const ros::TimerEvent &event, string trajfile, bool mpcmode, 
   else
   {
     getmeasurementCtrlTrajectory(trajectory,trajfile,skip_segments);
-    visualizer_->publishLineStrip(trajectory);
+    //visualizer_->publishLineStrip(trajectory);
   }
 }
 
@@ -155,9 +169,18 @@ int main(int argc, char** argv)
     nh.getParam("/trajfile",trajfile);
     nh.getParam("/dirname",dirname);
     nh.param<int>("/skip_segments", skip_segments,5);
-    nh.param<bool>("/mpcmode",mpcmode,true);
-    nh.param<bool>("/new_dataset",new_dataset,true);
+    //nh.param<bool>("/mpcmode",mpcmode,true);
+    nh.param<bool>("/new_dataset",new_dataset,true);//For stdev rotation
     nh.param<int>("/id",id,1);
+    if(trajfile.substr(0,3).compare("mpc") == 0)
+      mpcmode = true;
+    else
+    {
+      mpcmode = false;
+      skip_segments = 0;
+    }
+    ROS_INFO("Mpc Mode: %d",mpcmode);
+    ROS_INFO("Trajfile: %s",trajfile.substr(0,3).c_str());
     trajfile = dirname + "/"+trajfile;
     if(!mpcmode)
     {
