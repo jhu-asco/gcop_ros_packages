@@ -8,7 +8,7 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
                                                                                   , visualizer_(nh,frame_id)
                                                                                   , so3(SO3::Instance())
                                                                                   , skip_publish_segments(2), logged_trajectory_(false)
-                                                                                  , max_ko(100), gain_ko(2), J(1000)
+                                                                                  , max_ko(100), gain_ko(2), J_(1000)
 {
     //Temp Variables
     int N = 100;
@@ -16,8 +16,6 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
     int Nk = 5;
     bool debug = false;
     VectorXd meanp(13), Q(15), R(4), Qf(15), stdev_initial_state(15), obs_info(8), px0(15), pxf(15);
-    Matrix6d stdev_offsets;
-    Matrix7d stdev_gains;
     string param_file_string;
 
     nh.getParam("/qrotoridmodeltest/control_params",param_file_string);
@@ -28,7 +26,7 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
 
     //Load Params from File
     params_loader_.GetInt("N",N);
-    params_loader_.GetDouble("tf",tf);
+    params_loader_.GetDouble("tf",tf_);
     params_loader_.GetInt("Nk",Nk);
     params_loader_.GetInt("spline_order",spline_order);
     params_loader_.GetBool("debug",debug);
@@ -39,8 +37,8 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
     params_loader_.GetVectorXd("x0",px0);
     params_loader_.GetVectorXd("xf",pxf);
     params_loader_.GetVectorXd("stdev_initial_state",stdev_initial_state);
-    params_loader_.GetMatrix6d("stdev_offsets",stdev_offsets);
-    params_loader_.GetMatrix7d("stdev_gains",stdev_gains);
+    params_loader_.GetMatrix6d("stdev_offsets",stdev_offsets_);
+    params_loader_.GetMatrix7d("stdev_gains",stdev_gains_);
 
     //Fill xs
     QRotorIDState x0;
@@ -74,17 +72,17 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
     us.resize(N,u0);
 
     //Fill ts
-    double h = tf/N;
+    double h = tf_/N;
     step_size_ = h;
     ts.resize(N+1);
     for (int k = 0; k <= N; ++k)
       ts[k] = k*h;
     tks.resize(Nk+1);
     for(int k = 0; k <=Nk; ++k)
-        tks[k] = k*(tf/Nk);
+        tks[k] = k*(tf_/Nk);
 
     //Fill Cost:
-    cost = new QRotorIDModelCost(sys,tf,xf);
+    cost = new QRotorIDModelCost(sys,tf_,xf);
     cost->Q.setZero();
     cost->R.diagonal() = R;
     cost->Qf.diagonal() = Qf;
@@ -92,14 +90,14 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
     ctp = new SplineTparam(sys,tks,spline_order);
 
     //Mean Params
-    p_mean = meanp;
+    p_mean_copy_ = p_mean = meanp;
 
     //Create Optimizer
     gn = new QRotorIdGnDocp(sys,*cost,*ctp, ts,xs,us, &p_mean);
     gn->debug = debug;
     gn->stdev_initial_state.diagonal() = stdev_initial_state;
-    gn->stdev_params.topLeftCorner<7,7>() = stdev_gains;
-    gn->stdev_params.bottomRightCorner<6,6>() = stdev_offsets;
+    gn->stdev_params.topLeftCorner<7,7>() = stdev_gains_;
+    gn->stdev_params.bottomRightCorner<6,6>() = stdev_offsets_;
     //gn->stdev_initial_state.diagonal()<< 0.017,0.017,0.017, 0.05,0.05,0.05, 0.017,0.017,0.017, 0.05,0.05,0.05, 0.017,0.017,0.017;
     //gn->stdev_params.diagonal()<<0.001, 0.2,0.2,0.2, 0.2,0.2,0.2, 0.05,0.05,0.05, 0.05,0.05,0.05;
 
@@ -201,6 +199,14 @@ void QRotorIDModelControl::setObstacleCenter(const int &index, const double &x, 
 
 void QRotorIDModelControl::iterate(bool fast_iterate)
 {
+    //Copy Params:
+    params_mutex.lock();
+
+    gn->stdev_params.topLeftCorner<7,7>() = stdev_gains_;
+    gn->stdev_params.bottomRightCorner<6,6>() = stdev_offsets_;
+    p_mean = p_mean_copy_;
+
+    params_mutex.unlock();
     if(fast_iterate)
       gn->ko = (max_ko/2);
     else
@@ -243,7 +249,7 @@ void QRotorIDModelControl::iterate(bool fast_iterate)
         eigen_values_stdev[i](0) = temp;
       }
     }
-    J = gn->J;
+    J_ = gn->J;
     if(fast_iterate)
       gn->max_iters = temp_max_iters;
 }
@@ -321,12 +327,14 @@ void QRotorIDModelControl::publishTrajectory(geometry_msgs::Vector3 &pos, geomet
 
 void QRotorIDModelControl::setParametersAndStdev(Vector7d &gains, Matrix7d &stdev_gains, Vector6d *mean_offsets, Matrix6d *stdev_offsets)
 {
-    p_mean.head<7>() = gains;
-    gn->stdev_params.topLeftCorner<7,7>() = stdev_gains;
+    params_mutex.lock();
+    p_mean_copy_.head<7>() = gains;
+    stdev_gains_ = stdev_gains;
     if(mean_offsets)
-        p_mean.tail<6>() = *mean_offsets;
+        p_mean_copy_.tail<6>() = *mean_offsets;
     if(stdev_offsets)
-      gn->stdev_params.bottomRightCorner<6,6>() = *stdev_offsets;
+      stdev_offsets_ = *stdev_offsets;
+    params_mutex.unlock();
 }
 
 void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Matrix3d &yawM, Vector3d &pos_)

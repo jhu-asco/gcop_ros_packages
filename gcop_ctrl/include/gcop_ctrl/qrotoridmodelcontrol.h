@@ -13,6 +13,7 @@
 #include <gcop_comm/gcop_trajectory_visualizer.h>
 #include <gcop/params.h>
 #include <fstream>
+#include <boost/thread/mutex.hpp>
 
 using namespace gcop;
 using namespace Eigen;
@@ -32,6 +33,12 @@ class QRotorIDModelControl
     SO3 &so3;
     bool logged_trajectory_;///< Only Log the GCOP Trajectory once for NOW
     double max_ko, gain_ko;
+    double step_size_;///< h
+    double J_;///< Cost from optimization
+    double tf_;
+    QRotorIDState xf;
+    vector<QRotorIDState> xs;
+    boost::mutex params_mutex;
 protected:
     inline void so3ToGeometryMsgsQuaternion(geometry_msgs::Quaternion &out, const Matrix3d &in);
     inline void eigenVectorToGeometryMsgsVector(geometry_msgs::Vector3 &out, const Vector3d &in);
@@ -50,7 +57,7 @@ public:
     void resetControls();
     double getDesiredObjectDistance(double delay_send_time);
     const QRotorIDState &getInitialState();
- protected:
+  protected:
     QRotorIdGnDocp *gn;
     SplineTparam *ctp;
     QRotorIDModel sys;
@@ -58,18 +65,45 @@ public:
     vector<double> ts;
     VectorXd tks;
     Matrix<double,13,1> p_mean;
+    Matrix<double,13,1> p_mean_copy_;
+    Matrix6d stdev_offsets_;
+    Matrix7d stdev_gains_;
     int skip_publish_segments;///< Skip these segments for publishing gcop trajectory
     vector<Matrix3d> eigen_vectors_stdev;///<Stdev eigen vectors
     vector<Vector3d> eigen_values_stdev;///< Stdev of eigen values
     VectorXd obstacles_copy_original;
     QRotorIDState x0_copy_original;
  public:
-    vector<QRotorIDState> xs;
     vector<Vector4d> us;
-    QRotorIDState xf;
-    double tf;
-    double step_size_;///< h
-    double J;///< Cost from optimization
+ public:
+    //Getter Functions:
+    const Matrix<double,13,1> getParameters()
+    {
+      Matrix<double,13,1> p_mean_local;
+      params_mutex.lock();
+      p_mean_local = p_mean_copy_;
+      params_mutex.unlock();
+      return p_mean_local;
+    }
+
+    const double &stepSize()
+    {
+        return step_size_;
+    }
+
+    const double &J()
+    {
+        return J_;
+    }
+
+    const double &tf()
+    {
+        return tf_;
+    }
+    const QRotorIDState &x0()
+    {
+        return xs[0];
+    }
 };
 
 #endif // QROTORIDMODELCONTROL_H
