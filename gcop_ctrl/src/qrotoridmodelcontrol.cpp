@@ -50,7 +50,7 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
       so3.q2g(x0.R, rpy);
     }
     x0.u<<0,0,0;
-    x0_copy_original = x0;
+    state_left_.x0 = state_right_.x0 = x0;
     xs.resize(N+1,x0);
     eigen_values_stdev.resize(N+1);
     eigen_vectors_stdev.resize(N+1);
@@ -106,22 +106,24 @@ QRotorIDModelControl::QRotorIDModelControl(ros::NodeHandle &nh, string frame_id)
     params_loader_.GetInt("max_iters",gn->max_iters);
     params_loader_.GetDouble("gain_ko",gain_ko);
 
+    //Fill tparam (knots) from optimizer:
+    state_left_.s = state_right_.s = gn->s;
+
     //Obstacles:
-    params_loader_.GetVectorXd("obs1",obs_info);
+    //Load left obstacles
+    params_loader_.GetVectorXd("obs_left",obs_info);
     obstacles.push_back(obs_info);
-    obstacles_copy_original = obstacles.at(0);
-    if(params_loader_.Exists("obs2"))
+    state_left_.obstacles = obstacles;
+    //Load right obstacles
+    params_loader_.GetVectorXd("obs_right",obs_info);
+    obstacles[0] = obs_info;
+    state_right_.obstacles = obstacles;
+    /*if(params_loader_.Exists("obs2"))
     {
       params_loader_.GetVectorXd("obs2",obs_info);
       obstacles.push_back(obs_info);
     }
-
-    {
-      vector<Obstacle> obs(obstacles.size());
-      for(int i = 0; i < obstacles.size(); i++)
-        obs[i].set(obstacles[i], (int)obstacles[i][7]);
-      gn->AddObstacles(obs);
-    }
+    */
     cout<<"Problem Settings: "<<endl;
     cout<<"X0: "<<px0.transpose()<<endl;
     cout<<"Xf: "<<pxf.transpose()<<endl;
@@ -186,14 +188,55 @@ void QRotorIDModelControl::setInitialState(const geometry_msgs::Vector3 &vel, co
   cout<<"Initial rp: "<<rp_.transpose()<<endl;
 }
 
-void QRotorIDModelControl::setObstacleCenter(const int &index, const double &x, const double &y, const double &z)
+void QRotorIDModelControl::addObstacles(const vector<VectorXd> &obstacles)
 {
-  if(index < obstacles.size())
+  vector<Obstacle> obs(state_left_.obstacles.size());
+  for(int i = 0; i < obstacles.size(); i++)
+    obs[i].set(obstacles[i], (int)obstacles[i][7]);
+  gn->AddObstacles(obs);
+}
+
+void QRotorIDModelControl::saveSolutions()
+{
+  addObstacles(state_left_.obstacles);
+  //Compute solutions
+  ROS_INFO("Computing Left Solution");
+  xs[0] = state_left_.x0;
+  gn->s = state_left_.s;
+  //Iterate
+  iterate(false);
+  //Save
+  state_left_.s = gn->s;
+  //Repeat for right
+  ROS_INFO("Computing Right Solution");
+  addObstacles(state_right_.obstacles);
+  xs[0] = state_right_.x0;
+  gn->s = state_right_.s;
+  iterate(false);
+  state_right_.s = gn->s;
+}
+
+//Remove Index
+// Restore solution based on center y
+// Update iterate for non fast iteration
+void QRotorIDModelControl::setObstacleCenter(const double &x, const double &y, const double &z)
+{
+  Eigen::Vector3d center(x,y,z);
+  gn->SetObstaclePos(0, center);
+  //Update the obstacles also for plotting:
+  obstacles[0].segment<3>(1) = center;
+  if(y < 0)
   {
-    Eigen::Vector3d center(x,y,z);
-    gn->SetObstaclePos(index, center);
-    //Update the obstacles also for plotting:
-    obstacles[index].segment<3>(1) = center;
+    //Choose obstacle right solution
+    ROS_INFO("Choosing right side obstacle solution: %f", y);
+    gn->s = state_right_.s;
+    xs[0] = state_right_.x0;
+  }
+  else
+  {
+    ROS_INFO("Choosing left side obstacle solution: %f", y);
+    gn->s = state_left_.s;
+    xs[0] = state_left_.x0;
   }
 }
 
@@ -212,8 +255,6 @@ void QRotorIDModelControl::iterate(bool fast_iterate)
     else
     {
       gn->ko = 0.01;
-      xs[0] = x0_copy_original;
-      obstacles[0] = obstacles_copy_original;
     }
 
     double temp_max_iters = gn->max_iters;
@@ -251,7 +292,7 @@ void QRotorIDModelControl::iterate(bool fast_iterate)
     }
     J_ = gn->J;
     if(fast_iterate)
-      gn->max_iters = temp_max_iters;
+      gn->max_iters = temp_max_iters;//Reset the max iterations of gn
 }
 void QRotorIDModelControl::logTrajectory(std::string filename)
 {
@@ -292,12 +333,14 @@ void QRotorIDModelControl::resetControls()
 double QRotorIDModelControl::getDesiredObjectDistance(double delay_send_time = 0.2)
 {
   //cout<<"Xs[0].v.norm: "<<xs[0].v.norm()<<endl;
-  return obstacles_copy_original.segment<3>(1).norm() + xs[0].v.norm()*delay_send_time;
+  Eigen::Vector3d obs_local_pos = state_left_.obstacles[0].segment<3>(1);
+  obs_local_pos[1] = 0; // Set y coordinate to 0
+  return obs_local_pos.norm() + xs[0].v.norm()*delay_send_time;
 }
 
 const QRotorIDState & QRotorIDModelControl::getInitialState()
 {
-  return x0_copy_original;
+  return state_left_.x0;
 }
 void QRotorIDModelControl::getControl(Vector4d &ures)
 {

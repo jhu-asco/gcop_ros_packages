@@ -39,15 +39,21 @@ class QRotorIDModelControl
     QRotorIDState xf;
     vector<QRotorIDState> xs;
     boost::mutex params_mutex;
+    struct OptimizationState {
+      vector<VectorXd> obstacles;
+      QRotorIDState x0;
+      VectorXd s;
+    } state_right_, state_left_;
 protected:
     inline void so3ToGeometryMsgsQuaternion(geometry_msgs::Quaternion &out, const Matrix3d &in);
     inline void eigenVectorToGeometryMsgsVector(geometry_msgs::Vector3 &out, const Vector3d &in);
+    inline void addObstacles(const vector<VectorXd> &obstacles);
 
 public:
     QRotorIDModelControl(ros::NodeHandle &nh, string frame_id="optitrak");
     //void setGoal(const geometry_msgs::Pose &xf_);
     void setInitialState(const geometry_msgs::Vector3 &vel, const geometry_msgs::Vector3 &rpy);
-    void setObstacleCenter(const int &index, const double &x, const double &y, const double &z);
+    void setObstacleCenter(const double &x, const double &y, const double &z);
     void iterate(bool fast_iterate = false);
     void getControl(Vector4d &ures);
     void getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Matrix3d &yawM, Vector3d &pos_);
@@ -57,6 +63,7 @@ public:
     void resetControls();
     double getDesiredObjectDistance(double delay_send_time);
     const QRotorIDState &getInitialState();
+    void saveSolutions();
   protected:
     QRotorIdGnDocp *gn;
     SplineTparam *ctp;
@@ -71,8 +78,6 @@ public:
     int skip_publish_segments;///< Skip these segments for publishing gcop trajectory
     vector<Matrix3d> eigen_vectors_stdev;///<Stdev eigen vectors
     vector<Vector3d> eigen_values_stdev;///< Stdev of eigen values
-    VectorXd obstacles_copy_original;
-    QRotorIDState x0_copy_original;
  public:
     vector<Vector4d> us;
  public:
