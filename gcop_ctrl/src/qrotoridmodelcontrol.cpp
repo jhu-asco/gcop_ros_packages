@@ -390,6 +390,7 @@ void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Ma
   trajectory.statemsg.resize(number_states);
   trajectory.pos_std.resize(number_states);
   trajectory.ctrl.resize(N);
+  trajectory.time.resize(number_states);
   int ind = 0;
 
   for (int count = 0;count<N+1;count+=skip_publish_segments)
@@ -398,6 +399,7 @@ void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Ma
     so3ToGeometryMsgsQuaternion(trajectory.statemsg.at(ind).basepose.rotation, yawM*xs[count].R);
     so3ToGeometryMsgsQuaternion(trajectory.pos_std.at(ind).rot_std, yawM*eigen_vectors_stdev[count]);
     eigenVectorToGeometryMsgsVector(trajectory.pos_std.at(ind).scale_std,4*eigen_values_stdev[count]);
+    trajectory.time[ind] = ts[count];
     //eigenVectorToGeometryMsgsVector(trajectory.statemsg[count].basetwist.linear,xs[count].v);
     //eigenVectorToGeometryMsgsVector(trajectory.statemsg[count].basetwist.angular,xs[count].w);
     //double x_std_max =gn->xs_std.col(count).maxCoeff();
@@ -413,7 +415,6 @@ void QRotorIDModelControl::getCtrlTrajectory(gcop_comm::CtrlTraj &trajectory, Ma
       trajectory.ctrl[count].ctrlvec[count1+1] = xs[count+1].u(count1);
     }
   }
-  trajectory.time = ts;
   //final goal:
   eigenVectorToGeometryMsgsVector(trajectory.finalgoal.basepose.translation, yawM*xf.p+pos_);
   so3ToGeometryMsgsQuaternion(trajectory.finalgoal.basepose.rotation, xf.R);
