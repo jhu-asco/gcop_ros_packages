@@ -9,3 +9,6 @@ Change the variable to the actual source directory where GCOP is installed (For 
 If you do not want to compile gcop_ros_bullet, add a CATKIN_IGNORE file in the folder gcop_ros_bullet and the package will not be compiled
 
 For hrotor_ovs, you must build cv_bridge from source using OpenCV 2.4.11
+
+Outdated Packages:
+1. gcop_ros_est, gcop_ros_utils - Because of dependency on enu
