@@ -32,7 +32,7 @@ class GcopTrajectoryVisualizer{
     line_strip_.points.resize(gcop_trajectory.N+1);
     line_strip_.header.stamp  = ros::Time::now();
     //Fill line strip points:
-    for(int i = 0; i < (gcop_trajectory.N+1); i++)
+    for(unsigned int i = 0; i < (gcop_trajectory.N+1); i++)
     {
       line_strip_.points[i].x = gcop_trajectory.statemsg[i].basepose.translation.x;
       line_strip_.points[i].y = gcop_trajectory.statemsg[i].basepose.translation.y;
@@ -50,7 +50,7 @@ class GcopTrajectoryVisualizer{
     for(int j = 0; j < 3; j++)
     {
       int jcount = (gcop_trajectory.N+1)*j;
-      for(int i = 0; i < gcop_trajectory.N+1; i++)
+      for(unsigned int i = 0; i < gcop_trajectory.N+1; i++)
       {
         //Set Base Point
         geometry_msgs::Point &point = axis_strip_.markers[jcount+i].points[0];
@@ -80,7 +80,7 @@ class GcopTrajectoryVisualizer{
   {
     arrow_strip_.markers.resize(gcop_trajectory.N+1, default_arrow_marker_);
 
-    for(int i = 0; i < gcop_trajectory.N+1; i++)
+    for(unsigned int i = 0; i < gcop_trajectory.N+1; i++)
     {
       //Set Base Point
       geometry_msgs::Point &point = arrow_strip_.markers[i].points[0];
@@ -104,7 +104,7 @@ class GcopTrajectoryVisualizer{
       return;//No Stdeviations given
     sphere_strip_.markers.resize(gcop_trajectory.N+1, default_sphere_marker_);
 
-    for(int i = 0; i < gcop_trajectory.N+1; i++)
+    for(unsigned int i = 0; i < gcop_trajectory.N+1; i++)
     {
       geometry_msgs::Point &point = sphere_strip_.markers[i].pose.position;
       point.x = gcop_trajectory.statemsg[i].basepose.translation.x;
