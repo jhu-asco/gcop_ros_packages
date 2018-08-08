@@ -33,9 +33,6 @@ find_package(GCOP REQUIRED algos systems)
 include_directories(${GCOP_INCLUDE_DIRS})
 set(LIBS ${LIBS} ${GCOP_LIBRARIES})
 
-find_package(DSL REQUIRED)
-include_directories(${DSL_INCLUDE_DIRS})
-
 find_package(TinyXML REQUIRED)
 include_directories(${TINYXML_INCLUDE_DIR})
 set(LIBS ${LIBS} ${TINYXML_LIBRARIES})
@@ -44,7 +41,7 @@ find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
   
 find_package(OpenCV REQUIRED COMPONENTS highgui imgproc)
-include(${OpenCV_INCLUDE_DIRS})
+include_directories(${OpenCV_INCLUDE_DIRS})
 set(LIBS ${LIBS} ${OpenCV_LIBRARIES})
 
 find_package(OpenMP)
@@ -206,6 +203,9 @@ if (BUILD_QUAD)
 endif (BUILD_QUAD)
 
 if (BUILD_CAR)
+  find_package(DSL REQUIRED)
+  include_directories(${DSL_INCLUDE_DIRS})
+
   add_executable(rcctrl src/rccartest.cc)
   target_link_libraries(rcctrl ${LIBS} ${catkin_LIBRARIES})
   add_dependencies(rcctrl ${PROJECT_NAME}_gencfg gcop_comm_generate_messages_cpp)

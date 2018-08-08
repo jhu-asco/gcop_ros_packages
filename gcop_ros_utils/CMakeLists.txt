@@ -9,7 +9,7 @@ set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   roscpp
-  enu
+  #enu
   std_msgs
   sensor_msgs 
   geometry_msgs
