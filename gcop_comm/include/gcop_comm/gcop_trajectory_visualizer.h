@@ -162,10 +162,14 @@ class GcopTrajectoryVisualizer{
     default_sphere_marker_ = default_arrow_marker_;
     default_sphere_marker_.type = visualization_msgs::Marker::SPHERE;
     default_sphere_marker_.ns = "sphere";
+    //default_sphere_marker_.color.r = 0.0;
+    //default_sphere_marker_.color.b = 1.0;
+    //default_sphere_marker_.color.g = 0.0;
+    //default_sphere_marker_.color.a = 0.2;
     default_sphere_marker_.color.r = 0.0;
     default_sphere_marker_.color.b = 1.0;
-    default_sphere_marker_.color.g = 0.0;
-    default_sphere_marker_.color.a = 0.2;
+    default_sphere_marker_.color.g = 1.0;
+    default_sphere_marker_.color.a = 1.0;
     default_sphere_marker_.pose.orientation.w = 1.0;
 
     //Cylinder
